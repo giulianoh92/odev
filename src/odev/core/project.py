@@ -132,7 +132,7 @@ class ProjectConfig:
             warning(
                 f"Tu version de odev ({__version__}) es menor a la requerida "
                 f"por este proyecto ({self.version_minima}).\n"
-                "  Ejecuta: pip install --upgrade odev"
+                "  Ejecuta: pip install --upgrade git+https://github.com/giulianoh92/odev.git"
             )
             return False
         return True

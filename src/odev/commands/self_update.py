@@ -1,8 +1,9 @@
 """Comando 'self-update': actualiza odev a la ultima version disponible.
 
-Ejecuta pip install --upgrade odev y reporta el resultado al usuario.
-Muestra la version actual antes de intentar la actualizacion y
-distingue entre: actualizacion exitosa, ya esta al dia, o error.
+Ejecuta pip install --upgrade desde el repositorio de GitHub y reporta
+el resultado al usuario. Muestra la version actual antes de intentar
+la actualizacion y distingue entre: actualizacion exitosa, ya esta al
+dia, o error.
 """
 
 import subprocess
@@ -17,9 +18,9 @@ from odev.core.console import error, info, success
 def self_update() -> None:
     """Actualiza odev a la ultima version disponible.
 
-    Ejecuta 'pip install --upgrade odev' usando el mismo interprete
-    de Python que esta ejecutando el CLI, para asegurar que se
-    actualiza la instalacion correcta.
+    Ejecuta 'pip install --upgrade' desde el repositorio de GitHub
+    usando el mismo interprete de Python que esta ejecutando el CLI,
+    para asegurar que se actualiza la instalacion correcta.
     """
     info(f"Version actual: {__version__}")
     info("Buscando actualizaciones...")
@@ -29,18 +30,19 @@ def self_update() -> None:
 
     try:
         resultado = subprocess.run(
-            [*ejecutable_pip, "install", "--upgrade", "odev"],
+            [*ejecutable_pip, "install", "--upgrade",
+             "git+https://github.com/giulianoh92/odev.git"],
             capture_output=True,
             text=True,
             timeout=120,
         )
     except subprocess.TimeoutExpired:
         error("La operacion excedio el tiempo limite (120s). Intenta manualmente:")
-        info("  pip install --upgrade odev")
+        info("  pip install --upgrade git+https://github.com/giulianoh92/odev.git")
         raise typer.Exit(1)
     except FileNotFoundError:
         error("No se encontro pip. Intenta manualmente:")
-        info("  pip install --upgrade odev")
+        info("  pip install --upgrade git+https://github.com/giulianoh92/odev.git")
         raise typer.Exit(1)
 
     salida_completa = resultado.stdout + resultado.stderr
@@ -48,7 +50,7 @@ def self_update() -> None:
     if resultado.returncode != 0:
         error("Error al actualizar. Salida del comando:")
         info(salida_completa.strip())
-        info("Intenta manualmente: pip install --upgrade odev")
+        info("Intenta manualmente: pip install --upgrade git+https://github.com/giulianoh92/odev.git")
         raise typer.Exit(1)
 
     # Determinar si realmente se actualizo o ya estaba al dia

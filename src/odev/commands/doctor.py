@@ -429,7 +429,7 @@ def _verificar_version_compatible() -> bool | None:
             _imprimir_warn(
                 f"odev version {__version__} es menor a la requerida "
                 f"por este proyecto ({version_minima}). "
-                "Ejecuta: pip install --upgrade odev"
+                "Ejecuta: pip install --upgrade git+https://github.com/giulianoh92/odev.git"
             )
             return False
     except (FileNotFoundError, Exception) as exc:

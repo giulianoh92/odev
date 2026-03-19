@@ -24,7 +24,7 @@ def tui() -> None:
     except ImportError:
         error(
             "Textual no esta instalado. Instala las dependencias TUI con: "
-            "pip install odev[tui]"
+            "pip install 'odev[tui] @ git+https://github.com/giulianoh92/odev.git'"
         )
         raise typer.Exit(1)
 

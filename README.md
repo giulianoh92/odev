@@ -13,7 +13,7 @@ odev is a command-line toolkit that provides a complete, Docker-based Odoo devel
 ## Quick Start
 
 ```bash
-pip install odev
+pip install git+https://github.com/giulianoh92/odev.git
 odev init my-project
 cd my-project
 odev up
@@ -292,7 +292,7 @@ If you have an existing project using the old `odoo-dev-env` layout (where the t
 
 ```bash
 # 1. Install odev globally
-pip install odev
+pip install git+https://github.com/giulianoh92/odev.git
 
 # 2. Navigate to your existing project
 cd /path/to/your-odoo-dev-env-project
@@ -377,6 +377,28 @@ Diagnostico del entorno odev
   [OK]   odev version 0.1.0 (minimo requerido: 0.1.0)
 
 Todas las verificaciones pasaron correctamente.
+```
+
+## Installation
+
+### With pip
+
+```bash
+pip install git+https://github.com/giulianoh92/odev.git
+```
+
+### With pipx (isolated environment)
+
+```bash
+pipx install git+https://github.com/giulianoh92/odev.git
+```
+
+### For contributors (editable install)
+
+```bash
+git clone https://github.com/giulianoh92/odev.git
+cd odev
+pip install -e ".[dev]"
 ```
 
 ## Requirements

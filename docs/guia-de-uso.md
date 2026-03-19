@@ -36,13 +36,21 @@ Tambien necesitas una terminal que soporte colores ANSI (cualquier terminal mode
 ### Con pip (recomendado)
 
 ```bash
-pip install odev
+pip install git+https://github.com/giulianoh92/odev.git
 ```
 
 ### Con pipx (entorno aislado)
 
 ```bash
-pipx install odev
+pipx install git+https://github.com/giulianoh92/odev.git
+```
+
+### Para contribuidores (instalacion editable)
+
+```bash
+git clone https://github.com/giulianoh92/odev.git
+cd odev
+pip install -e ".[dev]"
 ```
 
 ### Verificar la instalacion
@@ -63,7 +71,7 @@ odev 0.1.0
 odev self-update
 ```
 
-Este comando ejecuta `pip install --upgrade odev` usando el interprete de Python correcto. Si ya tienes la ultima version, te lo indica:
+Este comando ejecuta `pip install --upgrade` desde el repositorio de GitHub usando el interprete de Python correcto. Si ya tienes la ultima version, te lo indica:
 
 ```
 [INFO] Version actual: 0.1.0
@@ -560,7 +568,7 @@ grep PORT .env
 odev tui
 ```
 
-> **Nota:** Si Textual no esta instalado, el comando te indica como instalarlo: `pip install odev[tui]`.
+> **Nota:** Si Textual no esta instalado, el comando te indica como instalarlo: `pip install "odev[tui] @ git+https://github.com/giulianoh92/odev.git"`.
 
 La TUI muestra tres paneles:
 
@@ -713,7 +721,7 @@ Si tenes un proyecto que usa el layout viejo `odoo-dev-env` (donde el repositori
 
 ```bash
 # 1. Instalar odev globalmente
-pip install odev
+pip install git+https://github.com/giulianoh92/odev.git
 
 # 2. Ir al directorio del proyecto legacy
 cd /ruta/a/mi-proyecto-odoo-dev-env
@@ -1079,5 +1087,5 @@ odev down
 ```bash
 odev self-update
 # o manualmente
-pip install --upgrade odev
+pip install --upgrade git+https://github.com/giulianoh92/odev.git
 ```
