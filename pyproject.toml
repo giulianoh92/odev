@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "odev"
+version = "0.1.0"
+description = "CLI para gestion de entornos de desarrollo Odoo"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+keywords = ["odoo", "docker", "development", "cli"]
+authors = [
+    {name = "Giuliano"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Build Tools",
+]
+dependencies = [
+    "typer[all]>=0.9.0",
+    "python-dotenv>=1.0.0",
+    "jinja2>=3.1.0",
+    "questionary>=2.0.0",
+    "textual>=0.40.0",
+    "pyyaml>=6.0",
+    "packaging>=23.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.4.0",
+]
+
+[project.scripts]
+odev = "odev.main:app"
+
+[project.urls]
+Homepage = "https://github.com/giuliano/odev"
+Repository = "https://github.com/giuliano/odev"
+Issues = "https://github.com/giuliano/odev/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["odev*"]
+
+[tool.setuptools.package-data]
+odev = [
+    "templates/**/*",
+    "templates/**/.gitkeep",
+    "tui/styles/*.tcss",
+]

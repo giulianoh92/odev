@@ -1,0 +1,13 @@
+[options]
+addons_path = /mnt/extra-addons,/mnt/enterprise-addons
+data_dir = /var/lib/odoo
+admin_passwd = {{ ADMIN_PASSWORD | default('admin') }}
+csv_internal_sep = ,
+db_host = {{ DB_HOST | default('db') }}
+db_port = 5432
+db_user = {{ DB_USER | default('odoo') }}
+db_password = {{ DB_PASSWORD | default('odoo') }}
+db_name = {{ DB_NAME | default('odoo_db') }}
+log_level = info
+; logfile disabled — output goes to stderr (captured by Docker) and tee'd to /var/log/odoo/odoo.log via entrypoint
+http_interface = 0.0.0.0

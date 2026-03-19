@@ -1,0 +1,46 @@
+{# templates/project/claude-md.j2 #}
+# {{ project_name }} - Instrucciones para Agentes AI
+
+## Contexto del Proyecto
+- **Proyecto**: {{ project_name }}
+- **Odoo Version**: {{ odoo_version }}
+- **Descripcion**: {{ project_description | default('Proyecto Odoo') }}
+
+## Pipeline SDD (Flujo de Desarrollo)
+
+Todas las tareas deben seguir este flujo secuencial:
+
+1. **Explorer**: Analizar codigo actual y contexto.
+2. **Requirements (Spec)**: Crear `docs/spec.md` con alcance y reglas de negocio.
+3. **Architecture (Design)**: Crear `docs/design.md` con solucion tecnica.
+4. **HUMAN GATE**: Pedir aprobacion de spec y design.
+5. **Task Planner**: Crear `docs/task.md` con checklist de tareas atomicas.
+6. **HUMAN GATE**: Pedir aprobacion del plan.
+7. **Implementer**: Escribir codigo basado en el plan aprobado.
+8. **Verifier**: Validar que el codigo cumple la especificacion.
+9. **Archiver**: Guardar decisiones y limpiar artefactos temporales.
+
+## Contexto Tecnico
+- **Framework**: Odoo {{ odoo_version }} / Python 3.10+
+- **ORM**: Preferir procesamiento en lote (`write`, `create_multi`).
+- **UI**: En Odoo 19+ usar `<list>` en lugar de `<tree>`.
+- **Idioma**: Codigo semantico en espanol. Cadenas UI traducibles con `_()`.
+
+## Estructura del Proyecto
+```
+addons/              # Modulos Odoo del proyecto
+config/              # Configuracion de Odoo (generada)
+docs/                # Artefactos SDD (spec, design, task)
+snapshots/           # Snapshots de la DB (gitignored)
+docker-compose.yml   # Servicios Docker
+.odev.yaml           # Configuracion del proyecto
+```
+
+## Comandos Utiles
+```bash
+odev up              # Levantar entorno
+odev scaffold <mod>  # Crear modulo nuevo
+odev update <mod>    # Actualizar modulo
+odev test <mod>      # Ejecutar tests
+odev context         # Generar PROJECT_CONTEXT.md
+```

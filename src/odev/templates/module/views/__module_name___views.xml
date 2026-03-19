@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Tree View -->
+    <record id="view___module_name___tree" model="ir.ui.view">
+        <field name="name">__module_name__.tree</field>
+        <field name="model">__module_name__</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="partner_id"/>
+                <field name="amount"/>
+                <field name="active" column_invisible="True"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Form View -->
+    <record id="view___module_name___form" model="ir.ui.view">
+        <field name="name">__module_name__.form</field>
+        <field name="model">__module_name__</field>
+        <field name="arch" type="xml">
+            <form string="__module_name__">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="partner_id"/>
+                        </group>
+                        <group>
+                            <field name="amount"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Description">
+                            <field name="description"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action___module_name__" model="ir.actions.act_window">
+        <field name="name">__module_name__</field>
+        <field name="res_model">__module_name__</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <!-- Menu -->
+    <menuitem id="menu___module_name___root"
+              name="__module_name__"
+              sequence="10"/>
+    <menuitem id="menu___module_name___main"
+              name="__module_name__"
+              parent="menu___module_name___root"
+              action="action___module_name__"
+              sequence="10"/>
+
+</odoo>

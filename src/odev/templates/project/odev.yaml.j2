@@ -1,0 +1,27 @@
+{# templates/project/odev.yaml.j2 #}
+# Configuracion del proyecto odev
+# Documentacion: https://github.com/giuliano/odev
+
+odev_min_version: "{{ odev_version }}"
+
+odoo:
+  version: "{{ odoo_version }}"
+  image: "odoo:{{ odoo_image_tag }}"
+
+database:
+  image: "pgvector/pgvector:pg{{ db_image_tag }}"
+
+enterprise:
+  enabled: {{ enterprise_enabled | lower }}
+  path: "./enterprise"
+
+services:
+  pgweb: {{ services_pgweb | lower }}
+
+project:
+  name: "{{ project_name }}"
+  description: ""
+
+sdd:
+  enabled: true
+  language: "es"

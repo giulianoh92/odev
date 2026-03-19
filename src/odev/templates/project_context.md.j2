@@ -1,0 +1,57 @@
+# Contexto del Proyecto
+
+> Generado automaticamente por `odev context`. No editar manualmente.
+> Generado: {{ generated_at }}
+
+## Entorno
+
+- **Version de Odoo**: {{ odoo_version | default('N/A') }}
+- **Base de datos**: {{ db_name | default('N/A') }}
+- **Modulos personalizados**: {{ modules | length }}
+
+{% if modules %}
+## Resumen de Modulos
+
+| Modulo | Descripcion | Modelos | Vistas | Tests | Controladores | Reportes | Wizards | Version |
+|--------|-------------|---------|--------|-------|---------------|----------|---------|---------|
+{% for mod in modules %}
+| `{{ mod.technical_name }}` | {{ mod.summary | default('—') }} | {{ mod.model_count }} | {{ mod.view_count }} | {{ mod.test_count }} | {{ 'si' if mod.has_controllers else 'no' }} | {{ mod.report_count }} | {{ mod.wizard_count }} | {{ mod.version | default('—') }} |
+{% endfor %}
+
+## Detalle de Modulos
+
+{% for mod in modules %}
+### {{ mod.name }} (`{{ mod.technical_name }}`)
+
+- **Descripcion**: {{ mod.summary | default('Sin descripcion') }}
+- **Version**: {{ mod.version | default('N/A') }}
+- **Dependencias**: {{ mod.depends | join(', ') if mod.depends else 'base' }}
+- **Componentes**: {{ mod.model_count }} modelo(s), {{ mod.view_count }} vista(s), {{ mod.test_count }} test(s), {{ mod.report_count }} reporte(s), {{ mod.wizard_count }} wizard(s){% if mod.has_controllers %}, tiene controladores{% endif %}
+
+{% if mod.models %}
+**Modelos**:
+{% for model in mod.models %}
+- `{{ model.name }}`{% if model.inherit %} (hereda: `{{ model.inherit }}`){% endif %}{% if model.fields %} — {{ model.fields | join(', ') }}{% endif %}
+
+{% endfor %}
+{% endif %}
+{% endfor %}
+
+## Grafo de Dependencias
+
+{% for mod in modules %}
+{% if mod.depends %}
+{{ mod.technical_name }} -> {{ mod.depends | join(', ') }}
+{% endif %}
+{% endfor %}
+
+## Notas Arquitectonicas
+
+<!-- Agregar notas manuales aqui. Esta seccion no se sobreescribe por odev context. -->
+<!-- Ejemplo: "Todos los modelos de clientes heredan res.partner via delegacion." -->
+
+{% else %}
+## Modulos
+
+No se encontraron modulos personalizados en `addons/`. Ejecuta `odev scaffold <nombre>` para crear uno.
+{% endif %}

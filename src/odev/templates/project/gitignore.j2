@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+
+# Environment (secretos locales - NO trackear)
+.env
+
+# Enterprise addons (propiedad de Odoo SA - NO trackear)
+enterprise/
+
+# Configuracion generada (se regenera desde .env)
+config/odoo.conf
+
+# Logs
+logs/*
+!logs/.gitkeep
+*.log
+
+# Database snapshots (pesados, locales)
+snapshots/*
+!snapshots/.gitkeep
+
+# Auto-generado por odev context
+PROJECT_CONTEXT.md
+
+# IDE
+.vscode/
+.idea/
+
+# Secretos y configuracion local
+keys.json
+.mcp.json
+
+# AI assistants (configuracion local del usuario)
+.claude
+
+# Node
+node_modules/

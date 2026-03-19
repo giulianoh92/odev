@@ -1,0 +1,87 @@
+{# templates/project/docker-compose.yml.j2 #}
+services:
+  db:
+    image: ${DB_IMAGE}
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
+    ports:
+      - "${DB_PORT}:5432"
+    volumes:
+      - odoo-db-data:/var/lib/postgresql/data
+      - ./logs:/var/log/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      retries: 5
+    command:
+      [
+        "postgres",
+        "-c", "logging_collector=on",
+        "-c", "log_destination=stderr",
+        "-c", "log_directory=/var/log/postgresql",
+        "-c", "log_filename=postgresql.log",
+        "-c", "log_file_mode=0644",
+      ]
+
+  web:
+    image: ${ODOO_IMAGE}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT}:8069"
+      - "${DEBUGPY_PORT:-5678}:5678"
+    volumes:
+      - odoo-web-data:/var/lib/odoo
+      - ./config:/etc/odoo
+      - ./entrypoint.sh:/entrypoint.sh
+      - ./addons:/mnt/extra-addons
+{% if enterprise_enabled %}
+      - ./enterprise:/mnt/enterprise-addons
+{% endif %}
+      - ./logs:/var/log/odoo
+    environment:
+      - HOST=${DB_HOST}
+      - USER=${DB_USER}
+      - PASSWORD=${DB_PASSWORD}
+      - LOAD_LANGUAGE=${LOAD_LANGUAGE}
+      - DB_FILTER=${DB_FILTER}
+      - WITHOUT_DEMO=${WITHOUT_DEMO}
+      - INIT_MODULES=${INIT_MODULES}
+      - POSTGRES_DB=${DB_NAME}
+      - DEBUGPY=${DEBUGPY}
+    entrypoint: ["/entrypoint.sh"]
+    develop:
+      watch:
+        - action: sync
+          path: ./addons
+          target: /mnt/extra-addons
+          ignore:
+            - __pycache__
+            - .git
+    command: ["odoo"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8069/web/health || exit 1"]
+      interval: 10s
+      retries: 5
+
+{% if services_pgweb %}
+  pgweb:
+    image: sosedoff/pgweb
+    restart: unless-stopped
+    ports:
+      - "${PGWEB_PORT:-8081}:8081"
+    environment:
+      - DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
+{% endif %}
+
+volumes:
+  odoo-web-data:
+  odoo-db-data:
