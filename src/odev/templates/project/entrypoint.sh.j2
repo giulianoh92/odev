@@ -48,7 +48,7 @@ except Exception as e:
 
 # Install Python dependencies from addons requirements.txt (like Odoo.sh does)
 ADDONS_DIRS="/mnt/extra-addons /mnt/enterprise-addons"
-REQ_FILES=$(find $ADDONS_DIRS -maxdepth 3 -name 'requirements.txt' -not -empty 2>/dev/null)
+REQ_FILES=$(find $ADDONS_DIRS -maxdepth 3 -name 'requirements.txt' -not -empty 2>/dev/null || true)
 if [ -n "$REQ_FILES" ]; then
     echo "Installing Python dependencies from addons requirements.txt files..."
     for req in $REQ_FILES; do
