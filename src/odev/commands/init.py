@@ -18,6 +18,7 @@ import typer
 from jinja2 import Environment, FileSystemLoader
 
 from odev import __version__
+from odev.core.config import construir_addon_mounts
 from odev.core.console import error, info, success, warning
 from odev.core.paths import get_project_templates_dir
 from odev.core.ports import sugerir_puertos
@@ -47,6 +48,7 @@ _MAPA_TEMPLATES: list[tuple[str, str]] = [
     ("gitignore.j2", ".gitignore"),
     ("odev.yaml.j2", ".odev.yaml"),
     ("pre-commit-config.yaml.j2", ".pre-commit-config.yaml"),
+    ("pylintrc.j2", ".pylintrc"),
     ("claude-md.j2", "CLAUDE.md"),
     ("pyproject-project.toml.j2", "pyproject.toml"),
 ]
@@ -127,7 +129,26 @@ def init(
     if inicializar_git and not (directorio_destino / ".git").exists():
         _inicializar_repositorio_git(directorio_destino)
 
-    # 9. Mensaje final ---------------------------------------------------------
+    # 9. Registrar en el registro global ----------------------------------------
+    try:
+        from datetime import date
+
+        from odev.core.registry import Registry, RegistryEntry
+
+        registro = Registry()
+        entry = RegistryEntry(
+            nombre=nombre_proyecto,
+            directorio_trabajo=directorio_destino.resolve(),
+            directorio_config=directorio_destino.resolve(),
+            modo="inline",
+            version_odoo=valores.get("odoo_version", "19.0"),
+            fecha_creacion=date.today().isoformat(),
+        )
+        registro.registrar(entry)
+    except Exception:
+        pass  # El registro es opcional para proyectos inline, no falla init
+
+    # 10. Mensaje final --------------------------------------------------------
     _mostrar_resumen_final(nombre_proyecto, directorio_destino, valores)
 
 
@@ -277,6 +298,7 @@ def _wizard_interactivo(
         inicializar_git=inicializar_git,
         puerto_db=str(puertos_sugeridos["DB_PORT"]),
         puerto_debugpy=str(puertos_sugeridos["DEBUGPY_PORT"]),
+        puerto_mailhog=str(puertos_sugeridos["MAILHOG_PORT"]),
     )
 
 
@@ -315,6 +337,7 @@ def _valores_por_defecto(
         inicializar_git=True,
         puerto_db=str(puertos_sugeridos["DB_PORT"]),
         puerto_debugpy=str(puertos_sugeridos["DEBUGPY_PORT"]),
+        puerto_mailhog=str(puertos_sugeridos["MAILHOG_PORT"]),
     )
 
 
@@ -339,6 +362,7 @@ def _construir_valores(
     inicializar_git: bool,
     puerto_db: str,
     puerto_debugpy: str,
+    puerto_mailhog: str = "8025",
 ) -> dict[str, Any]:
     """Construye el diccionario unificado de valores para templates.
 
@@ -374,6 +398,7 @@ def _construir_valores(
         "DEBUGPY_PORT": puerto_debugpy,
         "ADMIN_PASSWORD": "admin",
         "INIT_MODULES": "",
+        "MAILHOG_PORT": puerto_mailhog,
         # --- Variables snake_case (para odev.yaml.j2, docker-compose.yml.j2, etc.) ---
         "project_name": nombre_proyecto,
         "odoo_version": version_odoo,
@@ -381,8 +406,22 @@ def _construir_valores(
         "db_image_tag": tag_imagen_db,
         "enterprise_enabled": habilitar_enterprise,
         "services_pgweb": habilitar_pgweb,
+        "services_mailhog": True,
         "odev_version": __version__,
         "project_description": "",
+        # --- Variables de addon mounts para templates dinamicos ---
+        "addon_mounts": construir_addon_mounts(["./addons"], Path(".")),
+        "addon_container_paths": [
+            m["container_path"]
+            for m in construir_addon_mounts(["./addons"], Path("."))
+        ],
+        "addon_dirs_container": [
+            m["container_path"]
+            for m in construir_addon_mounts(["./addons"], Path("."))
+        ],
+        "addons_paths_list": ["./addons"],
+        "project_mode": "inline",
+        "odev_min_version": __version__,
         # --- Flags de control (no se pasan a templates, solo a la logica) ---
         "generar_ci": generar_ci,
         "inicializar_git": inicializar_git,

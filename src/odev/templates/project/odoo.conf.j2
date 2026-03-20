@@ -1,5 +1,9 @@
 [options]
-addons_path = /mnt/extra-addons,/mnt/enterprise-addons
+{% if addon_container_paths is defined %}
+addons_path = {{ addon_container_paths | join(',') }}{% if enterprise_enabled %},/mnt/enterprise-addons{% endif %}
+{% else %}
+addons_path = /mnt/extra-addons{% if enterprise_enabled %},/mnt/enterprise-addons{% endif %}
+{% endif %}
 data_dir = /var/lib/odoo
 admin_passwd = {{ ADMIN_PASSWORD | default('admin') }}
 csv_internal_sep = ,
@@ -11,3 +15,7 @@ db_name = {{ DB_NAME | default('odoo_db') }}
 log_level = info
 ; logfile disabled — output goes to stderr (captured by Docker) and tee'd to /var/log/odoo/odoo.log via entrypoint
 http_interface = 0.0.0.0
+; SMTP interceptado por MailHog — todo el correo saliente se captura en http://localhost:{{ MAILHOG_PORT | default(8025) }}
+smtp_server = mailhog
+smtp_port = 1025
+smtp_ssl = False

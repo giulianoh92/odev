@@ -12,10 +12,14 @@ from pathlib import Path
 
 import typer
 
+from odev.commands._helpers import obtener_docker, obtener_rutas, requerir_proyecto
 from odev.core.config import load_env
 from odev.core.console import error, info, success, warning
-from odev.core.docker import DockerCompose
-from odev.core.paths import ProjectPaths
+from odev.core.neutralize import (
+    configurar_parametros_desarrollo,
+    neutralizar_base_datos,
+    resetear_credenciales_admin,
+)
 
 
 def load_backup(
@@ -38,17 +42,15 @@ def load_backup(
     y opcionalmente neutraliza la base de datos para que no envie correos
     ni ejecute acciones programadas.
     """
-    try:
-        rutas = ProjectPaths()
-    except FileNotFoundError:
-        error("No se encontro un proyecto odev. Ejecuta 'odev init' para crear uno.")
-        raise typer.Exit(1)
+    from odev.main import obtener_nombre_proyecto
+    contexto = requerir_proyecto(obtener_nombre_proyecto())
+    rutas = obtener_rutas(contexto)
 
     valores_env = load_env(rutas.env_file)
     usuario_bd = valores_env.get("DB_USER", "odoo")
     nombre_bd = valores_env.get("DB_NAME", "odoo_db")
 
-    dc = DockerCompose(rutas.root)
+    dc = obtener_docker(contexto)
 
     # -- Validar backup -------------------------------------------------------
     if not zipfile.is_zipfile(backup):
@@ -167,42 +169,22 @@ def load_backup(
         else:
             info("No hay filestore en el backup — se omite.")
 
+    # -- Asegurar que el contenedor web este corriendo -----------------------
+    dc._run(["start", "web"])
+
     # -- Neutralizar ----------------------------------------------------------
     if neutralize:
-        info("Neutralizando base de datos (desactivando crons, servidores de correo, etc.)...")
-        dc._run(["start", "web"])
-        dc.exec_cmd(
-            "web",
-            [
-                "odoo", "neutralize",
-                "--config=/etc/odoo/odoo.conf",
-                "-d", nombre_bd,
-            ],
-            interactive=True,
-        )
-        success("Base de datos neutralizada.")
+        neutralizar_base_datos(dc, nombre_bd, usuario_bd)
 
     # -- Resetear credenciales de admin ---------------------------------------
-    info("Reseteando credenciales de admin (admin/admin)...")
-    resultado_hash = dc.exec_cmd(
-        "web",
-        [
-            "python3", "-c",
-            "from passlib.context import CryptContext; "
-            "print(CryptContext(['pbkdf2_sha512']).hash('admin'))",
-        ],
-    )
-    hash_pw = resultado_hash.stdout.decode().strip()
-    dc.exec_cmd(
-        "db",
-        ["psql", "-U", usuario_bd, "-d", nombre_bd, "-c",
-         f"UPDATE res_users SET login = 'admin', password = '{hash_pw}' WHERE id = 2;"],
-    )
-    success("Credenciales de admin reseteadas: login=admin, password=admin")
+    resetear_credenciales_admin(dc, nombre_bd, usuario_bd)
+
+    # -- Configurar parametros de desarrollo ----------------------------------
+    puerto_web = valores_env.get("WEB_PORT", "8069")
+    configurar_parametros_desarrollo(dc, nombre_bd, usuario_bd, puerto_web)
 
     # -- Reiniciar todo -------------------------------------------------------
     info("Reiniciando servicios...")
     dc._run(["restart", "web", "pgweb"])
 
-    puerto_web = valores_env.get("WEB_PORT", "8069")
     success(f"Backup cargado en '{nombre_bd}'. Acceder en http://localhost:{puerto_web}")

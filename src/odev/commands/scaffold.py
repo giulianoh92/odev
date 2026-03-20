@@ -10,8 +10,9 @@ from pathlib import Path
 
 import typer
 
+from odev.commands._helpers import obtener_rutas, requerir_proyecto
 from odev.core.console import error, info, success
-from odev.core.paths import ProjectPaths, get_module_template_dir
+from odev.core.paths import get_module_template_dir
 
 
 def scaffold(
@@ -34,11 +35,9 @@ def scaffold(
         )
         raise typer.Exit(1)
 
-    try:
-        rutas = ProjectPaths()
-    except FileNotFoundError:
-        error("No se encontro un proyecto odev. Ejecuta 'odev init' para crear uno.")
-        raise typer.Exit(1)
+    from odev.main import obtener_nombre_proyecto
+    contexto = requerir_proyecto(obtener_nombre_proyecto())
+    rutas = obtener_rutas(contexto)
 
     directorio_template = get_module_template_dir()
     if not directorio_template.exists():

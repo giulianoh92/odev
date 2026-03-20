@@ -74,6 +74,7 @@ class TestValoresPorDefecto:
                 "PGWEB_PORT": 8081,
                 "DB_PORT": 5432,
                 "DEBUGPY_PORT": 5678,
+                "MAILHOG_PORT": 8025,
             }
 
             valores = _valores_por_defecto("test-project", "19.0")
@@ -93,6 +94,7 @@ class TestValoresPorDefecto:
                 "PGWEB_PORT": 8081,
                 "DB_PORT": 5432,
                 "DEBUGPY_PORT": 5678,
+                "MAILHOG_PORT": 8025,
             }
 
             valores_19 = _valores_por_defecto("test", "19.0")

@@ -7,9 +7,8 @@ lo que detiene Y elimina los contenedores.
 
 import typer
 
-from odev.core.console import error, success
-from odev.core.docker import DockerCompose
-from odev.core.paths import ProjectPaths
+from odev.commands._helpers import obtener_docker, requerir_proyecto
+from odev.core.console import success
 
 
 def down(
@@ -25,12 +24,8 @@ def down(
     Ejecuta 'docker compose down' sobre el proyecto detectado.
     Opcionalmente elimina los volumenes asociados con el flag -v.
     """
-    try:
-        rutas = ProjectPaths()
-    except FileNotFoundError:
-        error("No se encontro un proyecto odev. Ejecuta 'odev init' para crear uno.")
-        raise typer.Exit(1)
-
-    dc = DockerCompose(rutas.root)
+    from odev.main import obtener_nombre_proyecto
+    contexto = requerir_proyecto(obtener_nombre_proyecto())
+    dc = obtener_docker(contexto)
     dc.down(volumes=volumes)
     success("Entorno detenido.")

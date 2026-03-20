@@ -7,9 +7,8 @@ incluyendo nombre, estado, salud y puertos publicados.
 import typer
 from rich.table import Table
 
-from odev.core.console import console, error
-from odev.core.docker import DockerCompose
-from odev.core.paths import ProjectPaths
+from odev.commands._helpers import obtener_docker, requerir_proyecto
+from odev.core.console import console
 
 
 def status() -> None:
@@ -19,17 +18,13 @@ def status() -> None:
     y presenta los resultados en una tabla formateada con Rich. Incluye
     el nombre del proyecto y el modo detectado en la cabecera.
     """
-    try:
-        rutas = ProjectPaths()
-    except FileNotFoundError:
-        error("No se encontro un proyecto odev. Ejecuta 'odev init' para crear uno.")
-        raise typer.Exit(1)
-
-    dc = DockerCompose(rutas.root)
+    from odev.main import obtener_nombre_proyecto
+    contexto = requerir_proyecto(obtener_nombre_proyecto())
+    dc = obtener_docker(contexto)
     servicios = dc.ps_parsed()
 
-    nombre_proyecto = rutas.root.name
-    modo = rutas.mode.value
+    nombre_proyecto = contexto.nombre
+    modo = contexto.modo.value
     console.print(f"\n[bold]Proyecto:[/] {nombre_proyecto} [dim](modo: {modo})[/]\n")
 
     if not servicios:

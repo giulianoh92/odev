@@ -13,31 +13,30 @@ from pathlib import Path
 import typer
 from rich.table import Table
 
+from odev.commands._helpers import obtener_docker, obtener_rutas, requerir_proyecto
 from odev.core.config import load_env
 from odev.core.console import console, error, info, success, warning
-from odev.core.docker import DockerCompose
 from odev.core.paths import ProjectPaths, get_sql_templates_dir
+from odev.core.resolver import ProjectContext
 
 app = typer.Typer(no_args_is_help=True, help="Operaciones de base de datos (snapshots, anonimizacion).")
 
 
-def _obtener_info_bd() -> tuple[str, str, ProjectPaths]:
+def _obtener_info_bd() -> tuple[str, str, ProjectPaths, ProjectContext]:
     """Obtiene la informacion de conexion a la base de datos y las rutas del proyecto.
 
     Returns:
-        Tupla con (usuario_bd, nombre_bd, rutas_proyecto).
+        Tupla con (usuario_bd, nombre_bd, rutas_proyecto, contexto).
 
     Raises:
-        typer.Exit: Si no se encuentra un proyecto odev.
+        SystemExit: Si no se encuentra un proyecto odev.
     """
-    try:
-        rutas = ProjectPaths()
-    except FileNotFoundError:
-        error("No se encontro un proyecto odev. Ejecuta 'odev init' para crear uno.")
-        raise typer.Exit(1)
+    from odev.main import obtener_nombre_proyecto
+    contexto = requerir_proyecto(obtener_nombre_proyecto())
+    rutas = obtener_rutas(contexto)
 
     valores_env = load_env(rutas.env_file)
-    return valores_env.get("DB_USER", "odoo"), valores_env.get("DB_NAME", "odoo_db"), rutas
+    return valores_env.get("DB_USER", "odoo"), valores_env.get("DB_NAME", "odoo_db"), rutas, contexto
 
 
 @app.command()
@@ -49,10 +48,10 @@ def snapshot(
     Genera un dump en formato custom de PostgreSQL y lo guarda
     en el directorio snapshots/ del proyecto con timestamp.
     """
-    usuario_bd, nombre_bd, rutas = _obtener_info_bd()
+    usuario_bd, nombre_bd, rutas, contexto = _obtener_info_bd()
     rutas.snapshots_dir.mkdir(parents=True, exist_ok=True)
 
-    dc = DockerCompose(rutas.root)
+    dc = obtener_docker(contexto)
 
     marca_tiempo = datetime.now().strftime("%Y%m%d_%H%M%S")
     nombre_archivo = f"{name}_{marca_tiempo}.dump"
@@ -83,7 +82,7 @@ def restore(
     Busca el snapshot por nombre exacto o por prefijo, detiene el
     servicio web, reemplaza la base de datos, y reinicia el servicio.
     """
-    usuario_bd, nombre_bd, rutas = _obtener_info_bd()
+    usuario_bd, nombre_bd, rutas, contexto = _obtener_info_bd()
 
     # Buscar archivo de snapshot (coincidencia exacta o por prefijo)
     ruta_archivo = _buscar_snapshot(name, rutas.snapshots_dir)
@@ -91,7 +90,7 @@ def restore(
         error(f"No se encontro ningun snapshot que coincida con '{name}'.")
         raise typer.Exit(1)
 
-    dc = DockerCompose(rutas.root)
+    dc = obtener_docker(contexto)
 
     warning(f"Esto REEMPLAZARA la base de datos '{nombre_bd}' con el snapshot: {ruta_archivo.name}")
     confirmacion = typer.confirm("Continuar?", default=False)
@@ -129,11 +128,9 @@ def list_snapshots() -> None:
     Muestra una tabla con nombre, fecha y tamano de cada snapshot
     encontrado en el directorio snapshots/ del proyecto.
     """
-    try:
-        rutas = ProjectPaths()
-    except FileNotFoundError:
-        error("No se encontro un proyecto odev. Ejecuta 'odev init' para crear uno.")
-        raise typer.Exit(1)
+    from odev.main import obtener_nombre_proyecto
+    contexto = requerir_proyecto(obtener_nombre_proyecto())
+    rutas = obtener_rutas(contexto)
 
     rutas.snapshots_dir.mkdir(parents=True, exist_ok=True)
     dumps = sorted(
@@ -168,9 +165,9 @@ def anonymize() -> None:
     direcciones de partners con datos ficticios, y resetea las passwords
     de todos los usuarios a 'admin'.
     """
-    usuario_bd, nombre_bd, rutas = _obtener_info_bd()
+    usuario_bd, nombre_bd, rutas, contexto = _obtener_info_bd()
 
-    dc = DockerCompose(rutas.root)
+    dc = obtener_docker(contexto)
 
     warning("Esto anonimizara los datos de partners y reseteara las passwords de usuarios!")
     confirmacion = typer.confirm("Continuar?", default=False)

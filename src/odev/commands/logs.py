@@ -6,9 +6,7 @@ Permite seguir los logs en tiempo real de un servicio especifico
 
 import typer
 
-from odev.core.console import error
-from odev.core.docker import DockerCompose
-from odev.core.paths import ProjectPaths
+from odev.commands._helpers import obtener_docker, requerir_proyecto
 
 
 def logs(
@@ -33,12 +31,8 @@ def logs(
     Por defecto muestra los logs del servicio 'web'. Usa 'all' para
     ver los logs de todos los servicios simultaneamente.
     """
-    try:
-        rutas = ProjectPaths()
-    except FileNotFoundError:
-        error("No se encontro un proyecto odev. Ejecuta 'odev init' para crear uno.")
-        raise typer.Exit(1)
-
-    dc = DockerCompose(rutas.root)
+    from odev.main import obtener_nombre_proyecto
+    contexto = requerir_proyecto(obtener_nombre_proyecto())
+    dc = obtener_docker(contexto)
     servicio = None if service == "all" else service
     dc.logs(service=servicio, follow=not no_follow, tail=tail)

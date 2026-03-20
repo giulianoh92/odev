@@ -5,6 +5,8 @@ Este es el modulo referenciado por el entry point del paquete:
     odev = "odev.main:app"
 """
 
+from __future__ import annotations
+
 import typer
 
 from odev import __version__
@@ -36,6 +38,9 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
+# --- Estado global para la opcion --project ---
+_nombre_proyecto: str | None = None
+
 
 def _version_callback(mostrar: bool) -> None:
     """Callback para el flag --version.
@@ -50,6 +55,12 @@ def _version_callback(mostrar: bool) -> None:
 
 @app.callback()
 def main(
+    project: str = typer.Option(
+        None,
+        "--project",
+        "-p",
+        help="Nombre del proyecto (si hay ambigüedad).",
+    ),
     version: bool = typer.Option(
         False,
         "--version",
@@ -60,6 +71,17 @@ def main(
     ),
 ) -> None:
     """CLI para gestion de entornos de desarrollo Odoo."""
+    global _nombre_proyecto
+    _nombre_proyecto = project
+
+
+def obtener_nombre_proyecto() -> str | None:
+    """Retorna el nombre de proyecto global si fue especificado via --project.
+
+    Returns:
+        Nombre del proyecto o None si no se especifico.
+    """
+    return _nombre_proyecto
 
 
 # --- Registro de comandos ---
@@ -84,6 +106,19 @@ app.command(name="self-update")(self_update.self_update)
 
 # --- Registro de subgrupos ---
 app.add_typer(db.app, name="db")
+
+# --- Comandos nuevos (a implementar en Batch 5) ---
+try:
+    from odev.commands.adopt import adopt
+    app.command(name="adopt")(adopt)
+except ImportError:
+    pass
+
+try:
+    from odev.commands.projects import app as projects_app
+    app.add_typer(projects_app, name="projects")
+except ImportError:
+    pass
 
 if __name__ == "__main__":
     app()

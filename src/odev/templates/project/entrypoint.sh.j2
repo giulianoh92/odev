@@ -47,7 +47,11 @@ except Exception as e:
 }
 
 # Install Python dependencies from addons requirements.txt (like Odoo.sh does)
+{% if addon_dirs_container is defined %}
+ADDONS_DIRS="{{ addon_dirs_container | join(' ') }}"
+{% else %}
 ADDONS_DIRS="/mnt/extra-addons /mnt/enterprise-addons"
+{% endif %}
 REQ_FILES=$(find $ADDONS_DIRS -maxdepth 3 -name 'requirements.txt' -not -empty 2>/dev/null || true)
 if [ -n "$REQ_FILES" ]; then
     echo "Installing Python dependencies from addons requirements.txt files..."

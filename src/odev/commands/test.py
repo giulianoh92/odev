@@ -8,10 +8,9 @@ from typing import Optional
 
 import typer
 
+from odev.commands._helpers import obtener_docker, obtener_rutas, requerir_proyecto
 from odev.core.config import load_env
-from odev.core.console import error, info
-from odev.core.docker import DockerCompose
-from odev.core.paths import ProjectPaths
+from odev.core.console import info
 
 
 def test(
@@ -32,11 +31,9 @@ def test(
     de tests de Odoo. Usa 'all' para ejecutar todos los tests
     disponibles (puede tomar bastante tiempo).
     """
-    try:
-        rutas = ProjectPaths()
-    except FileNotFoundError:
-        error("No se encontro un proyecto odev. Ejecuta 'odev init' para crear uno.")
-        raise typer.Exit(1)
+    from odev.main import obtener_nombre_proyecto
+    contexto = requerir_proyecto(obtener_nombre_proyecto())
+    rutas = obtener_rutas(contexto)
 
     valores_env = load_env(rutas.env_file)
     nombre_bd = valores_env.get("DB_NAME", "odoo_db")
@@ -56,5 +53,5 @@ def test(
     else:
         info("Ejecutando todos los tests (esto puede tomar un rato)...")
 
-    dc = DockerCompose(rutas.root)
+    dc = obtener_docker(contexto)
     dc.exec_cmd("web", comando, interactive=True)

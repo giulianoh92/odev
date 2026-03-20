@@ -13,6 +13,7 @@ CONJUNTOS_PUERTOS: dict[str, int] = {
     "PGWEB_PORT": 8081,
     "DB_PORT": 5432,
     "DEBUGPY_PORT": 5678,
+    "MAILHOG_PORT": 8025,
 }
 
 

@@ -5,9 +5,8 @@ Ejecuta docker compose restart sobre el servicio 'web' del proyecto actual.
 
 import typer
 
-from odev.core.console import error, info, success
-from odev.core.docker import DockerCompose
-from odev.core.paths import ProjectPaths
+from odev.commands._helpers import obtener_docker, requerir_proyecto
+from odev.core.console import info, success
 
 
 def restart() -> None:
@@ -16,13 +15,10 @@ def restart() -> None:
     Detecta el proyecto actual y reinicia el servicio web para
     aplicar cambios en el codigo o la configuracion.
     """
-    try:
-        rutas = ProjectPaths()
-    except FileNotFoundError:
-        error("No se encontro un proyecto odev. Ejecuta 'odev init' para crear uno.")
-        raise typer.Exit(1)
+    from odev.main import obtener_nombre_proyecto
+    contexto = requerir_proyecto(obtener_nombre_proyecto())
 
     info("Reiniciando servicio web...")
-    dc = DockerCompose(rutas.root)
+    dc = obtener_docker(contexto)
     dc.restart("web")
     success("Servicio web reiniciado.")

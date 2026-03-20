@@ -12,9 +12,10 @@ from pathlib import Path
 import typer
 from jinja2 import Environment, FileSystemLoader
 
+from odev.commands._helpers import obtener_rutas, requerir_proyecto
 from odev.core.config import load_env
-from odev.core.console import error, info, success, warning
-from odev.core.paths import ProjectPaths, get_templates_dir
+from odev.core.console import info, success, warning
+from odev.core.paths import get_templates_dir
 
 
 def context() -> None:
@@ -24,14 +25,14 @@ def context() -> None:
     manifiestos y estructura de codigo, y renderiza un documento de
     contexto completo para referencia.
     """
-    try:
-        rutas = ProjectPaths()
-    except FileNotFoundError:
-        error("No se encontro un proyecto odev. Ejecuta 'odev init' para crear uno.")
-        raise typer.Exit(1)
+    from odev.main import obtener_nombre_proyecto
+    contexto = requerir_proyecto(obtener_nombre_proyecto())
+    rutas = obtener_rutas(contexto)
 
     valores_env = load_env(rutas.env_file)
-    modulos = _escanear_modulos(rutas.addons_dir)
+    modulos = []
+    for directorio_addons in rutas.addons_dirs:
+        modulos.extend(_escanear_modulos(directorio_addons))
 
     if not modulos:
         warning("No se encontraron modulos en addons/. PROJECT_CONTEXT.md sera minimo.")

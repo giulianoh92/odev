@@ -27,12 +27,18 @@ class ProjectPaths:
         root: Ruta raiz del proyecto detectado.
     """
 
-    def __init__(self, project_root: Path | None = None) -> None:
+    def __init__(
+        self,
+        project_root: Path | None = None,
+        addon_paths: list[str] | None = None,
+    ) -> None:
         """Inicializa las rutas del proyecto.
 
         Args:
             project_root: Ruta explicita a la raiz del proyecto. Si es None,
                          se detecta automaticamente con detect_mode().
+            addon_paths: Lista de rutas a directorios de addons. Si es None,
+                        se carga desde ProjectConfig al acceder a addons_dirs.
 
         Raises:
             FileNotFoundError: Si no se encuentra un proyecto y no se paso
@@ -49,6 +55,7 @@ class ProjectPaths:
                     "Ejecuta 'odev init' para crear uno o navega al directorio del proyecto."
                 )
             self._root = root
+        self._addon_paths = addon_paths
 
     @property
     def mode(self) -> ProjectMode:
@@ -61,9 +68,32 @@ class ProjectPaths:
         return self._root
 
     @property
+    def addons_dirs(self) -> list[Path]:
+        """Lista de directorios de addons del proyecto."""
+        if self._addon_paths is not None:
+            rutas = self._addon_paths
+        else:
+            try:
+                from odev.core.project import ProjectConfig
+
+                config = ProjectConfig(self._root)
+                rutas = config.rutas_addons
+            except FileNotFoundError:
+                rutas = ["./addons"]
+        return [self._resolver_ruta(r) for r in rutas]
+
+    @property
     def addons_dir(self) -> Path:
-        """Directorio de addons del proyecto."""
-        return self._root / "addons"
+        """Directorio principal de addons (el primero de la lista)."""
+        dirs = self.addons_dirs
+        return dirs[0] if dirs else self._root / "addons"
+
+    def _resolver_ruta(self, ruta: str) -> Path:
+        """Resuelve una ruta relativa contra el root del proyecto, o devuelve absoluta."""
+        p = Path(ruta)
+        if p.is_absolute():
+            return p
+        return self._root / p
 
     @property
     def enterprise_dir(self) -> Path:

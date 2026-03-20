@@ -1,0 +1,12 @@
+[MASTER]
+load-plugins = pylint_odoo
+
+[ODOOLINT]
+# Version de Odoo para checks especificos de version
+valid_odoo_versions = {{ odoo_version | default('19.0') }}
+
+[MESSAGES CONTROL]
+# Supresiones comunes para desarrollo Odoo
+disable =
+    missing-docstring,
+    manifest-required-author,

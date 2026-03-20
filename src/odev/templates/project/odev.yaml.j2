@@ -2,25 +2,51 @@
 # Configuracion del proyecto odev
 # Documentacion: https://github.com/giuliano/odev
 
-odev_min_version: "{{ odev_version }}"
+odev_min_version: "{{ odev_min_version | default(odev_version) }}"
 
+{% if project_mode is defined %}
+mode: {{ project_mode }}
+
+{% endif %}
 odoo:
   version: "{{ odoo_version }}"
-  image: "odoo:{{ odoo_image_tag }}"
+  image: "{{ odoo_image | default('odoo:' ~ odoo_image_tag) }}"
 
 database:
-  image: "pgvector/pgvector:pg{{ db_image_tag }}"
+  image: "{{ db_image | default('pgvector/pgvector:pg' ~ db_image_tag) }}"
 
 enterprise:
   enabled: {{ enterprise_enabled | lower }}
+{% if enterprise_path is defined %}
+  path: "{{ enterprise_path }}"
+{% else %}
   path: "./enterprise"
+{% endif %}
 
 services:
   pgweb: {{ services_pgweb | lower }}
 
+paths:
+{% if addons_paths_list is defined %}
+  addons:
+{% for path in addons_paths_list %}
+    - "{{ path }}"
+{% endfor %}
+{% else %}
+  addons:
+    - "./addons"
+{% endif %}
+  config: "./config"
+  snapshots: "./snapshots"
+  logs: "./logs"
+  docs: "./docs"
+
 project:
   name: "{{ project_name }}"
   description: ""
+{% if working_dir is defined %}
+  working_dir: "{{ working_dir }}"
+{% endif %}
 
 sdd:
   enabled: true

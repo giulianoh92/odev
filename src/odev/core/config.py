@@ -70,9 +70,49 @@ def write_env(values: dict[str, str], dest: Path | None = None) -> Path:
     return dest
 
 
+def construir_addon_mounts(
+    rutas_addons: list[str],
+    directorio_config: Path,
+) -> list[dict]:
+    """Construye la lista de mounts para Docker y odoo.conf.
+
+    Args:
+        rutas_addons: Lista de rutas a directorios de addons (relativas o absolutas).
+        directorio_config: Directorio donde vive el docker-compose
+                          (para resolver rutas relativas).
+
+    Returns:
+        Lista de dicts con:
+        - host_path: ruta en el host (como aparece en docker-compose volumes).
+        - container_path: ruta en el container (/mnt/extra-addons, /mnt/extra-addons-1, etc.).
+        - nombre: nombre identificador para la seccion watch.
+    """
+    mounts = []
+    for i, ruta in enumerate(rutas_addons):
+        p = Path(ruta)
+        if p.is_absolute():
+            host_path = str(p)
+        else:
+            host_path = ruta  # Mantener relativa tal cual para docker-compose
+
+        if i == 0:
+            container_path = "/mnt/extra-addons"
+        else:
+            container_path = f"/mnt/extra-addons-{i}"
+
+        nombre = p.name if p.name != "." else f"addons-{i}"
+        mounts.append({
+            "host_path": host_path,
+            "container_path": container_path,
+            "nombre": nombre,
+        })
+    return mounts
+
+
 def generate_odoo_conf(
     env_values: dict[str, str | None] | None = None,
     config_dir: Path | None = None,
+    addon_mounts: list[dict] | None = None,
 ) -> Path:
     """Renderiza odoo.conf.j2 y escribe en config/odoo.conf.
 
@@ -81,15 +121,26 @@ def generate_odoo_conf(
                    automaticamente del .env del proyecto.
         config_dir: Directorio donde escribir odoo.conf. Si es None, usa
                    el directorio config/ del proyecto actual.
+        addon_mounts: Lista de mounts generada por construir_addon_mounts().
+                     Si se proporciona, se pasa addon_container_paths al template
+                     como cadena separada por comas. Si es None, se mantiene el
+                     comportamiento anterior.
 
     Returns:
         Ruta al archivo odoo.conf generado.
     """
     if env_values is None:
         env_values = load_env()
+
+    contexto = {k: v for k, v in env_values.items() if v is not None}
+
+    if addon_mounts is not None:
+        rutas_container = [m["container_path"] for m in addon_mounts]
+        contexto["addon_container_paths"] = ",".join(rutas_container)
+
     jinja_env = _get_jinja_env()
     template = jinja_env.get_template("odoo.conf.j2")
-    salida = template.render(**{k: v for k, v in env_values.items() if v is not None})
+    salida = template.render(**contexto)
     if config_dir is None:
         from odev.core.paths import ProjectPaths
 

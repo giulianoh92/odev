@@ -10,11 +10,17 @@ evaluaba al importar. Ahora cada comando instancia su propio
 DockerCompose con el project_root correcto.
 """
 
+from __future__ import annotations
+
 import json
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from odev.core.resolver import ProjectContext
 
 
 class DockerCompose:
@@ -42,6 +48,27 @@ class DockerCompose:
 
             _, project_root = detect_mode()
         self._project_root = project_root
+        self._project_name: str | None = None
+
+    @classmethod
+    def from_context(cls, contexto: ProjectContext) -> DockerCompose:
+        """Crea una instancia de DockerCompose desde un ProjectContext.
+
+        Para proyectos EXTERNAL, establece el nombre del proyecto Docker
+        Compose para garantizar aislamiento de volumenes entre proyectos.
+
+        Args:
+            contexto: Contexto del proyecto resuelto.
+
+        Returns:
+            Instancia de DockerCompose configurada segun el contexto.
+        """
+        from odev.core.resolver import ModoProyecto
+
+        instancia = cls(contexto.directorio_config)
+        if contexto.modo == ModoProyecto.EXTERNAL:
+            instancia._project_name = contexto.nombre
+        return instancia
 
     @staticmethod
     def _detect_command() -> list[str]:
@@ -86,7 +113,10 @@ class DockerCompose:
         Returns:
             Resultado de la ejecucion del subproceso.
         """
-        cmd = [*self._cmd, *args]
+        cmd = [*self._cmd]
+        if self._project_name:
+            cmd.extend(["-p", self._project_name])
+        cmd.extend(args)
         return subprocess.run(
             cmd,
             cwd=self._project_root,
@@ -112,7 +142,10 @@ class DockerCompose:
         Returns:
             Resultado de la ejecucion del subproceso.
         """
-        cmd = [*self._cmd, *args]
+        cmd = [*self._cmd]
+        if self._project_name:
+            cmd.extend(["-p", self._project_name])
+        cmd.extend(args)
         if interactive:
             sys.stdout.flush()
             sys.stderr.flush()

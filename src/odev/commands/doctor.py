@@ -285,7 +285,10 @@ def _verificar_odoo_conf() -> bool | None:
 
 
 def _verificar_addons() -> bool | None:
-    """Verifica el estado del directorio addons/.
+    """Verifica el estado de los directorios de addons.
+
+    Usa el resolver unificado para obtener todos los directorios de addons
+    configurados y verificar su existencia y contenido.
 
     Returns:
         True si tiene modulos, None si es informativo.
@@ -297,20 +300,36 @@ def _verificar_addons() -> bool | None:
         )
         return None
 
-    directorio_addons = raiz / "addons"
-    if not directorio_addons.exists():
-        _imprimir_info(
-            "addons/ no existe. Se creara al ejecutar 'odev scaffold' o 'odev init'."
-        )
+    # Intentar usar el resolver para obtener todos los addons_dirs
+    try:
+        from odev.commands._helpers import obtener_rutas, requerir_proyecto
+        from odev.main import obtener_nombre_proyecto
+
+        contexto = requerir_proyecto(obtener_nombre_proyecto())
+        rutas = obtener_rutas(contexto)
+        directorios_addons = rutas.addons_dirs
+    except SystemExit:
+        # Fallback a directorio por defecto si no se puede resolver
+        directorios_addons = [raiz / "addons"]
+
+    cantidad_total = 0
+    for directorio_addons in directorios_addons:
+        if not directorio_addons.exists():
+            _imprimir_info(
+                f"{directorio_addons} no existe. Se creara al ejecutar 'odev scaffold' o 'odev init'."
+            )
+            continue
+
+        # Contar modulos (subdirectorios con __manifest__.py)
+        cantidad = 0
+        for subdirectorio in directorio_addons.iterdir():
+            if subdirectorio.is_dir() and (subdirectorio / "__manifest__.py").exists():
+                cantidad += 1
+        cantidad_total += cantidad
+        _imprimir_info(f"{directorio_addons.name}/ tiene {cantidad} modulo(s)")
+
+    if cantidad_total == 0 and not any(d.exists() for d in directorios_addons):
         return None
-
-    # Contar modulos (subdirectorios con __manifest__.py)
-    cantidad = 0
-    for subdirectorio in directorio_addons.iterdir():
-        if subdirectorio.is_dir() and (subdirectorio / "__manifest__.py").exists():
-            cantidad += 1
-
-    _imprimir_info(f"addons/ tiene {cantidad} modulo(s)")
     return True
 
 

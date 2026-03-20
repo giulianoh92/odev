@@ -44,7 +44,7 @@ class TestSugerirPuertos:
         """Retorna un diccionario con las claves de puertos esperadas."""
         resultado = sugerir_puertos()
 
-        claves_esperadas = {"WEB_PORT", "PGWEB_PORT", "DB_PORT", "DEBUGPY_PORT"}
+        claves_esperadas = {"WEB_PORT", "PGWEB_PORT", "DB_PORT", "DEBUGPY_PORT", "MAILHOG_PORT"}
         assert set(resultado.keys()) == claves_esperadas
 
     def test_retorna_puertos_base_cuando_disponibles(self):
@@ -57,6 +57,7 @@ class TestSugerirPuertos:
         assert resultado["PGWEB_PORT"] == 8081
         assert resultado["DB_PORT"] == 5432
         assert resultado["DEBUGPY_PORT"] == 5678
+        assert resultado["MAILHOG_PORT"] == 8025
 
     def test_incrementa_cuando_puertos_base_ocupados(self):
         """Incrementa el offset cuando los puertos base estan ocupados."""
@@ -79,6 +80,7 @@ class TestSugerirPuertos:
         assert resultado["PGWEB_PORT"] == 8082
         assert resultado["DB_PORT"] == 5433
         assert resultado["DEBUGPY_PORT"] == 5679
+        assert resultado["MAILHOG_PORT"] == 8026
 
     def test_fallback_despues_de_100_intentos(self):
         """Retorna puertos base como fallback si no encuentra disponibles en 100 intentos."""

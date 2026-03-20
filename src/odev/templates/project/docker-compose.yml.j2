@@ -39,9 +39,15 @@ services:
       - odoo-web-data:/var/lib/odoo
       - ./config:/etc/odoo
       - ./entrypoint.sh:/entrypoint.sh
+{% if addon_mounts is defined %}
+{% for mount in addon_mounts %}
+      - {{ mount.host_path }}:{{ mount.container_path }}
+{% endfor %}
+{% else %}
       - ./addons:/mnt/extra-addons
+{% endif %}
 {% if enterprise_enabled %}
-      - ./enterprise:/mnt/enterprise-addons
+      - {{ enterprise_path | default('./enterprise') }}:/mnt/enterprise-addons
 {% endif %}
       - ./logs:/var/log/odoo
     environment:
@@ -57,12 +63,23 @@ services:
     entrypoint: ["/entrypoint.sh"]
     develop:
       watch:
+{% if addon_mounts is defined %}
+{% for mount in addon_mounts %}
+        - action: sync
+          path: {{ mount.host_path }}
+          target: {{ mount.container_path }}
+          ignore:
+            - __pycache__
+            - .git
+{% endfor %}
+{% else %}
         - action: sync
           path: ./addons
           target: /mnt/extra-addons
           ignore:
             - __pycache__
             - .git
+{% endif %}
     command: ["odoo"]
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8069/web/health || exit 1"]
@@ -82,6 +99,21 @@ services:
         condition: service_healthy
 {% endif %}
 
+{% if services_mailhog | default(true) %}
+  mailhog:
+    image: mailhog/mailhog:latest
+    restart: unless-stopped
+    ports:
+      - "${MAILHOG_PORT:-8025}:8025"
+{% endif %}
+
 volumes:
   odoo-web-data:
   odoo-db-data:
+
+# Para aislar la red y prevenir conexiones salientes accidentales
+# (util al restaurar backups de produccion), descomentar:
+# networks:
+#   default:
+#     driver: bridge
+#     internal: true

@@ -6,9 +6,8 @@ permitiendo inspeccion directa del entorno.
 
 import typer
 
-from odev.core.console import error, info
-from odev.core.docker import DockerCompose
-from odev.core.paths import ProjectPaths
+from odev.commands._helpers import obtener_docker, requerir_proyecto
+from odev.core.console import info
 
 
 def shell() -> None:
@@ -17,12 +16,9 @@ def shell() -> None:
     Detecta el proyecto actual y ejecuta /bin/bash de forma interactiva
     en el contenedor del servicio web.
     """
-    try:
-        rutas = ProjectPaths()
-    except FileNotFoundError:
-        error("No se encontro un proyecto odev. Ejecuta 'odev init' para crear uno.")
-        raise typer.Exit(1)
+    from odev.main import obtener_nombre_proyecto
+    contexto = requerir_proyecto(obtener_nombre_proyecto())
 
     info("Entrando al shell del contenedor Odoo...")
-    dc = DockerCompose(rutas.root)
+    dc = obtener_docker(contexto)
     dc.exec_cmd("web", ["/bin/bash"], interactive=True)

@@ -6,10 +6,9 @@ el modulo especificado y luego reinicia el servicio web.
 
 import typer
 
+from odev.commands._helpers import obtener_docker, obtener_rutas, requerir_proyecto
 from odev.core.config import load_env
-from odev.core.console import error, info, success
-from odev.core.docker import DockerCompose
-from odev.core.paths import ProjectPaths
+from odev.core.console import info, success
 
 
 def update(
@@ -24,16 +23,14 @@ def update(
     configurada, deteniendo Odoo despues de la actualizacion, y luego
     reinicia el servicio web para aplicar los cambios.
     """
-    try:
-        rutas = ProjectPaths()
-    except FileNotFoundError:
-        error("No se encontro un proyecto odev. Ejecuta 'odev init' para crear uno.")
-        raise typer.Exit(1)
+    from odev.main import obtener_nombre_proyecto
+    contexto = requerir_proyecto(obtener_nombre_proyecto())
+    rutas = obtener_rutas(contexto)
 
     valores_env = load_env(rutas.env_file)
     nombre_bd = valores_env.get("DB_NAME", "odoo_db")
 
-    dc = DockerCompose(rutas.root)
+    dc = obtener_docker(contexto)
 
     info(f"Actualizando modulo: {module}")
     dc.exec_cmd(

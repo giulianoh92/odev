@@ -11,9 +11,9 @@ import stat
 
 import typer
 
-from odev.core.config import generate_odoo_conf, load_env
-from odev.core.console import error, info, success
-from odev.core.docker import DockerCompose
+from odev.commands._helpers import obtener_docker, obtener_rutas, requerir_proyecto
+from odev.core.config import construir_addon_mounts, generate_odoo_conf, load_env
+from odev.core.console import info, success
 from odev.core.paths import ProjectPaths
 
 
@@ -44,28 +44,35 @@ def up(
     Detecta el proyecto actual, verifica que exista el archivo .env,
     auto-regenera odoo.conf si es necesario, y ejecuta docker compose up.
     """
-    try:
-        rutas = ProjectPaths()
-    except FileNotFoundError:
-        error("No se encontro un proyecto odev. Ejecuta 'odev init' para crear uno.")
-        raise typer.Exit(1)
+    from odev.main import obtener_nombre_proyecto
+    contexto = requerir_proyecto(obtener_nombre_proyecto())
+    rutas = obtener_rutas(contexto)
 
     if not rutas.env_file.exists():
+        from odev.core.console import error
         error("No se encontro el archivo .env. Ejecuta 'odev init' primero.")
         raise typer.Exit(1)
 
     valores_env = load_env(rutas.env_file)
 
+    # Construir addon_mounts si hay config disponible
+    addon_mounts = None
+    if contexto.config and contexto.config.rutas_addons:
+        addon_mounts = construir_addon_mounts(
+            contexto.config.rutas_addons,
+            contexto.directorio_config,
+        )
+
     # Auto-regenerar odoo.conf si el .env es mas reciente
     archivo_odoo_conf = rutas.config_dir / "odoo.conf"
     if not archivo_odoo_conf.exists() or rutas.env_file.stat().st_mtime > archivo_odoo_conf.stat().st_mtime:
-        generate_odoo_conf(valores_env, rutas.config_dir)
+        generate_odoo_conf(valores_env, rutas.config_dir, addon_mounts=addon_mounts)
         info("Se regenero config/odoo.conf desde .env")
 
     _asegurar_directorio_logs(rutas)
 
     info("Iniciando entorno...")
-    dc = DockerCompose(rutas.root)
+    dc = obtener_docker(contexto)
     dc.up(build=build, watch=watch)
 
     puerto_web = valores_env.get("WEB_PORT", "8069")

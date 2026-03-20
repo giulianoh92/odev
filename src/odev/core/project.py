@@ -33,7 +33,7 @@ _CONFIGURACION_POR_DEFECTO: dict = {
         "pgweb": True,
     },
     "paths": {
-        "addons": "./addons",
+        "addons": ["./addons"],
         "config": "./config",
         "snapshots": "./snapshots",
         "logs": "./logs",
@@ -77,6 +77,10 @@ class ProjectConfig:
             datos_crudos = yaml.safe_load(archivo) or {}
         # Mezclar con valores por defecto para garantizar estructura completa
         self.datos = _mezclar_profundo(_CONFIGURACION_POR_DEFECTO.copy(), datos_crudos)
+        # Coercion paths.addons: string -> lista (compatibilidad con archivos viejos)
+        rutas = self.datos.get("paths", {})
+        if isinstance(rutas.get("addons"), str):
+            rutas["addons"] = [rutas["addons"]]
 
     @property
     def version_minima(self) -> str:
@@ -117,6 +121,21 @@ class ProjectConfig:
     def pgweb_habilitado(self) -> bool:
         """Si el servicio pgweb esta habilitado."""
         return self.datos.get("services", {}).get("pgweb", True)
+
+    @property
+    def modo(self) -> str:
+        """Modo del proyecto: 'inline' o 'external'."""
+        return self.datos.get("mode", "inline")
+
+    @property
+    def rutas_addons(self) -> list[str]:
+        """Lista de rutas a directorios de addons."""
+        return self.datos.get("paths", {}).get("addons", ["./addons"])
+
+    @property
+    def directorio_trabajo(self) -> str | None:
+        """Directorio de trabajo (solo para modo external)."""
+        return self.datos.get("project", {}).get("working_dir")
 
     def verificar_compatibilidad_version(self) -> bool:
         """Verifica si la version del CLI satisface la version minima del proyecto.
