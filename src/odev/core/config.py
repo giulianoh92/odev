@@ -113,6 +113,7 @@ def generate_odoo_conf(
     env_values: dict[str, str | None] | None = None,
     config_dir: Path | None = None,
     addon_mounts: list[dict] | None = None,
+    enterprise_enabled: bool = False,
 ) -> Path:
     """Renderiza odoo.conf.j2 y escribe en config/odoo.conf.
 
@@ -123,8 +124,9 @@ def generate_odoo_conf(
                    el directorio config/ del proyecto actual.
         addon_mounts: Lista de mounts generada por construir_addon_mounts().
                      Si se proporciona, se pasa addon_container_paths al template
-                     como cadena separada por comas. Si es None, se mantiene el
+                     como lista de rutas. Si es None, se mantiene el
                      comportamiento anterior.
+        enterprise_enabled: Si True, agrega /mnt/enterprise-addons al addons_path.
 
     Returns:
         Ruta al archivo odoo.conf generado.
@@ -135,8 +137,9 @@ def generate_odoo_conf(
     contexto = {k: v for k, v in env_values.items() if v is not None}
 
     if addon_mounts is not None:
-        rutas_container = [m["container_path"] for m in addon_mounts]
-        contexto["addon_container_paths"] = ",".join(rutas_container)
+        contexto["addon_container_paths"] = [m["container_path"] for m in addon_mounts]
+
+    contexto["enterprise_enabled"] = enterprise_enabled
 
     jinja_env = _get_jinja_env()
     template = jinja_env.get_template("odoo.conf.j2")

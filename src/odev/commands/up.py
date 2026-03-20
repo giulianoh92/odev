@@ -64,9 +64,16 @@ def up(
         )
 
     # Auto-regenerar odoo.conf si el .env es mas reciente
+    enterprise_enabled = bool(
+        contexto.config and contexto.config.enterprise_habilitado
+    )
     archivo_odoo_conf = rutas.config_dir / "odoo.conf"
     if not archivo_odoo_conf.exists() or rutas.env_file.stat().st_mtime > archivo_odoo_conf.stat().st_mtime:
-        generate_odoo_conf(valores_env, rutas.config_dir, addon_mounts=addon_mounts)
+        generate_odoo_conf(
+            valores_env, rutas.config_dir,
+            addon_mounts=addon_mounts,
+            enterprise_enabled=enterprise_enabled,
+        )
         info("Se regenero config/odoo.conf desde .env")
 
     _asegurar_directorio_logs(rutas)
