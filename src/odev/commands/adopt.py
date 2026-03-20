@@ -190,6 +190,7 @@ def adopt(
         env_values=_extraer_env_values(valores),
         config_dir=directorio_config / "config",
         addon_mounts=addon_mounts,
+        enterprise_enabled=valores.get("enterprise_enabled", False),
     )
     success("config/odoo.conf")
 

@@ -160,3 +160,63 @@ class TestGenerateOdooConf:
 
         contenido = (config_dir / "odoo.conf").read_text()
         assert "[options]" in contenido
+
+    def test_addons_path_con_un_mount(self, tmp_path):
+        """Con un solo addon mount, addons_path contiene la ruta correcta (no caracteres sueltos)."""
+        config_dir = tmp_path / "config"
+        addon_mounts = [{"container_path": "/mnt/extra-addons", "host_path": "./addons", "nombre": "addons"}]
+
+        generate_odoo_conf(
+            env_values={"DB_HOST": "db"},
+            config_dir=config_dir,
+            addon_mounts=addon_mounts,
+        )
+
+        contenido = (config_dir / "odoo.conf").read_text()
+        assert "addons_path = /mnt/extra-addons" in contenido
+        # Verificar que NO se iteraron caracteres (el bug original)
+        assert "/,m,n,t" not in contenido
+
+    def test_addons_path_con_multiples_mounts(self, tmp_path):
+        """Con multiples addon mounts, addons_path es una lista separada por comas."""
+        config_dir = tmp_path / "config"
+        addon_mounts = [
+            {"container_path": "/mnt/extra-addons", "host_path": "./addons", "nombre": "addons"},
+            {"container_path": "/mnt/extra-addons-1", "host_path": "./other", "nombre": "other"},
+        ]
+
+        generate_odoo_conf(
+            env_values={"DB_HOST": "db"},
+            config_dir=config_dir,
+            addon_mounts=addon_mounts,
+        )
+
+        contenido = (config_dir / "odoo.conf").read_text()
+        assert "addons_path = /mnt/extra-addons,/mnt/extra-addons-1" in contenido
+
+    def test_addons_path_con_enterprise(self, tmp_path):
+        """Con enterprise habilitado, addons_path incluye /mnt/enterprise-addons."""
+        config_dir = tmp_path / "config"
+        addon_mounts = [{"container_path": "/mnt/extra-addons", "host_path": "./addons", "nombre": "addons"}]
+
+        generate_odoo_conf(
+            env_values={"DB_HOST": "db"},
+            config_dir=config_dir,
+            addon_mounts=addon_mounts,
+            enterprise_enabled=True,
+        )
+
+        contenido = (config_dir / "odoo.conf").read_text()
+        assert "addons_path = /mnt/extra-addons,/mnt/enterprise-addons" in contenido
+
+    def test_addons_path_sin_mounts_default(self, tmp_path):
+        """Sin addon mounts, addons_path usa el valor por defecto /mnt/extra-addons."""
+        config_dir = tmp_path / "config"
+
+        generate_odoo_conf(
+            env_values={"DB_HOST": "db"},
+            config_dir=config_dir,
+        )
+
+        contenido = (config_dir / "odoo.conf").read_text()
+        assert "addons_path = /mnt/extra-addons" in contenido
