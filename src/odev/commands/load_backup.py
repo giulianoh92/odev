@@ -153,6 +153,12 @@ def load_backup(
                      "rm", "-rf", destino],
                     check=False,
                 )
+                # Crear directorio destino — en contenedores frescos no existe aún
+                subprocess.run(
+                    ["docker", "exec", "--user", "root", contenedor,
+                     "mkdir", "-p", destino],
+                    check=True,
+                )
                 subprocess.run(
                     ["docker", "cp", str(directorio_filestore) + "/.",
                      f"{contenedor}:{destino}"],
@@ -185,6 +191,6 @@ def load_backup(
 
     # -- Reiniciar todo -------------------------------------------------------
     info("Reiniciando servicios...")
-    dc._run(["restart", "web", "pgweb"])
+    dc._run(["up", "-d", "web", "pgweb"])
 
     success(f"Backup cargado en '{nombre_bd}'. Acceder en http://localhost:{puerto_web}")
