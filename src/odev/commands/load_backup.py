@@ -5,6 +5,7 @@ Reemplaza la base de datos actual, restaura el filestore, y opcionalmente
 neutraliza la base de datos.
 """
 
+import re
 import subprocess
 import tempfile
 import zipfile
@@ -49,6 +50,11 @@ def load_backup(
     valores_env = load_env(rutas.env_file)
     usuario_bd = valores_env.get("DB_USER", "odoo")
     nombre_bd = valores_env.get("DB_NAME", "odoo_db")
+
+    # Validar nombre de BD para prevenir inyeccion SQL
+    if not re.match(r"^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$", nombre_bd):
+        error(f"Nombre de base de datos invalido: '{nombre_bd}'")
+        raise typer.Exit(1)
 
     dc = obtener_docker(contexto)
 

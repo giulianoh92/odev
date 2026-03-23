@@ -88,7 +88,7 @@ services:
 
 {% if services_pgweb %}
   pgweb:
-    image: sosedoff/pgweb
+    image: sosedoff/pgweb:0.16.2
     restart: unless-stopped
     ports:
       - "${PGWEB_PORT:-8081}:8081"
@@ -101,7 +101,7 @@ services:
 
 {% if services_mailhog | default(true) %}
   mailhog:
-    image: mailhog/mailhog:latest
+    image: mailhog/mailhog:v1.0.1
     restart: unless-stopped
     ports:
       - "${MAILHOG_PORT:-8025}:8025"

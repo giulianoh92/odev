@@ -13,6 +13,7 @@ DockerCompose con el project_root correcto.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -31,6 +32,8 @@ class DockerCompose:
         _project_root: Directorio raiz del proyecto donde se ejecutan los comandos.
     """
 
+    _PATRON_SERVICIO = re.compile(r"^[a-zA-Z0-9_-]+$")
+
     def __init__(self, project_root: Path | None = None) -> None:
         """Inicializa el wrapper de Docker Compose.
 
@@ -47,6 +50,11 @@ class DockerCompose:
             from odev.core.compat import detect_mode
 
             _, project_root = detect_mode()
+        if project_root is None:
+            raise RuntimeError(
+                "No se pudo detectar el directorio del proyecto. "
+                "Ejecuta 'odev init' para crear un proyecto o 'odev adopt' para adoptar uno existente."
+            )
         self._project_root = project_root
         self._project_name: str | None = None
 
@@ -264,6 +272,11 @@ class DockerCompose:
         Retorna:
             Resultado de la ejecucion del subproceso.
         """
+        if not self._PATRON_SERVICIO.match(service):
+            raise ValueError(
+                f"Nombre de servicio invalido: '{service}'. "
+                "Solo se permiten letras, numeros, guiones y guiones bajos."
+            )
         args = ["exec"]
         if stdin_data is not None:
             args.append("-T")
