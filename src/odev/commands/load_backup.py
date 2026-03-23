@@ -5,6 +5,7 @@ Reemplaza la base de datos actual, restaura el filestore, y opcionalmente
 neutraliza la base de datos.
 """
 
+import re
 import subprocess
 import tempfile
 import zipfile
@@ -49,6 +50,11 @@ def load_backup(
     valores_env = load_env(rutas.env_file)
     usuario_bd = valores_env.get("DB_USER", "odoo")
     nombre_bd = valores_env.get("DB_NAME", "odoo_db")
+
+    # Validar nombre de BD para prevenir inyeccion SQL
+    if not re.match(r"^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$", nombre_bd):
+        error(f"Nombre de base de datos invalido: '{nombre_bd}'")
+        raise typer.Exit(1)
 
     dc = obtener_docker(contexto)
 
@@ -95,7 +101,7 @@ def load_backup(
 
         # -- Detener web + pgweb para liberar conexiones a la BD --------------
         info("Deteniendo servicios web y pgweb...")
-        dc._run(["stop", "web", "pgweb"])
+        dc.stop("web", "pgweb")
 
         # Terminar conexiones restantes a la base de datos
         sql_terminar = (
@@ -142,7 +148,7 @@ def load_backup(
             directorio_filestore = ruta_tmp / "filestore"
 
             # Iniciar contenedor web brevemente para copiar archivos al volumen
-            dc._run(["start", "web"])
+            dc.start("web")
             contenedor = dc.get_container_name("web")
             if not contenedor:
                 warning("No se encontro el contenedor web — se omite la copia del filestore.")
@@ -171,12 +177,12 @@ def load_backup(
                     check=True,
                 )
                 success("Filestore restaurado.")
-            dc._run(["stop", "web"])
+            dc.stop("web")
         else:
             info("No hay filestore en el backup — se omite.")
 
     # -- Asegurar que el contenedor web este corriendo -----------------------
-    dc._run(["start", "web"])
+    dc.start("web")
 
     # -- Neutralizar ----------------------------------------------------------
     if neutralize:
@@ -191,6 +197,6 @@ def load_backup(
 
     # -- Reiniciar todo -------------------------------------------------------
     info("Reiniciando servicios...")
-    dc._run(["up", "-d", "web", "pgweb"])
+    dc.up(services=["web", "pgweb"])
 
     success(f"Backup cargado en '{nombre_bd}'. Acceder en http://localhost:{puerto_web}")

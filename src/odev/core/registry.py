@@ -117,6 +117,9 @@ class Registry:
     def _escribir(self, entries: dict[str, RegistryEntry]) -> None:
         """Escribe el registry.yaml con bloqueo de archivo.
 
+        Adquiere un bloqueo exclusivo ANTES de truncar el archivo para
+        prevenir race conditions con otros procesos.
+
         Argumentos:
             entries: Diccionario nombre -> RegistryEntry a persistir.
         """
@@ -134,9 +137,14 @@ class Registry:
 
         contenido = {"projects": proyectos}
 
-        with open(REGISTRY_PATH, "w", encoding="utf-8") as archivo:
+        # Abrir sin truncar, adquirir lock, luego truncar y escribir
+        # Esto previene race conditions donde otro proceso lee un archivo vacio
+        modo = "r+" if REGISTRY_PATH.exists() else "w"
+        with open(REGISTRY_PATH, modo, encoding="utf-8") as archivo:
             fcntl.flock(archivo, fcntl.LOCK_EX)
             try:
+                archivo.seek(0)
+                archivo.truncate()
                 yaml.dump(
                     contenido,
                     archivo,

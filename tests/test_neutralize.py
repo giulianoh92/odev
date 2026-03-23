@@ -10,6 +10,8 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 
 from odev.core.neutralize import (
+    _validar_nombre_bd,
+    _validar_puerto,
     configurar_parametros_desarrollo,
     neutralizar_base_datos,
     resetear_credenciales_admin,
@@ -143,3 +145,94 @@ class TestConfigurarParametrosDesarrollo:
         assert "INSERT INTO ir_config_parameter" in sql
         assert "ON CONFLICT" in sql
         assert "DO UPDATE" in sql
+
+
+class TestValidarNombreBd:
+    """Tests para la validacion de nombres de base de datos."""
+
+    def test_nombre_valido_simple(self):
+        """Acepta nombres alfanumericos simples."""
+        _validar_nombre_bd("odoo_db")
+
+    def test_nombre_valido_con_guiones(self):
+        """Acepta nombres con guiones."""
+        _validar_nombre_bd("mi-base-datos")
+
+    def test_nombre_valido_con_puntos(self):
+        """Acepta nombres con puntos."""
+        _validar_nombre_bd("odoo_14.0")
+
+    def test_rechaza_nombre_con_comillas(self):
+        """Rechaza nombres con comillas simples (prevencion de SQL injection)."""
+        with pytest.raises(ValueError, match="invalido"):
+            _validar_nombre_bd("odoo'; DROP TABLE users; --")
+
+    def test_rechaza_nombre_con_espacios(self):
+        """Rechaza nombres con espacios."""
+        with pytest.raises(ValueError, match="invalido"):
+            _validar_nombre_bd("mi base datos")
+
+    def test_rechaza_nombre_vacio(self):
+        """Rechaza nombres vacios."""
+        with pytest.raises(ValueError, match="invalido"):
+            _validar_nombre_bd("")
+
+    def test_rechaza_nombre_con_punto_y_coma(self):
+        """Rechaza nombres con punto y coma."""
+        with pytest.raises(ValueError, match="invalido"):
+            _validar_nombre_bd("odoo;malicious")
+
+
+class TestValidarPuerto:
+    """Tests para la validacion de puertos."""
+
+    def test_puerto_valido(self):
+        """Acepta puertos numericos validos."""
+        _validar_puerto("8069")
+
+    def test_puerto_minimo(self):
+        """Acepta puerto 1 (minimo)."""
+        _validar_puerto("1")
+
+    def test_puerto_maximo(self):
+        """Acepta puerto 65535 (maximo)."""
+        _validar_puerto("65535")
+
+    def test_rechaza_puerto_no_numerico(self):
+        """Rechaza puertos con caracteres no numericos."""
+        with pytest.raises(ValueError, match="invalido"):
+            _validar_puerto("8069; DROP TABLE")
+
+    def test_rechaza_puerto_cero(self):
+        """Rechaza puerto 0."""
+        with pytest.raises(ValueError, match="fuera de rango"):
+            _validar_puerto("0")
+
+    def test_rechaza_puerto_mayor_a_65535(self):
+        """Rechaza puertos mayores a 65535."""
+        with pytest.raises(ValueError, match="fuera de rango"):
+            _validar_puerto("70000")
+
+    def test_rechaza_puerto_vacio(self):
+        """Rechaza puertos vacios."""
+        with pytest.raises(ValueError, match="invalido"):
+            _validar_puerto("")
+
+
+class TestNeutralizarConInputInvalido:
+    """Tests que verifican que las funciones rechazan input invalido."""
+
+    def test_neutralizar_rechaza_nombre_bd_invalido(self, dc_mock):
+        """neutralizar_base_datos rechaza nombres de BD con caracteres peligrosos."""
+        with pytest.raises(ValueError, match="invalido"):
+            neutralizar_base_datos(dc_mock, "db'; DROP TABLE--", "odoo")
+
+    def test_resetear_rechaza_nombre_bd_invalido(self, dc_mock):
+        """resetear_credenciales_admin rechaza nombres de BD invalidos."""
+        with pytest.raises(ValueError, match="invalido"):
+            resetear_credenciales_admin(dc_mock, "db'; DROP TABLE--", "odoo")
+
+    def test_configurar_rechaza_puerto_invalido(self, dc_mock):
+        """configurar_parametros_desarrollo rechaza puertos no numericos."""
+        with pytest.raises(ValueError, match="invalido"):
+            configurar_parametros_desarrollo(dc_mock, "odoo_db", "odoo", "8069; DROP")

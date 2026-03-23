@@ -263,3 +263,50 @@ class TestDockerComposeInit:
             dc = DockerCompose()
 
         assert dc._project_root == tmp_path
+
+
+class TestExecCmdValidation:
+    """Tests para la validacion de parametros en exec_cmd."""
+
+    @pytest.fixture
+    def dc(self, tmp_path):
+        """Crea una instancia de DockerCompose mockeada."""
+        with (
+            patch("shutil.which", return_value="/usr/bin/docker"),
+            patch("subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = MagicMock(returncode=0)
+            instancia = DockerCompose(project_root=tmp_path)
+        return instancia
+
+    def test_rechaza_servicio_con_caracteres_invalidos(self, dc):
+        """Rechaza nombres de servicio con caracteres peligrosos."""
+        with pytest.raises(ValueError, match="invalido"):
+            dc.exec_cmd("web; rm -rf /", ["ls"])
+
+    def test_acepta_servicio_valido(self, dc):
+        """Acepta nombres de servicio alfanumericos con guiones."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=b"")
+            dc.exec_cmd("web", ["ls"])
+
+    def test_acepta_servicio_con_guion_bajo(self, dc):
+        """Acepta nombres de servicio con guion bajo."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=b"")
+            dc.exec_cmd("my_service", ["ls"])
+
+
+class TestDockerComposeInitNone:
+    """Tests para la validacion de project_root None."""
+
+    def test_lanza_error_si_project_root_es_none(self):
+        """Lanza RuntimeError si no se puede detectar el directorio del proyecto."""
+        with (
+            patch("shutil.which", return_value="/usr/bin/docker"),
+            patch("subprocess.run") as mock_run,
+            patch("odev.core.compat.detect_mode", return_value=(None, None)),
+        ):
+            mock_run.return_value = MagicMock(returncode=0)
+            with pytest.raises(RuntimeError, match="No se pudo detectar"):
+                DockerCompose()

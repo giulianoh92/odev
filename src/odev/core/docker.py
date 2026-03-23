@@ -13,11 +13,15 @@ DockerCompose con el project_root correcto.
 from __future__ import annotations
 
 import json
+import logging
+import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from odev.core.resolver import ProjectContext
@@ -30,6 +34,8 @@ class DockerCompose:
         _cmd: Comando base detectado (['docker', 'compose'] o ['docker-compose']).
         _project_root: Directorio raiz del proyecto donde se ejecutan los comandos.
     """
+
+    _PATRON_SERVICIO = re.compile(r"^[a-zA-Z0-9_-]+$")
 
     def __init__(self, project_root: Path | None = None) -> None:
         """Inicializa el wrapper de Docker Compose.
@@ -47,6 +53,11 @@ class DockerCompose:
             from odev.core.compat import detect_mode
 
             _, project_root = detect_mode()
+        if project_root is None:
+            raise RuntimeError(
+                "No se pudo detectar el directorio del proyecto. "
+                "Ejecuta 'odev init' para crear un proyecto o 'odev adopt' para adoptar uno existente."
+            )
         self._project_root = project_root
         self._project_name: str | None = None
 
@@ -152,18 +163,21 @@ class DockerCompose:
             return subprocess.run(cmd, cwd=self._project_root)
         return subprocess.run(cmd, cwd=self._project_root, check=True)
 
-    def up(self, build: bool = False, watch: bool = False) -> None:
+    def up(self, build: bool = False, watch: bool = False, services: list[str] | None = None) -> None:
         """Levanta los servicios de docker compose en modo detached.
 
         Argumentos:
             build: Si True, reconstruye las imagenes antes de levantar.
             watch: Si True, activa el modo watch para recarga en caliente.
+            services: Lista de servicios especificos a levantar. Si es None, levanta todos.
         """
         args = ["up", "-d"]
         if build:
             args.append("--build")
         if watch:
             args.append("--watch")
+        if services:
+            args.extend(services)
         self._run(args)
 
     def down(self, volumes: bool = False) -> None:
@@ -177,9 +191,23 @@ class DockerCompose:
             args.append("-v")
         self._run(args)
 
-    def stop(self) -> None:
-        """Detiene los contenedores sin eliminarlos."""
-        self._run(["stop"])
+    def stop(self, *services: str) -> None:
+        """Detiene los contenedores sin eliminarlos.
+
+        Argumentos:
+            services: Servicios especificos a detener. Si no se pasan, detiene todos.
+        """
+        args = ["stop", *services]
+        self._run(args)
+
+    def start(self, *services: str) -> None:
+        """Inicia servicios previamente detenidos.
+
+        Argumentos:
+            services: Servicios a iniciar.
+        """
+        args = ["start", *services]
+        self._run(args)
 
     def restart(self, service: str = "web") -> None:
         """Reinicia un servicio especifico.
@@ -227,6 +255,7 @@ class DockerCompose:
                     try:
                         resultados.append(json.loads(linea))
                     except json.JSONDecodeError:
+                        logger.debug("Linea JSON invalida ignorada en ps: %s", linea)
                         continue
             return resultados
 
@@ -264,6 +293,11 @@ class DockerCompose:
         Retorna:
             Resultado de la ejecucion del subproceso.
         """
+        if not self._PATRON_SERVICIO.match(service):
+            raise ValueError(
+                f"Nombre de servicio invalido: '{service}'. "
+                "Solo se permiten letras, numeros, guiones y guiones bajos."
+            )
         args = ["exec"]
         if stdin_data is not None:
             args.append("-T")

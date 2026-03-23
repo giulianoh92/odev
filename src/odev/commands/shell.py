@@ -1,8 +1,4 @@
-"""Comando 'shell': abre un shell bash dentro del contenedor de Odoo.
-
-Ejecuta una sesion interactiva de bash en el contenedor web,
-permitiendo inspeccion directa del entorno.
-"""
+"""Comando 'shell': abre una terminal dentro de un contenedor."""
 
 import typer
 
@@ -10,15 +6,16 @@ from odev.commands._helpers import obtener_docker, requerir_proyecto
 from odev.core.console import info
 
 
-def shell() -> None:
-    """Abre un shell bash interactivo dentro del contenedor de Odoo.
-
-    Detecta el proyecto actual y ejecuta /bin/bash de forma interactiva
-    en el contenedor del servicio web.
-    """
+def shell(
+    service: str = typer.Argument(
+        "web",
+        help="Servicio donde abrir la terminal (web, db).",
+    ),
+) -> None:
+    """Abre una terminal bash dentro de un contenedor del stack."""
     from odev.main import obtener_nombre_proyecto
     contexto = requerir_proyecto(obtener_nombre_proyecto())
-
-    info("Entrando al shell del contenedor Odoo...")
     dc = obtener_docker(contexto)
-    dc.exec_cmd("web", ["/bin/bash"], interactive=True)
+
+    info(f"Abriendo terminal en '{service}'...")
+    dc.exec_cmd(service, ["bash"], interactive=True)

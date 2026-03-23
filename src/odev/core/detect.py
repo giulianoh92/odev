@@ -9,9 +9,12 @@ enterprise y submodulos git.
 from __future__ import annotations
 
 import configparser
+import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 # Directorios que se omiten al escanear subdirectorios
@@ -220,6 +223,7 @@ def _buscar_modulos_en(directorio: Path) -> list[Path]:
     try:
         entradas = sorted(directorio.iterdir())
     except PermissionError:
+        logger.debug("No se pudo leer el directorio %s: permiso denegado", directorio)
         return modulos
 
     for entrada in entradas:
@@ -303,6 +307,6 @@ def _detectar_enterprise(ruta: Path) -> bool:
                 if _es_modulo_odoo(entrada):
                     return True
     except PermissionError:
-        pass
+        logger.debug("No se pudo leer el directorio %s: permiso denegado", ruta)
 
     return False

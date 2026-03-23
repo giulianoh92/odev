@@ -15,25 +15,20 @@ from typing import Any
 
 import questionary
 import typer
-from jinja2 import Environment, FileSystemLoader
 
 from odev import __version__
+from odev.commands._wizards import (
+    MAPEO_VERSION_PG,
+    VERSIONES_ODOO,
+    preguntar_configuracion_base,
+    renderizar_templates,
+    valores_configuracion_por_defecto,
+)
 from odev.core.config import construir_addon_mounts
 from odev.core.console import error, info, success, warning
-from odev.core.paths import get_project_templates_dir
 from odev.core.ports import sugerir_puertos
 
 # -- Constantes ----------------------------------------------------------------
-
-VERSIONES_ODOO: list[str] = ["19.0", "18.0", "17.0"]
-"""Versiones de Odoo soportadas por el wizard (mas reciente primero)."""
-
-MAPEO_VERSION_PG: dict[str, str] = {
-    "19.0": "16",
-    "18.0": "16",
-    "17.0": "15",
-}
-"""Mapeo de version de Odoo a tag de imagen PostgreSQL recomendada."""
 
 # Archivos que SIEMPRE se regeneran aunque ya existan
 _ARCHIVOS_REGENERABLES: set[str] = {".env.example", "config/odoo.conf"}
@@ -170,7 +165,7 @@ def _wizard_interactivo(
     """
     info("Bienvenido al asistente de configuracion de odev.\n")
 
-    # Nombre del proyecto
+    # 1. Preguntas especificas de init: nombre del proyecto
     nombre_proyecto = questionary.text(
         "Nombre del proyecto:",
         default=nombre_proyecto_default,
@@ -179,7 +174,7 @@ def _wizard_interactivo(
     if nombre_proyecto is None:
         raise typer.Exit()
 
-    # Version de Odoo
+    # 2. Preguntas especificas de init: version de Odoo
     if version_odoo_cli and version_odoo_cli in VERSIONES_ODOO:
         version_odoo = version_odoo_cli
     else:
@@ -191,65 +186,13 @@ def _wizard_interactivo(
         if version_odoo is None:
             raise typer.Exit()
 
-    # Puertos sugeridos
+    # 3. Obtener puertos sugeridos
     puertos_sugeridos = sugerir_puertos()
 
-    puerto_web = questionary.text(
-        f"Puerto de Odoo ({puertos_sugeridos['WEB_PORT']}):",
-        default=str(puertos_sugeridos["WEB_PORT"]),
-    ).ask()
-    if puerto_web is None:
-        raise typer.Exit()
+    # 4. Preguntas de configuracion base (compartidas con adopt)
+    config_base = preguntar_configuracion_base(puertos_sugeridos)
 
-    puerto_pgweb = questionary.text(
-        f"Puerto de pgweb ({puertos_sugeridos['PGWEB_PORT']}):",
-        default=str(puertos_sugeridos["PGWEB_PORT"]),
-    ).ask()
-    if puerto_pgweb is None:
-        raise typer.Exit()
-
-    # Base de datos
-    nombre_db = questionary.text("Nombre de la base de datos:", default="odoo_db").ask()
-    if nombre_db is None:
-        raise typer.Exit()
-
-    usuario_db = questionary.text("Usuario de la base de datos:", default="odoo").ask()
-    if usuario_db is None:
-        raise typer.Exit()
-
-    password_db = questionary.text("Contraseña de la base de datos:", default="odoo").ask()
-    if password_db is None:
-        raise typer.Exit()
-
-    # Idioma
-    idioma = questionary.text(
-        "Idioma por defecto (ej. en_US, es_AR, fr_FR):",
-        default="en_US",
-    ).ask()
-    if idioma is None:
-        raise typer.Exit()
-
-    # Datos de demo
-    sin_demo = questionary.select(
-        "Datos de demo:",
-        choices=[
-            questionary.Choice("Omitir datos de demo", value="all"),
-            questionary.Choice("Cargar datos de demo", value=""),
-        ],
-        default="all",
-    ).ask()
-    if sin_demo is None:
-        raise typer.Exit()
-
-    # Debugpy
-    habilitar_debugpy = questionary.confirm(
-        "Habilitar debugpy para depuracion remota?",
-        default=False,
-    ).ask()
-    if habilitar_debugpy is None:
-        raise typer.Exit()
-
-    # Enterprise
+    # 5. Preguntas especificas de init: enterprise, CI, git
     habilitar_enterprise = questionary.confirm(
         "Habilitar enterprise addons?",
         default=False,
@@ -257,15 +200,6 @@ def _wizard_interactivo(
     if habilitar_enterprise is None:
         raise typer.Exit()
 
-    # pgweb
-    habilitar_pgweb = questionary.confirm(
-        "Habilitar pgweb?",
-        default=True,
-    ).ask()
-    if habilitar_pgweb is None:
-        raise typer.Exit()
-
-    # GitHub Actions CI
     generar_ci = questionary.confirm(
         "Generar workflow de GitHub Actions para CI?",
         default=True,
@@ -273,7 +207,6 @@ def _wizard_interactivo(
     if generar_ci is None:
         raise typer.Exit()
 
-    # Inicializar git
     inicializar_git = questionary.confirm(
         "Inicializar repositorio git?",
         default=True,
@@ -281,19 +214,20 @@ def _wizard_interactivo(
     if inicializar_git is None:
         raise typer.Exit()
 
+    # 6. Combinar todo en _construir_valores()
     return _construir_valores(
         nombre_proyecto=nombre_proyecto,
         version_odoo=version_odoo,
-        puerto_web=puerto_web,
-        puerto_pgweb=puerto_pgweb,
-        nombre_db=nombre_db,
-        usuario_db=usuario_db,
-        password_db=password_db,
-        idioma=idioma,
-        sin_demo=sin_demo,
-        habilitar_debugpy=habilitar_debugpy,
+        puerto_web=config_base["web_port"],
+        puerto_pgweb=config_base["pgweb_port"],
+        nombre_db=config_base["db_name"],
+        usuario_db=config_base["db_user"],
+        password_db=config_base["db_password"],
+        idioma=config_base["idioma"],
+        sin_demo=config_base["sin_demo"],
+        habilitar_debugpy=config_base["habilitar_debugpy"],
         habilitar_enterprise=habilitar_enterprise,
-        habilitar_pgweb=habilitar_pgweb,
+        habilitar_pgweb=config_base["habilitar_pgweb"],
         generar_ci=generar_ci,
         inicializar_git=inicializar_git,
         puerto_db=str(puertos_sugeridos["DB_PORT"]),
@@ -319,20 +253,21 @@ def _valores_por_defecto(
         Diccionario con valores por defecto para renderizar templates.
     """
     puertos_sugeridos = sugerir_puertos()
+    config_base = valores_configuracion_por_defecto(puertos_sugeridos)
 
     return _construir_valores(
         nombre_proyecto=nombre_proyecto,
         version_odoo=version_odoo,
-        puerto_web=str(puertos_sugeridos["WEB_PORT"]),
-        puerto_pgweb=str(puertos_sugeridos["PGWEB_PORT"]),
-        nombre_db="odoo_db",
-        usuario_db="odoo",
-        password_db="odoo",
-        idioma="en_US",
-        sin_demo="all",
-        habilitar_debugpy=False,
+        puerto_web=config_base["web_port"],
+        puerto_pgweb=config_base["pgweb_port"],
+        nombre_db=config_base["db_name"],
+        usuario_db=config_base["db_user"],
+        password_db=config_base["db_password"],
+        idioma=config_base["idioma"],
+        sin_demo=config_base["sin_demo"],
+        habilitar_debugpy=config_base["habilitar_debugpy"],
         habilitar_enterprise=False,
-        habilitar_pgweb=True,
+        habilitar_pgweb=config_base["habilitar_pgweb"],
         generar_ci=True,
         inicializar_git=True,
         puerto_db=str(puertos_sugeridos["DB_PORT"]),
@@ -444,31 +379,12 @@ def _renderizar_archivos_proyecto(
         directorio_destino: Directorio raiz del proyecto donde escribir.
         valores: Diccionario de valores para renderizar los templates.
     """
-    entorno_jinja = Environment(
-        loader=FileSystemLoader(str(get_project_templates_dir())),
-        keep_trailing_newline=True,
+    renderizar_templates(
+        directorio_destino,
+        valores,
+        _MAPA_TEMPLATES,
+        archivos_regenerables=_ARCHIVOS_REGENERABLES,
     )
-
-    for nombre_template, ruta_relativa_destino in _MAPA_TEMPLATES:
-        ruta_destino = directorio_destino / ruta_relativa_destino
-        es_regenerable = ruta_relativa_destino in _ARCHIVOS_REGENERABLES
-
-        if ruta_destino.exists() and not es_regenerable:
-            warning(f"Archivo existente, se omite: {ruta_relativa_destino}")
-            continue
-
-        # Asegurar que el directorio padre exista
-        ruta_destino.parent.mkdir(parents=True, exist_ok=True)
-
-        # Renderizar template
-        template = entorno_jinja.get_template(nombre_template)
-        contenido = template.render(**valores)
-        ruta_destino.write_text(contenido)
-
-        if es_regenerable and ruta_destino.exists():
-            success(f"{ruta_relativa_destino} (regenerado)")
-        else:
-            success(ruta_relativa_destino)
 
     # GitHub Actions CI (opcional, no esta en _MAPA_TEMPLATES porque es condicional)
     if valores.get("generar_ci", False):

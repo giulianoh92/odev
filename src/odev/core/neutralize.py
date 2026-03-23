@@ -7,8 +7,45 @@ para desarrollo local. Usado por los comandos load-backup y reset-db.
 
 from __future__ import annotations
 
+import re
+
 from odev.core.console import info, success
 from odev.core.docker import DockerCompose
+
+_PATRON_NOMBRE_BD = re.compile(r"^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$")
+_PATRON_PUERTO = re.compile(r"^\d+$")
+
+
+def _validar_nombre_bd(nombre: str) -> None:
+    """Valida que el nombre de base de datos sea seguro para uso en comandos.
+
+    Argumentos:
+        nombre: Nombre de la base de datos a validar.
+
+    Lanza:
+        ValueError: Si el nombre contiene caracteres no permitidos.
+    """
+    if not _PATRON_NOMBRE_BD.match(nombre):
+        raise ValueError(
+            f"Nombre de base de datos invalido: '{nombre}'. "
+            "Solo se permiten letras, numeros, guiones, puntos y guiones bajos."
+        )
+
+
+def _validar_puerto(puerto: str) -> None:
+    """Valida que el puerto sea un numero valido.
+
+    Argumentos:
+        puerto: Puerto como string a validar.
+
+    Lanza:
+        ValueError: Si el puerto no es un numero o esta fuera de rango.
+    """
+    if not _PATRON_PUERTO.match(puerto):
+        raise ValueError(f"Puerto invalido: '{puerto}'. Debe ser un numero.")
+    numero = int(puerto)
+    if not (1 <= numero <= 65535):
+        raise ValueError(f"Puerto fuera de rango: {numero}. Debe estar entre 1 y 65535.")
 
 
 def neutralizar_base_datos(
@@ -27,6 +64,7 @@ def neutralizar_base_datos(
         nombre_bd: Nombre de la base de datos a neutralizar.
         usuario_bd: Usuario de la base de datos.
     """
+    _validar_nombre_bd(nombre_bd)
     info("Neutralizando base de datos (desactivando crons, servidores de correo, etc.)...")
     dc.exec_cmd(
         "web",
@@ -56,6 +94,7 @@ def resetear_credenciales_admin(
         nombre_bd: Nombre de la base de datos.
         usuario_bd: Usuario de la base de datos.
     """
+    _validar_nombre_bd(nombre_bd)
     info("Reseteando credenciales de admin (admin/admin)...")
     resultado_hash = dc.exec_cmd(
         "web",
@@ -66,10 +105,12 @@ def resetear_credenciales_admin(
         ],
     )
     hash_pw = resultado_hash.stdout.decode().strip()
+    # Escapar comillas simples en el hash para prevenir inyeccion SQL
+    hash_pw_safe = hash_pw.replace("'", "''")
     dc.exec_cmd(
         "db",
         ["psql", "-U", usuario_bd, "-d", nombre_bd, "-c",
-         f"UPDATE res_users SET login = 'admin', password = '{hash_pw}' WHERE id = 2;"],
+         f"UPDATE res_users SET login = 'admin', password = '{hash_pw_safe}' WHERE id = 2;"],
     )
     success("Credenciales de admin reseteadas: login=admin, password=admin")
 
@@ -92,6 +133,8 @@ def configurar_parametros_desarrollo(
         usuario_bd: Usuario de la base de datos.
         puerto_web: Puerto web local (por defecto 8069).
     """
+    _validar_nombre_bd(nombre_bd)
+    _validar_puerto(puerto_web)
     url_local = f"http://localhost:{puerto_web}"
     sql = (
         "INSERT INTO ir_config_parameter (key, value, create_uid, create_date, write_uid, write_date) "
