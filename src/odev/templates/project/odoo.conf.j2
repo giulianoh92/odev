@@ -13,7 +13,7 @@ db_user = {{ DB_USER | default('odoo') }}
 db_password = {{ DB_PASSWORD | default('odoo') }}
 db_name = {{ DB_NAME | default('odoo_db') }}
 log_level = info
-; logfile disabled — output goes to stderr (captured by Docker) and tee'd to /var/log/odoo/odoo.log via entrypoint
+; logfile deshabilitado — la salida va a stderr (capturado por Docker) y se duplica a /var/log/odoo/odoo.log via entrypoint
 http_interface = 0.0.0.0
 ; SMTP interceptado por MailHog — todo el correo saliente se captura en http://localhost:{{ MAILHOG_PORT | default(8025) }}
 smtp_server = mailhog

@@ -40,15 +40,15 @@ class OdooDevApp(App):
     CSS_PATH = "styles/app.tcss"
 
     TITLE = "odev"
-    SUB_TITLE = "Odoo Development Environment"
+    SUB_TITLE = "Entorno de Desarrollo Odoo"
 
     BINDINGS = [
-        Binding("u", "action_up", "Up", show=True),
-        Binding("d", "action_down", "Down", show=True),
-        Binding("r", "action_restart", "Restart", show=True),
+        Binding("u", "action_up", "Levantar", show=True),
+        Binding("d", "action_down", "Detener", show=True),
+        Binding("r", "action_restart", "Reiniciar", show=True),
         Binding("s", "action_shell", "Shell", show=True),
-        Binding("c", "action_context", "Context", show=True),
-        Binding("q", "quit", "Quit", show=True),
+        Binding("c", "action_context", "Contexto", show=True),
+        Binding("q", "quit", "Salir", show=True),
     ]
 
     def compose(self) -> ComposeResult:

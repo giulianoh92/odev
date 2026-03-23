@@ -32,14 +32,14 @@ class ModoProyecto(str, Enum):
 
     INLINE = "inline"       # Config vive dentro del directorio del proyecto
     EXTERNAL = "external"   # Config vive en ~/.odev/projects/<nombre>/
-    LEGACY = "legacy"       # Formato viejo odoo-dev-env (backward compat)
+    LEGACY = "legacy"       # Formato viejo odoo-dev-env (compatibilidad hacia atras)
 
 
 @dataclass
 class ProjectContext:
     """Contexto completo de un proyecto resuelto.
 
-    Attributes:
+    Atributos:
         nombre: Nombre del proyecto.
         modo: Modo de operacion (inline, external o legacy).
         directorio_config: Directorio donde viven .odev.yaml / docker-compose.
@@ -90,11 +90,11 @@ class ProyectoAmbiguoError(Exception):
 def _modo_desde_string(valor: str) -> ModoProyecto:
     """Convierte un string del registro a ModoProyecto.
 
-    Args:
+    Argumentos:
         valor: Valor almacenado en el registro (ej. "inline", "external").
 
-    Returns:
-        El ModoProyecto correspondiente, o EXTERNAL como fallback.
+    Retorna:
+        El ModoProyecto correspondiente, o EXTERNAL como valor por defecto.
     """
     try:
         return ModoProyecto(valor)
@@ -111,10 +111,10 @@ def _buscar_inline(cwd: Path) -> ProjectContext | None:
     Recorre desde *cwd* hacia la raiz buscando un archivo ``.odev.yaml``.
     Si lo encuentra, carga la configuracion y retorna un contexto INLINE.
 
-    Args:
+    Argumentos:
         cwd: Directorio de inicio para la busqueda ascendente.
 
-    Returns:
+    Retorna:
         ProjectContext en modo INLINE si se encuentra, None si no.
     """
     actual = cwd.resolve()
@@ -143,10 +143,10 @@ def _buscar_external(cwd: Path) -> ProjectContext | None | list[ProjectContext]:
     Consulta ``Registry.buscar_por_directorio`` para encontrar proyectos
     registrados cuyo directorio de trabajo contenga *cwd*.
 
-    Args:
+    Argumentos:
         cwd: Directorio actual a consultar contra el registro.
 
-    Returns:
+    Retorna:
         - None si no hay coincidencias.
         - Un ProjectContext en modo EXTERNAL si hay exactamente una.
         - Una lista de ProjectContext si hay multiples (ambiguedad).
@@ -191,10 +191,10 @@ def _buscar_legacy(cwd: Path) -> ProjectContext | None:
     ``docker-compose.yml`` y un subdirectorio ``cli/``, que es la
     firma del tooling viejo.
 
-    Args:
+    Argumentos:
         cwd: Directorio de inicio para la busqueda ascendente.
 
-    Returns:
+    Retorna:
         ProjectContext en modo LEGACY si se detecta, None si no.
     """
     actual = cwd.resolve()
@@ -219,10 +219,10 @@ def _buscar_legacy(cwd: Path) -> ProjectContext | None:
 def _cargar_config_seguro(directorio_config: Path) -> ProjectConfig | None:
     """Intenta cargar ProjectConfig sin fallar si no existe .odev.yaml.
 
-    Args:
+    Argumentos:
         directorio_config: Directorio donde buscar .odev.yaml.
 
-    Returns:
+    Retorna:
         ProjectConfig cargada, o None si el archivo no existe.
     """
     try:
@@ -252,21 +252,21 @@ def resolver_proyecto(
 
     1. **Nombre explicito** — si se pasa *nombre_proyecto*, se busca en
        el registro global. Si no existe, lanza ``ProyectoNoEncontradoError``.
-    2. **INLINE walk-up** — desde *cwd*, sube por el arbol de directorios
+    2. **INLINE busqueda ascendente** — desde *cwd*, sube por el arbol de directorios
        buscando ``.odev.yaml``.
     3. **EXTERNAL registro** — consulta el registro global por directorio
-       de trabajo. Si hay multiples matches, lanza ``ProyectoAmbiguoError``.
+       de trabajo. Si hay multiples coincidencias, lanza ``ProyectoAmbiguoError``.
     4. **LEGACY** — detecta el patron viejo (docker-compose.yml + cli/).
     5. **No encontrado** — lanza ``ProyectoNoEncontradoError``.
 
-    Args:
+    Argumentos:
         cwd: Directorio de trabajo actual. Si es None, usa ``Path.cwd()``.
         nombre_proyecto: Nombre explicito del proyecto (por ej. de ``--project``).
 
-    Returns:
+    Retorna:
         ProjectContext con toda la informacion del proyecto resuelto.
 
-    Raises:
+    Lanza:
         ProyectoNoEncontradoError: Si no se puede resolver ningun proyecto.
         ProyectoAmbiguoError: Si multiples proyectos coinciden y no se
             especifico un nombre explicito.
@@ -288,7 +288,7 @@ def resolver_proyecto(
             config=config,
         )
 
-    # --- Estrategia 2: busqueda INLINE (.odev.yaml walk-up) ---
+    # --- Estrategia 2: busqueda INLINE (.odev.yaml ascendente) ---
     contexto_inline = _buscar_inline(directorio)
     if contexto_inline is not None:
         return contexto_inline

@@ -2,7 +2,7 @@
 
 Proporciona la clase ProjectPaths para acceder a las rutas del proyecto
 actual de forma dinamica, y funciones para acceder a los templates
-bundled en el paquete pip via importlib.resources.
+incluidos en el paquete pip via importlib.resources.
 
 Cambio clave respecto al viejo paths.py: se elimina el patron de
 constantes globales (PROJECT_ROOT, ADDONS_DIR, etc.) que se evaluaban
@@ -19,10 +19,10 @@ from odev.core.compat import ProjectMode, detect_mode
 class ProjectPaths:
     """Rutas del proyecto actual, resueltas dinamicamente segun el modo.
 
-    Se instancia pasando una ruta explícita o detectando automaticamente
+    Se instancia pasando una ruta explicita o detectando automaticamente
     el proyecto recorriendo el arbol de directorios desde el cwd.
 
-    Attributes:
+    Atributos:
         mode: Modo de operacion detectado (PROJECT, LEGACY, NONE).
         root: Ruta raiz del proyecto detectado.
     """
@@ -34,13 +34,13 @@ class ProjectPaths:
     ) -> None:
         """Inicializa las rutas del proyecto.
 
-        Args:
+        Argumentos:
             project_root: Ruta explicita a la raiz del proyecto. Si es None,
                          se detecta automaticamente con detect_mode().
             addon_paths: Lista de rutas a directorios de addons. Si es None,
                         se carga desde ProjectConfig al acceder a addons_dirs.
 
-        Raises:
+        Lanza:
             FileNotFoundError: Si no se encuentra un proyecto y no se paso
                               ruta explicita.
         """
@@ -147,10 +147,10 @@ class ProjectPaths:
 def get_templates_dir() -> Path:
     """Retorna la ruta al directorio de templates del paquete instalado.
 
-    Usa importlib.resources para localizar los templates bundled,
+    Usa importlib.resources para localizar los templates incluidos,
     lo que funciona tanto en instalaciones normales como editables.
 
-    Returns:
+    Retorna:
         Path al directorio templates/ del paquete odev.
     """
     return Path(str(resources.files("odev") / "templates"))
@@ -159,7 +159,7 @@ def get_templates_dir() -> Path:
 def get_project_templates_dir() -> Path:
     """Retorna la ruta a templates de proyecto (docker-compose, env, etc.).
 
-    Returns:
+    Retorna:
         Path al directorio templates/project/ del paquete odev.
     """
     return get_templates_dir() / "project"
@@ -168,7 +168,7 @@ def get_project_templates_dir() -> Path:
 def get_module_template_dir() -> Path:
     """Retorna la ruta al template de modulo para scaffold.
 
-    Returns:
+    Retorna:
         Path al directorio templates/module/ del paquete odev.
     """
     return get_templates_dir() / "module"
@@ -177,7 +177,7 @@ def get_module_template_dir() -> Path:
 def get_sql_templates_dir() -> Path:
     """Retorna la ruta a templates SQL (anonymize, etc.).
 
-    Returns:
+    Retorna:
         Path al directorio templates/sql/ del paquete odev.
     """
     return get_templates_dir() / "sql"

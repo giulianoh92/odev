@@ -34,7 +34,7 @@ def load_backup(
         help="Neutralizar la base de datos (desactivar crons, correo, etc.).",
     ),
 ) -> None:
-    """Carga un backup de Odoo.sh (o Database Manager) en el entorno local.
+    """Carga un backup de Odoo.sh (o el Gestor de Base de Datos) en el entorno local.
 
     Acepta un archivo .zip que contenga un dump de PostgreSQL y un
     directorio filestore opcional. Elimina la base de datos actual,
@@ -60,7 +60,7 @@ def load_backup(
     with zipfile.ZipFile(backup) as zf:
         nombres = zf.namelist()
 
-    # Los backups de Odoo.sh contienen dump.sql en la raiz; Database Manager
+    # Los backups de Odoo.sh contienen dump.sql en la raiz; el Gestor de Base de Datos
     # puede usar dump.sql o un dump en formato custom.
     nombre_dump = None
     for candidato in ("dump.sql", "dump.dump"):

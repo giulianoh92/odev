@@ -1,7 +1,7 @@
 """Comando 'scaffold': crea un nuevo modulo Odoo desde el template.
 
 Genera la estructura completa de un modulo Odoo en el directorio
-addons/ del proyecto, usando el template bundled en el paquete pip.
+addons/ del proyecto, usando el template incluido en el paquete pip.
 """
 
 import re
@@ -23,7 +23,7 @@ def scaffold(
 ) -> None:
     """Crea un nuevo modulo Odoo desde el template.
 
-    Valida que el nombre sea snake_case, copia el template bundled
+    Valida que el nombre sea snake_case, copia el template incluido
     en el paquete al directorio addons/ del proyecto, y reemplaza
     los placeholders con el nombre del modulo.
     """

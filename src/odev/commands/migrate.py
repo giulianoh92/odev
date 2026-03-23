@@ -1,6 +1,6 @@
 """Comando 'migrate': migra un proyecto legacy al formato de proyecto independiente.
 
-Detecta si el directorio actual usa el layout viejo (donde el repo de la
+Detecta si el directorio actual usa la estructura vieja (donde el repo de la
 herramienta ES el proyecto) y lo convierte al nuevo formato con .odev.yaml,
 .gitignore actualizado y archivos faltantes generados.
 
@@ -37,7 +37,7 @@ def migrate() -> None:
         raise typer.Exit()
 
     if modo == ProjectMode.NONE:
-        error("No se detecto ningun proyecto odev ni layout legacy.")
+        error("No se detecto ningun proyecto odev ni estructura legacy.")
         info("Ejecuta 'odev init' para crear un proyecto nuevo.")
         raise typer.Exit(1)
 
@@ -46,7 +46,7 @@ def migrate() -> None:
         error("Error inesperado: modo LEGACY detectado sin directorio raiz.")
         raise typer.Exit(1)
 
-    info(f"Detectado layout legacy en: {raiz}")
+    info(f"Detectada estructura legacy en: {raiz}")
     info("Se procedera a migrar al formato de proyecto independiente.")
 
     # 1. Leer configuracion existente del .env
@@ -157,7 +157,7 @@ def _verificar_addons(raiz: Path) -> None:
     cantidad_modulos = _contar_modulos(directorio_addons)
     if cantidad_modulos > 0:
         warning(f"addons/ tiene contenido ({cantidad_modulos} modulo(s)).")
-        info("IMPORTANTE: En el nuevo layout, addons/ se trackea en git.")
+        info("IMPORTANTE: En la nueva estructura, addons/ se trackea en git.")
         info("Debes:")
         info("  1. Verificar que 'addons/' fue removido de .gitignore (hecho automaticamente)")
         info("  2. Ejecutar: git add addons/")
@@ -257,10 +257,10 @@ dist/
 build/
 .venv/
 
-# Environment (secretos locales - NO trackear)
+# Entorno (secretos locales - NO trackear)
 .env
 
-# Enterprise addons (propiedad de Odoo SA - NO trackear)
+# Addons enterprise (propiedad de Odoo SA - NO trackear)
 enterprise/
 
 # Configuracion generada (se regenera desde .env)
@@ -271,7 +271,7 @@ logs/*
 !logs/.gitkeep
 *.log
 
-# Database snapshots (pesados, locales)
+# Snapshots de base de datos (pesados, locales)
 snapshots/*
 !snapshots/.gitkeep
 
@@ -286,7 +286,7 @@ PROJECT_CONTEXT.md
 keys.json
 .mcp.json
 
-# AI assistants (configuracion local del usuario)
+# Asistentes de IA (configuracion local del usuario)
 .claude
 
 # Node
@@ -314,26 +314,26 @@ def _generar_archivos_faltantes(
     ruta_claude_md = raiz / "CLAUDE.md"
     if not ruta_claude_md.exists():
         contenido_claude = f"""\
-# {nombre_proyecto} - Instrucciones para Agentes AI
+# {nombre_proyecto} - Instrucciones para Agentes IA
 
 ## Contexto del Proyecto
 - **Proyecto**: {nombre_proyecto}
-- **Odoo Version**: {version_odoo}
+- **Version de Odoo**: {version_odoo}
 - **Descripcion**: Proyecto Odoo
 
 ## Pipeline SDD (Flujo de Desarrollo)
 
 Todas las tareas deben seguir este flujo secuencial:
 
-1. **Explorer**: Analizar codigo actual y contexto.
-2. **Requirements (Spec)**: Crear `docs/spec.md` con alcance y reglas de negocio.
-3. **Architecture (Design)**: Crear `docs/design.md` con solucion tecnica.
-4. **HUMAN GATE**: Pedir aprobacion de spec y design.
-5. **Task Planner**: Crear `docs/task.md` con checklist de tareas atomicas.
-6. **HUMAN GATE**: Pedir aprobacion del plan.
-7. **Implementer**: Escribir codigo basado en el plan aprobado.
-8. **Verifier**: Validar que el codigo cumple la especificacion.
-9. **Archiver**: Guardar decisiones y limpiar artefactos temporales.
+1. **Explorador**: Analizar codigo actual y contexto.
+2. **Requerimientos (Spec)**: Crear `docs/spec.md` con alcance y reglas de negocio.
+3. **Arquitectura (Design)**: Crear `docs/design.md` con solucion tecnica.
+4. **APROBACION HUMANA**: Pedir aprobacion de spec y design.
+5. **Planificador de Tareas**: Crear `docs/task.md` con checklist de tareas atomicas.
+6. **APROBACION HUMANA**: Pedir aprobacion del plan.
+7. **Implementador**: Escribir codigo basado en el plan aprobado.
+8. **Verificador**: Validar que el codigo cumple la especificacion.
+9. **Archivador**: Guardar decisiones y limpiar artefactos temporales.
 
 ## Contexto Tecnico
 - **Framework**: Odoo {version_odoo} / Python 3.10+
@@ -346,7 +346,7 @@ Todas las tareas deben seguir este flujo secuencial:
 addons/              # Modulos Odoo del proyecto
 config/              # Configuracion de Odoo (generada)
 docs/                # Artefactos SDD (spec, design, task)
-snapshots/           # Snapshots de la DB (gitignored)
+snapshots/           # Snapshots de la BD (ignorados por git)
 docker-compose.yml   # Servicios Docker
 .odev.yaml           # Configuracion del proyecto
 ```
@@ -377,7 +377,7 @@ odev context         # Generar PROJECT_CONTEXT.md
 def _generar_env_example(raiz: Path, valores_env: dict) -> None:
     """Genera .env.example desde los valores actuales del .env.
 
-    Reemplaza los valores sensibles (passwords) con placeholders
+    Reemplaza los valores sensibles (contraseñas) con marcadores de posicion
     para que sirva como template compartible con el equipo.
 
     Args:
@@ -393,7 +393,7 @@ def _generar_env_example(raiz: Path, valores_env: dict) -> None:
         info("No se encontro .env. Se omite la generacion de .env.example.")
         return
 
-    # Claves cuyos valores se reemplazan con placeholders
+    # Claves cuyos valores se reemplazan con marcadores de posicion
     claves_sensibles = {
         "DB_PASSWORD": "tu_password_aqui",
         "ADMIN_PASSWORD": "tu_admin_password_aqui",

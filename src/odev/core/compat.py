@@ -26,11 +26,11 @@ def detect_mode(start: Path | None = None) -> tuple[ProjectMode, Path | None]:
     3. docker-compose.yml (sin cli/) -> modo PROJECT (proyecto sin .odev.yaml)
     4. Nada encontrado -> modo NONE
 
-    Args:
+    Argumentos:
         start: Directorio desde donde iniciar la busqueda. Si es None, usa el
                directorio de trabajo actual.
 
-    Returns:
+    Retorna:
         Tupla (modo, ruta_raiz_del_proyecto o None).
     """
     current = start or Path.cwd()

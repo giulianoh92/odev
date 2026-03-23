@@ -22,7 +22,7 @@ def neutralizar_base_datos(
     crons, servidores de correo y otros componentes peligrosos en
     entornos de desarrollo.
 
-    Args:
+    Argumentos:
         dc: Instancia de DockerCompose configurada para el proyecto.
         nombre_bd: Nombre de la base de datos a neutralizar.
         usuario_bd: Usuario de la base de datos.
@@ -51,7 +51,7 @@ def resetear_credenciales_admin(
     del contenedor web, y actualiza el usuario con id=2 (admin por
     convencion de Odoo).
 
-    Args:
+    Argumentos:
         dc: Instancia de DockerCompose configurada para el proyecto.
         nombre_bd: Nombre de la base de datos.
         usuario_bd: Usuario de la base de datos.
@@ -86,7 +86,7 @@ def configurar_parametros_desarrollo(
     y desactiva web.base.url.freeze para evitar que Odoo sobreescriba
     la URL base con un dominio de produccion.
 
-    Args:
+    Argumentos:
         dc: Instancia de DockerCompose configurada para el proyecto.
         nombre_bd: Nombre de la base de datos.
         usuario_bd: Usuario de la base de datos.

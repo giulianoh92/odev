@@ -1,114 +1,114 @@
 # odev
 
-**CLI toolkit for Docker-based Odoo development environments.**
+**Toolkit CLI para entornos de desarrollo Odoo basados en Docker.**
 
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License MIT](https://img.shields.io/badge/license-MIT-green)
 ![PyPI](https://img.shields.io/badge/pypi-odev-orange)
 
-## What is odev?
+## Que es odev?
 
-odev is a command-line toolkit that provides a complete, Docker-based Odoo development environment. Each project is fully independent with its own configuration, database, ports, and Docker Compose stack. Install odev once globally, then create as many isolated Odoo projects as you need.
+odev es un toolkit de linea de comandos que provee un entorno de desarrollo Odoo completo, basado en Docker. Cada proyecto es totalmente independiente con su propia configuracion, base de datos, puertos y stack de Docker Compose. Instala odev una vez de forma global y despues crea tantos proyectos aislados como necesites.
 
-## Quick Start
+## Inicio Rapido
 
 ```bash
 pip install git+https://github.com/giulianoh92/odev.git
-odev init my-project
-cd my-project
+odev init mi-proyecto
+cd mi-proyecto
 odev up
-# Open http://localhost:8069
+# Abrir http://localhost:8069
 ```
 
-The `init` command runs an interactive wizard that lets you choose the Odoo version (17.0, 18.0, 19.0), database credentials, ports, and optional features like Enterprise addons, pgweb, debugpy, and GitHub Actions CI.
+El comando `init` ejecuta un wizard interactivo que te permite elegir la version de Odoo (17.0, 18.0, 19.0), credenciales de base de datos, puertos y funcionalidades opcionales como addons Enterprise, pgweb, debugpy y GitHub Actions CI.
 
-For non-interactive setup with sensible defaults:
+Para una configuracion no interactiva con valores por defecto razonables:
 
 ```bash
-odev init my-project --no-interactive
+odev init mi-proyecto --no-interactive
 ```
 
-## Features
+## Funcionalidades
 
-- **One-command setup** -- `odev init` scaffolds an entire project with Docker Compose, Odoo config, `.env`, `.gitignore`, pre-commit hooks, and optional CI pipeline
-- **Hot-reload** -- Odoo runs in dev mode; XML, QWeb, and JS changes are picked up automatically
-- **Database snapshots** -- Save and restore database state at any point with `odev db snapshot` / `odev db restore`
-- **Module scaffolding** -- `odev scaffold` generates a complete Odoo module skeleton (models, views, security, tests)
-- **Multi-project support** -- Automatic port detection ensures multiple projects can run simultaneously without conflicts
-- **Interactive TUI** -- Terminal dashboard with live service status, log streaming, and keyboard shortcuts
-- **Load external backups** -- Import Odoo.sh or Database Manager `.zip` backups with automatic neutralization
-- **Data anonymization** -- Strip personal data from production database copies for safe development
-- **Project context generation** -- Generate a `PROJECT_CONTEXT.md` with module analysis for AI coding assistants
-- **Legacy migration** -- Migrate from the old `odoo-dev-env` layout to independent projects
-- **Environment diagnostics** -- `odev doctor` checks Docker, Compose, ports, config files, and version compatibility
-- **Self-update** -- `odev self-update` upgrades to the latest version via pip
+- **Configuracion en un comando** -- `odev init` genera un proyecto completo con Docker Compose, configuracion de Odoo, `.env`, `.gitignore`, hooks de pre-commit y pipeline CI opcional
+- **Hot-reload** -- Odoo corre en modo dev; los cambios en XML, QWeb y JS se detectan automaticamente
+- **Snapshots de base de datos** -- Guarda y restaura el estado de la base de datos en cualquier momento con `odev db snapshot` / `odev db restore`
+- **Scaffolding de modulos** -- `odev scaffold` genera un esqueleto completo de modulo Odoo (modelos, vistas, seguridad, tests)
+- **Soporte multi-proyecto** -- Deteccion automatica de puertos para que multiples proyectos puedan correr simultaneamente sin conflictos
+- **TUI interactiva** -- Dashboard de terminal con estado de servicios en vivo, streaming de logs y atajos de teclado
+- **Carga de backups externos** -- Importa backups `.zip` de Odoo.sh o Database Manager con neutralizacion automatica
+- **Anonimizacion de datos** -- Elimina datos personales de copias de bases de datos de produccion para desarrollo seguro
+- **Generacion de contexto del proyecto** -- Genera un `PROJECT_CONTEXT.md` con analisis de modulos para asistentes de IA
+- **Migracion legacy** -- Migra del layout viejo `odoo-dev-env` a proyectos independientes
+- **Diagnostico del entorno** -- `odev doctor` verifica Docker, Compose, puertos, archivos de configuracion y compatibilidad de versiones
+- **Auto-actualizacion** -- `odev self-update` actualiza a la ultima version via pip
 
-## Commands Reference
+## Referencia de Comandos
 
-### Top-level Commands
+### Comandos Principales
 
-| Command | Description |
+| Comando | Descripcion |
 |---------|-------------|
-| `odev init [name]` | Create a new Odoo project (interactive wizard or `--no-interactive`) |
-| `odev up` | Start the development environment (`--build` to rebuild, `--watch` for watch mode) |
-| `odev down` | Stop and remove containers (`-v` to also remove volumes) |
-| `odev restart` | Restart the Odoo web container |
-| `odev status` | Show service status table (name, state, health, ports) |
-| `odev logs [service]` | Follow service logs (`web`, `db`, or `all`; `--tail`, `--no-follow`) |
-| `odev shell` | Open an interactive bash shell inside the Odoo container |
-| `odev test <module>` | Run tests for a module (or `all`; `--log-level` to control verbosity) |
-| `odev scaffold <name>` | Create a new Odoo module from the bundled template |
-| `odev addon-install <module>` | Install a module for the first time and restart |
-| `odev update <module>` | Upgrade a module and restart |
-| `odev reset-db` | Destroy database and volumes, then restart with a fresh environment |
-| `odev load-backup <path>` | Load an Odoo.sh / Database Manager backup (`.zip`; `--no-neutralize`) |
-| `odev context` | Generate `PROJECT_CONTEXT.md` from module analysis |
-| `odev tui` | Launch the interactive TUI dashboard |
-| `odev migrate` | Migrate a legacy `odoo-dev-env` project to the new format |
-| `odev doctor` | Diagnose the development environment and report problems |
-| `odev self-update` | Update odev to the latest version |
+| `odev init [nombre]` | Crear un nuevo proyecto Odoo (wizard interactivo o `--no-interactive`) |
+| `odev up` | Iniciar el entorno de desarrollo (`--build` para reconstruir, `--watch` para modo watch) |
+| `odev down` | Detener y eliminar contenedores (`-v` para eliminar tambien los volumenes) |
+| `odev restart` | Reiniciar el contenedor web de Odoo |
+| `odev status` | Mostrar tabla de estado de servicios (nombre, estado, salud, puertos) |
+| `odev logs [servicio]` | Seguir logs de un servicio (`web`, `db` o `all`; `--tail`, `--no-follow`) |
+| `odev shell` | Abrir un shell bash interactivo dentro del contenedor de Odoo |
+| `odev test <modulo>` | Ejecutar tests de un modulo (o `all`; `--log-level` para controlar verbosidad) |
+| `odev scaffold <nombre>` | Crear un nuevo modulo Odoo desde el template incluido |
+| `odev addon-install <modulo>` | Instalar un modulo por primera vez y reiniciar |
+| `odev update <modulo>` | Actualizar un modulo y reiniciar |
+| `odev reset-db` | Destruir base de datos y volumenes, reiniciar con un entorno limpio |
+| `odev load-backup <ruta>` | Cargar un backup de Odoo.sh / Database Manager (`.zip`; `--no-neutralize`) |
+| `odev context` | Generar `PROJECT_CONTEXT.md` a partir del analisis de modulos |
+| `odev tui` | Lanzar el dashboard interactivo TUI |
+| `odev migrate` | Migrar un proyecto legacy `odoo-dev-env` al nuevo formato |
+| `odev doctor` | Diagnosticar el entorno de desarrollo y reportar problemas |
+| `odev self-update` | Actualizar odev a la ultima version |
 
-### Database Subcommands (`odev db`)
+### Subcomandos de Base de Datos (`odev db`)
 
-| Command | Description |
+| Comando | Descripcion |
 |---------|-------------|
-| `odev db snapshot <name>` | Create a database snapshot (pg_dump in custom format) |
-| `odev db restore <name>` | Restore database from a snapshot (by name or prefix) |
-| `odev db list` | List all available snapshots with date and size |
-| `odev db anonymize` | Anonymize personal data (names, emails, phones) and reset passwords |
+| `odev db snapshot <nombre>` | Crear un snapshot de la base de datos (pg_dump en formato custom) |
+| `odev db restore <nombre>` | Restaurar base de datos desde un snapshot (por nombre o prefijo) |
+| `odev db list` | Listar todos los snapshots disponibles con fecha y tamano |
+| `odev db anonymize` | Anonimizar datos personales (nombres, emails, telefonos) y resetear passwords |
 
-## Project Structure
+## Estructura del Proyecto
 
-Running `odev init my-project` generates the following directory tree:
+Ejecutar `odev init mi-proyecto` genera el siguiente arbol de directorios:
 
 ```
-my-project/
-├── addons/                  # Your custom Odoo modules (tracked in git)
+mi-proyecto/
+├── addons/                  # Tus modulos Odoo custom (trackeados en git)
 ├── config/
-│   └── odoo.conf            # Auto-generated from .env (gitignored)
-├── enterprise/              # Enterprise addons (optional, gitignored)
-├── snapshots/               # Database snapshots (gitignored)
-├── logs/                    # Odoo log files (gitignored)
-├── docs/                    # Documentation and SDD artifacts
-├── docker-compose.yml       # Docker services (Odoo + PostgreSQL + pgweb)
-├── entrypoint.sh            # Container entrypoint script
-├── .odev.yaml               # Project configuration for odev
-├── .env                     # Environment variables (gitignored)
-├── .env.example             # Shareable environment template
-├── .gitignore               # Pre-configured ignores
-├── .pre-commit-config.yaml  # Pre-commit hooks (ruff, etc.)
-├── pyproject.toml           # Project tooling config
-├── CLAUDE.md                # Instructions for AI coding assistants
+│   └── odoo.conf            # Generado automaticamente desde .env (gitignored)
+├── enterprise/              # Addons enterprise (opcional, gitignored)
+├── snapshots/               # Snapshots de base de datos (gitignored)
+├── logs/                    # Archivos de log de Odoo (gitignored)
+├── docs/                    # Documentacion y artefactos SDD
+├── docker-compose.yml       # Servicios Docker (Odoo + PostgreSQL + pgweb)
+├── entrypoint.sh            # Script de entrada del contenedor
+├── .odev.yaml               # Configuracion del proyecto para odev
+├── .env                     # Variables de entorno (gitignored)
+├── .env.example             # Template de entorno compartible
+├── .gitignore               # Ignores pre-configurados
+├── .pre-commit-config.yaml  # Hooks de pre-commit (ruff, etc.)
+├── pyproject.toml           # Configuracion de herramientas del proyecto
+├── CLAUDE.md                # Instrucciones para asistentes de IA
 └── .github/
     └── workflows/
-        └── ci.yml           # GitHub Actions CI (optional)
+        └── ci.yml           # GitHub Actions CI (opcional)
 ```
 
-## Configuration
+## Configuracion
 
 ### .odev.yaml
 
-The project configuration file that odev uses to detect and manage the project:
+El archivo de configuracion del proyecto que odev usa para detectar y gestionar el proyecto:
 
 ```yaml
 odev_min_version: "0.1.0"
@@ -128,237 +128,237 @@ services:
   pgweb: true
 
 project:
-  name: "my-project"
+  name: "mi-proyecto"
   description: ""
 ```
 
 ### .env
 
-Environment variables that control the Docker stack. Created by `odev init` and gitignored (secrets stay local). Share `.env.example` with your team instead.
+Variables de entorno que controlan el stack Docker. Creadas por `odev init` y gitignoreadas (los secretos quedan locales). Comparti `.env.example` con tu equipo en su lugar.
 
-Key variables:
+Variables principales:
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `ODOO_VERSION` | `19.0` | Odoo version |
-| `ODOO_IMAGE_TAG` | `19` | Docker image tag for Odoo |
-| `DB_IMAGE_TAG` | `16` | PostgreSQL version (via pgvector image) |
-| `WEB_PORT` | `8069` | Odoo web port |
-| `PGWEB_PORT` | `8081` | pgweb port |
-| `DB_NAME` | `odoo_db` | Database name |
-| `DB_USER` | `odoo` | Database user |
-| `LOAD_LANGUAGE` | `en_US` | Language to auto-install |
-| `WITHOUT_DEMO` | `all` | Skip demo data (`all` = skip, empty = load) |
-| `DEBUGPY` | `False` | Enable remote debugger on port 5678 |
+| Variable | Default | Proposito |
+|----------|---------|-----------|
+| `ODOO_VERSION` | `19.0` | Version de Odoo |
+| `ODOO_IMAGE_TAG` | `19` | Tag de la imagen Docker para Odoo |
+| `DB_IMAGE_TAG` | `16` | Version de PostgreSQL (via imagen pgvector) |
+| `WEB_PORT` | `8069` | Puerto web de Odoo |
+| `PGWEB_PORT` | `8081` | Puerto de pgweb |
+| `DB_NAME` | `odoo_db` | Nombre de la base de datos |
+| `DB_USER` | `odoo` | Usuario de la base de datos |
+| `LOAD_LANGUAGE` | `en_US` | Idioma a auto-instalar |
+| `WITHOUT_DEMO` | `all` | Omitir datos demo (`all` = omitir, vacio = cargar) |
+| `DEBUGPY` | `False` | Habilitar depurador remoto en puerto 5678 |
 
-## Multi-Project Support
+## Soporte Multi-Proyecto
 
-odev automatically detects available ports when creating a new project. If port 8069 is already in use (by another odev project, for example), `odev init` will suggest the next available port set:
+odev detecta automaticamente puertos disponibles al crear un nuevo proyecto. Si el puerto 8069 ya esta en uso (por otro proyecto odev, por ejemplo), `odev init` va a sugerir el siguiente set de puertos disponible:
 
 ```
-Project A: Odoo on 8069, pgweb on 8081, DB on 5432
-Project B: Odoo on 8070, pgweb on 8082, DB on 5433
-Project C: Odoo on 8071, pgweb on 8083, DB on 5434
+Proyecto A: Odoo en 8069, pgweb en 8081, DB en 5432
+Proyecto B: Odoo en 8070, pgweb en 8082, DB en 5433
+Proyecto C: Odoo en 8071, pgweb en 8083, DB en 5434
 ```
 
-Each project has its own Docker Compose stack with isolated containers and volumes. Just run `odev up` in each project directory.
+Cada proyecto tiene su propio stack de Docker Compose con contenedores y volumenes aislados. Solo ejecuta `odev up` en el directorio de cada proyecto.
 
-## Database Management
+## Gestion de Base de Datos
 
 ### Snapshots
 
-Save and restore database state at any point during development:
+Guarda y restaura el estado de la base de datos en cualquier punto del desarrollo:
 
 ```bash
-# Save the current database state
-odev db snapshot clean-install
+# Guardar el estado actual de la base de datos
+odev db snapshot instalacion-limpia
 
-# Make changes, experiment, break things...
+# Hacer cambios, experimentar, romper cosas...
 
-# Restore to the saved state
-odev db restore clean-install
+# Restaurar al estado guardado
+odev db restore instalacion-limpia
 
-# List all available snapshots
+# Listar todos los snapshots disponibles
 odev db list
 ```
 
-Snapshots are saved as PostgreSQL custom-format dumps in the `snapshots/` directory with timestamps, so you can have multiple snapshots with the same prefix.
+Los snapshots se guardan como dumps de PostgreSQL en formato custom en el directorio `snapshots/` con timestamps, asi que podes tener multiples snapshots con el mismo prefijo.
 
-### Load External Backups
+### Cargar Backups Externos
 
-Import an Odoo.sh or Database Manager backup (`.zip` containing `dump.sql` or `dump.dump` with optional `filestore/`):
+Importa un backup de Odoo.sh o Database Manager (`.zip` que contiene `dump.sql` o `dump.dump` con `filestore/` opcional):
 
 ```bash
-odev load-backup /path/to/backup.zip
+odev load-backup /ruta/al/backup.zip
 ```
 
-This command:
-1. Extracts the backup archive
-2. Stops the web service to free database connections
-3. Drops and recreates the database
-4. Restores the SQL dump (supports both plain SQL and custom format)
-5. Copies the filestore into the Odoo data volume (if present)
-6. Neutralizes the database (disables crons, mail servers, etc.)
-7. Resets admin credentials to `admin` / `admin`
-8. Restarts all services
+Este comando:
+1. Extrae el archivo de backup
+2. Detiene el servicio web para liberar conexiones a la base de datos
+3. Elimina y recrea la base de datos
+4. Restaura el dump SQL (soporta tanto SQL plano como formato custom)
+5. Copia el filestore al volumen de datos de Odoo (si esta presente)
+6. Neutraliza la base de datos (desactiva crons, servidores de correo, etc.)
+7. Resetea las credenciales de admin a `admin` / `admin`
+8. Reinicia todos los servicios
 
-Use `--no-neutralize` to skip the neutralization step.
+Usa `--no-neutralize` para omitir el paso de neutralizacion.
 
-### Anonymization
+### Anonimizacion
 
-Strip personal data from a production database copy for safe development:
+Elimina datos personales de una copia de base de datos de produccion para desarrollo seguro:
 
 ```bash
 odev db anonymize
 ```
 
-Replaces names, emails, phone numbers, and addresses with fake data. Resets all user passwords to `admin`.
+Reemplaza nombres, emails, numeros de telefono y direcciones con datos ficticios. Resetea todas las passwords de usuarios a `admin`.
 
-### Reset Database
+### Reiniciar Base de Datos
 
-Start completely fresh by destroying the database and all Docker volumes:
+Empeza completamente de cero destruyendo la base de datos y todos los volumenes Docker:
 
 ```bash
 odev reset-db
 ```
 
-This runs `docker compose down -v` followed by `docker compose up -d`.
+Esto ejecuta `docker compose down -v` seguido de `docker compose up -d`.
 
-## Module Development
+## Desarrollo de Modulos
 
-### Create a New Module
+### Crear un Modulo Nuevo
 
 ```bash
-odev scaffold my_module
+odev scaffold mi_modulo
 ```
 
-This creates `addons/my_module/` with a complete Odoo module structure:
+Esto crea `addons/mi_modulo/` con una estructura completa de modulo Odoo:
 
 ```
-addons/my_module/
+addons/mi_modulo/
 ├── __init__.py
 ├── __manifest__.py
 ├── models/
 │   ├── __init__.py
-│   └── my_module.py          # Example model with fields
+│   └── mi_modulo.py          # Modelo de ejemplo con campos
 ├── views/
-│   └── my_module_views.xml   # List + form views, action, menu item
+│   └── mi_modulo_views.xml   # Vistas list + form, accion, item de menu
 ├── security/
-│   └── ir.model.access.csv   # Access control list
+│   └── ir.model.access.csv   # Lista de control de acceso
 └── tests/
     ├── __init__.py
-    └── test_my_module.py     # Example TransactionCase test
+    └── test_mi_modulo.py     # Test de ejemplo con TransactionCase
 ```
 
-### Development Workflow
+### Flujo de Desarrollo
 
 ```bash
-# 1. Create the module skeleton
-odev scaffold my_module
+# 1. Crear el esqueleto del modulo
+odev scaffold mi_modulo
 
-# 2. Edit models, views, security rules...
+# 2. Editar modelos, vistas, reglas de seguridad...
 
-# 3. Install the module for the first time
-odev addon-install my_module
+# 3. Instalar el modulo por primera vez
+odev addon-install mi_modulo
 
-# 4. After making changes to Python models or data files
-odev update my_module
+# 4. Despues de hacer cambios en modelos Python o archivos de datos
+odev update mi_modulo
 
-# 5. Run tests
-odev test my_module
+# 5. Ejecutar tests
+odev test mi_modulo
 
-# 6. Generate project context for AI assistants
+# 6. Generar contexto del proyecto para asistentes de IA
 odev context
 ```
 
-XML and JS changes are picked up automatically thanks to Odoo's dev mode with hot-reload.
+Los cambios en XML y JS se detectan automaticamente gracias al modo dev de Odoo con hot-reload.
 
 ### Testing
 
 ```bash
-# Test a specific module
-odev test my_module
+# Testear un modulo especifico
+odev test mi_modulo
 
-# Test with a specific log level
-odev test my_module --log-level debug
+# Testear con un nivel de log especifico
+odev test mi_modulo --log-level debug
 
-# Run all tests (can take a long time)
+# Ejecutar todos los tests (puede llevar mucho tiempo)
 odev test all
 ```
 
-## Migration from odoo-dev-env
+## Migracion desde odoo-dev-env
 
-If you have an existing project using the old `odoo-dev-env` layout (where the tool repository IS the project), you can migrate to the new format:
+Si tenes un proyecto existente que usa el layout viejo `odoo-dev-env` (donde el repositorio de la herramienta ES el proyecto), podes migrarlo al nuevo formato:
 
 ```bash
-# 1. Install odev globally
+# 1. Instalar odev globalmente
 pip install git+https://github.com/giulianoh92/odev.git
 
-# 2. Navigate to your existing project
-cd /path/to/your-odoo-dev-env-project
+# 2. Navegar a tu proyecto existente
+cd /ruta/a/tu-proyecto-odoo-dev-env
 
-# 3. Run the migration
+# 3. Ejecutar la migracion
 odev migrate
 ```
 
-The `migrate` command will:
-- Create `.odev.yaml` from your existing `.env` configuration
-- Update `.gitignore` to track `addons/` (instead of ignoring it)
-- Generate missing files (`.env.example`, `CLAUDE.md`, etc.)
-- Create required directories (`docs/`, `snapshots/`, `logs/`) with `.gitkeep`
+El comando `migrate` va a:
+- Crear `.odev.yaml` a partir de la configuracion existente en `.env`
+- Actualizar `.gitignore` para trackear `addons/` (en vez de ignorarlo)
+- Generar archivos faltantes (`.env.example`, `CLAUDE.md`, etc.)
+- Crear directorios necesarios (`docs/`, `snapshots/`, `logs/`) con `.gitkeep`
 
-After migration, review the changes with `git diff`, then commit:
+Despues de la migracion, revisa los cambios con `git diff` y commitea:
 
 ```bash
 git add .odev.yaml addons/
-git commit -m "feat: migrate to independent project format"
+git commit -m "feat: migrar a formato de proyecto independiente"
 ```
 
-## TUI Dashboard
+## Dashboard TUI
 
-Launch the interactive terminal dashboard:
+Lanza el dashboard interactivo de terminal:
 
 ```bash
 odev tui
 ```
 
-The TUI provides three panels:
-- **Status panel** -- Live service status (auto-refreshes) showing container state, health, and ports
-- **Actions bar** -- Quick reference for keyboard shortcuts
-- **Log viewer** -- Streaming Odoo logs in real time
+La TUI provee tres paneles:
+- **Panel de estado** -- Estado de servicios en vivo (auto-refresco) mostrando estado del contenedor, salud y puertos
+- **Barra de acciones** -- Referencia rapida de atajos de teclado
+- **Visor de logs** -- Streaming de logs de Odoo en tiempo real
 
-### Keyboard Shortcuts
+### Atajos de Teclado
 
-| Key | Action |
-|-----|--------|
-| `U` | Start services (docker compose up) |
-| `D` | Stop services (docker compose down) |
-| `R` | Restart the Odoo web container |
-| `S` | Open a bash shell in the Odoo container |
-| `C` | Generate PROJECT_CONTEXT.md |
-| `Q` | Quit the TUI |
+| Tecla | Accion |
+|-------|--------|
+| `U` | Levantar servicios (docker compose up) |
+| `D` | Detener servicios (docker compose down) |
+| `R` | Reiniciar el contenedor web de Odoo |
+| `S` | Abrir shell bash en el contenedor de Odoo |
+| `C` | Generar PROJECT_CONTEXT.md |
+| `Q` | Salir de la TUI |
 
-## Environment Diagnostics
+## Diagnostico del Entorno
 
-Run `odev doctor` to check your environment:
+Ejecuta `odev doctor` para verificar tu entorno:
 
 ```bash
 odev doctor
 ```
 
-It verifies:
-- Docker is installed and running
-- Docker Compose v2 is available
-- Python version is 3.10+
-- Project is detected (PROJECT, LEGACY, or NONE mode)
-- `.env` file exists
-- `docker-compose.yml` exists
-- `config/odoo.conf` exists
-- `addons/` directory and module count
-- Configured ports are available (not in use by other processes)
-- CLI version is compatible with the project's `odev_min_version`
+Verifica:
+- Docker esta instalado y corriendo
+- Docker Compose v2 esta disponible
+- Version de Python es 3.10+
+- Proyecto detectado (modo PROJECT, LEGACY o NONE)
+- El archivo `.env` existe
+- El archivo `docker-compose.yml` existe
+- El archivo `config/odoo.conf` existe
+- Directorio `addons/` y cantidad de modulos
+- Los puertos configurados estan disponibles (no en uso por otros procesos)
+- La version del CLI es compatible con el `odev_min_version` del proyecto
 
-Example output:
+Ejemplo de salida:
 
 ```
 Diagnostico del entorno odev
@@ -367,7 +367,7 @@ Diagnostico del entorno odev
   [OK]   Docker instalado (Docker version 27.x.x)
   [OK]   Docker Compose v2 disponible
   [OK]   Python 3.12.x
-  [OK]   Proyecto detectado: my-project (modo: project)
+  [OK]   Proyecto detectado: mi-proyecto (modo: project)
   [OK]   .env existe
   [OK]   docker-compose.yml existe
   [OK]   config/odoo.conf existe
@@ -379,21 +379,21 @@ Diagnostico del entorno odev
 Todas las verificaciones pasaron correctamente.
 ```
 
-## Installation
+## Instalacion
 
-### With pip
+### Con pip
 
 ```bash
 pip install git+https://github.com/giulianoh92/odev.git
 ```
 
-### With pipx (isolated environment)
+### Con pipx (entorno aislado)
 
 ```bash
 pipx install git+https://github.com/giulianoh92/odev.git
 ```
 
-### For contributors (editable install)
+### Para contribuidores (instalacion editable)
 
 ```bash
 git clone https://github.com/giulianoh92/odev.git
@@ -401,22 +401,22 @@ cd odev
 pip install -e ".[dev]"
 ```
 
-## Requirements
+## Requisitos
 
-- **Python 3.10+** (3.12 recommended)
-- **Docker** with **Docker Compose v2** (Docker Desktop or `docker-compose-plugin`)
-- A terminal that supports ANSI colors (for the TUI and Rich output)
+- **Python 3.10+** (se recomienda 3.12)
+- **Docker** con **Docker Compose v2** (Docker Desktop o `docker-compose-plugin`)
+- Una terminal que soporte colores ANSI (para la TUI y la salida con Rich)
 
-## Contributing
+## Contribuir
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/my-feature`)
-3. Install dev dependencies: `pip install -e ".[dev]"`
-4. Make your changes
-5. Run linting: `ruff check src/ && ruff format --check src/`
-6. Run tests: `pytest`
-7. Submit a pull request
+1. Hace un fork del repositorio
+2. Crea una rama para tu funcionalidad (`git checkout -b feature/mi-funcionalidad`)
+3. Instala las dependencias de desarrollo: `pip install -e ".[dev]"`
+4. Hace tus cambios
+5. Ejecuta el linting: `ruff check src/ && ruff format --check src/`
+6. Ejecuta los tests: `pytest`
+7. Envia un pull request
 
-## License
+## Licencia
 
 MIT

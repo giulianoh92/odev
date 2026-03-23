@@ -3,9 +3,9 @@
 Encapsula la interaccion con Docker Compose, detectando automaticamente
 si usar 'docker compose' (v2) o 'docker-compose' (v1 legacy). Cada
 instancia opera sobre un project_root especifico, eliminando el patron
-singleton del viejo docker.py.
+instancia unica global del viejo docker.py.
 
-Cambio clave: Se elimina el singleton `dc = DockerCompose()` que se
+Cambio clave: Se elimina la instancia unica global `dc = DockerCompose()` que se
 evaluaba al importar. Ahora cada comando instancia su propio
 DockerCompose con el project_root correcto.
 """
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 class DockerCompose:
     """Wrapper de docker compose con soporte para multiples proyectos.
 
-    Attributes:
+    Atributos:
         _cmd: Comando base detectado (['docker', 'compose'] o ['docker-compose']).
         _project_root: Directorio raiz del proyecto donde se ejecutan los comandos.
     """
@@ -34,11 +34,11 @@ class DockerCompose:
     def __init__(self, project_root: Path | None = None) -> None:
         """Inicializa el wrapper de Docker Compose.
 
-        Args:
+        Argumentos:
             project_root: Directorio raiz del proyecto. Si es None, se detecta
                          automaticamente usando detect_mode().
 
-        Raises:
+        Lanza:
             RuntimeError: Si no se encuentra Docker ni docker-compose instalado.
         """
         self._cmd = self._detect_command()
@@ -57,10 +57,10 @@ class DockerCompose:
         Para proyectos EXTERNAL, establece el nombre del proyecto Docker
         Compose para garantizar aislamiento de volumenes entre proyectos.
 
-        Args:
+        Argumentos:
             contexto: Contexto del proyecto resuelto.
 
-        Returns:
+        Retorna:
             Instancia de DockerCompose configurada segun el contexto.
         """
         from odev.core.resolver import ModoProyecto
@@ -74,10 +74,10 @@ class DockerCompose:
     def _detect_command() -> list[str]:
         """Detecta si usar 'docker compose' (v2) o 'docker-compose' (v1).
 
-        Returns:
+        Retorna:
             Lista con el comando base a usar.
 
-        Raises:
+        Lanza:
             RuntimeError: Si no se encuentra ninguna version de docker compose.
         """
         if shutil.which("docker"):
@@ -104,13 +104,13 @@ class DockerCompose:
     ) -> subprocess.CompletedProcess:
         """Ejecuta un comando de docker compose.
 
-        Args:
+        Argumentos:
             args: Argumentos para docker compose (ej. ['up', '-d']).
             capture: Si True, captura stdout y stderr.
             check: Si True, lanza excepcion si el comando falla.
             input_data: Datos para enviar por stdin al proceso.
 
-        Returns:
+        Retorna:
             Resultado de la ejecucion del subproceso.
         """
         cmd = [*self._cmd]
@@ -135,11 +135,11 @@ class DockerCompose:
         Para comandos interactivos (como logs -f o shell), se usa
         subprocess.run sin captura para permitir la interaccion del usuario.
 
-        Args:
+        Argumentos:
             args: Argumentos para docker compose.
             interactive: Si True, permite interaccion directa del usuario.
 
-        Returns:
+        Retorna:
             Resultado de la ejecucion del subproceso.
         """
         cmd = [*self._cmd]
@@ -155,9 +155,9 @@ class DockerCompose:
     def up(self, build: bool = False, watch: bool = False) -> None:
         """Levanta los servicios de docker compose en modo detached.
 
-        Args:
+        Argumentos:
             build: Si True, reconstruye las imagenes antes de levantar.
-            watch: Si True, activa el modo watch para hot-reload.
+            watch: Si True, activa el modo watch para recarga en caliente.
         """
         args = ["up", "-d"]
         if build:
@@ -169,7 +169,7 @@ class DockerCompose:
     def down(self, volumes: bool = False) -> None:
         """Detiene y elimina los contenedores del proyecto.
 
-        Args:
+        Argumentos:
             volumes: Si True, tambien elimina los volumenes asociados.
         """
         args = ["down"]
@@ -184,7 +184,7 @@ class DockerCompose:
     def restart(self, service: str = "web") -> None:
         """Reinicia un servicio especifico.
 
-        Args:
+        Argumentos:
             service: Nombre del servicio a reiniciar (por defecto 'web').
         """
         self._run(["restart", service])
@@ -192,10 +192,10 @@ class DockerCompose:
     def ps(self, format_json: bool = False) -> str:
         """Lista el estado de los servicios.
 
-        Args:
+        Argumentos:
             format_json: Si True, retorna la salida en formato JSON.
 
-        Returns:
+        Retorna:
             Salida del comando docker compose ps como string.
         """
         args = ["ps"]
@@ -210,7 +210,7 @@ class DockerCompose:
         Parsea la salida JSON de docker compose ps, manejando tanto
         la salida como un array JSON como objetos JSON por linea.
 
-        Returns:
+        Retorna:
             Lista de diccionarios con la informacion de cada servicio.
         """
         salida_cruda = self.ps(format_json=True).strip()
@@ -233,7 +233,7 @@ class DockerCompose:
     def logs(self, service: str | None = None, follow: bool = True, tail: int = 100) -> None:
         """Muestra los logs de los servicios.
 
-        Args:
+        Argumentos:
             service: Servicio especifico del cual ver logs. Si es None, muestra todos.
             follow: Si True, sigue los logs en tiempo real.
             tail: Numero de lineas a mostrar desde el final.
@@ -255,13 +255,13 @@ class DockerCompose:
     ) -> subprocess.CompletedProcess:
         """Ejecuta un comando dentro de un contenedor en ejecucion.
 
-        Args:
+        Argumentos:
             service: Nombre del servicio donde ejecutar el comando.
             command: Comando y sus argumentos a ejecutar.
             interactive: Si True, permite interaccion directa del usuario.
             stdin_data: Datos para enviar por stdin al contenedor.
 
-        Returns:
+        Retorna:
             Resultado de la ejecucion del subproceso.
         """
         args = ["exec"]
@@ -275,10 +275,10 @@ class DockerCompose:
     def get_container_name(self, service: str) -> str | None:
         """Busca dinamicamente el nombre del contenedor para un servicio.
 
-        Args:
+        Argumentos:
             service: Nombre del servicio cuyo contenedor se busca.
 
-        Returns:
+        Retorna:
             Nombre del contenedor o None si no se encuentra.
         """
         resultado = self._run(["ps", "-q", service], capture=True, check=False)

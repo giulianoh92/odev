@@ -53,7 +53,7 @@ _CONFIGURACION_POR_DEFECTO: dict = {
 class ProjectConfig:
     """Configuracion de un proyecto odev cargada desde .odev.yaml.
 
-    Attributes:
+    Atributos:
         datos: Diccionario con toda la configuracion del proyecto.
         ruta_archivo: Ruta al archivo .odev.yaml cargado.
     """
@@ -61,10 +61,10 @@ class ProjectConfig:
     def __init__(self, ruta_proyecto: Path) -> None:
         """Carga la configuracion del proyecto desde .odev.yaml.
 
-        Args:
+        Argumentos:
             ruta_proyecto: Directorio raiz del proyecto donde buscar .odev.yaml.
 
-        Raises:
+        Lanza:
             FileNotFoundError: Si no existe .odev.yaml en la ruta indicada.
         """
         self.ruta_archivo = ruta_proyecto / ".odev.yaml"
@@ -140,9 +140,9 @@ class ProjectConfig:
     def verificar_compatibilidad_version(self) -> bool:
         """Verifica si la version del CLI satisface la version minima del proyecto.
 
-        Muestra un warning si la version instalada es menor a la requerida.
+        Muestra una advertencia si la version instalada es menor a la requerida.
 
-        Returns:
+        Retorna:
             True si la version es compatible, False si no lo es.
         """
         version_cli = Version(__version__)
@@ -160,11 +160,11 @@ class ProjectConfig:
 def _mezclar_profundo(base: dict, actualizacion: dict) -> dict:
     """Mezcla recursiva de dos diccionarios, priorizando los valores de actualizacion.
 
-    Args:
+    Argumentos:
         base: Diccionario con valores por defecto.
         actualizacion: Diccionario con valores que sobreescriben los de base.
 
-    Returns:
+    Retorna:
         Diccionario resultante de la mezcla profunda.
     """
     resultado = base.copy()

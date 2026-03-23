@@ -1,7 +1,7 @@
 """Gestion de configuracion del entorno: carga de .env y generacion de odoo.conf.
 
-Portado del viejo cli/core/config.py, adaptado para usar las nuevas rutas
-dinamicas de ProjectPaths y los templates bundled en el paquete pip.
+Migrado del viejo cli/core/config.py, adaptado para usar las nuevas rutas
+dinamicas de ProjectPaths y los templates incluidos en el paquete pip.
 
 Cambio clave: Los templates Jinja2 ahora se cargan del paquete pip
 (via get_project_templates_dir), no del filesystem local.
@@ -18,10 +18,10 @@ from odev.core.paths import get_project_templates_dir
 def load_env(env_file: Path | None = None) -> dict[str, str | None]:
     """Lee el archivo .env y retorna sus valores como diccionario.
 
-    Args:
+    Argumentos:
         env_file: Ruta al archivo .env. Si es None, busca en el proyecto actual.
 
-    Returns:
+    Retorna:
         Diccionario con las variables de entorno cargadas del .env.
         Si el archivo no existe, retorna un diccionario vacio.
     """
@@ -38,7 +38,7 @@ def load_env(env_file: Path | None = None) -> dict[str, str | None]:
 def _get_jinja_env() -> Environment:
     """Crea y retorna el entorno Jinja2 configurado con los templates del paquete.
 
-    Returns:
+    Retorna:
         Entorno Jinja2 apuntando al directorio de templates de proyecto.
     """
     return Environment(
@@ -50,12 +50,12 @@ def _get_jinja_env() -> Environment:
 def write_env(values: dict[str, str], dest: Path | None = None) -> Path:
     """Renderiza el template env.j2 con los valores dados y escribe el .env.
 
-    Args:
+    Argumentos:
         values: Diccionario de valores para renderizar el template.
         dest: Ruta destino para el archivo .env. Si es None, usa la ruta
               del proyecto actual.
 
-    Returns:
+    Retorna:
         Ruta al archivo .env generado.
     """
     env = _get_jinja_env()
@@ -76,12 +76,12 @@ def construir_addon_mounts(
 ) -> list[dict]:
     """Construye la lista de mounts para Docker y odoo.conf.
 
-    Args:
+    Argumentos:
         rutas_addons: Lista de rutas a directorios de addons (relativas o absolutas).
         directorio_config: Directorio donde vive el docker-compose
                           (para resolver rutas relativas).
 
-    Returns:
+    Retorna:
         Lista de dicts con:
         - host_path: ruta en el host (como aparece en docker-compose volumes).
         - container_path: ruta en el container (/mnt/extra-addons, /mnt/extra-addons-1, etc.).
@@ -117,7 +117,7 @@ def generate_odoo_conf(
 ) -> Path:
     """Renderiza odoo.conf.j2 y escribe en config/odoo.conf.
 
-    Args:
+    Argumentos:
         env_values: Valores del .env para renderizar. Si es None, se cargan
                    automaticamente del .env del proyecto.
         config_dir: Directorio donde escribir odoo.conf. Si es None, usa
@@ -128,7 +128,7 @@ def generate_odoo_conf(
                      comportamiento anterior.
         enterprise_enabled: Si True, agrega /mnt/enterprise-addons al addons_path.
 
-    Returns:
+    Retorna:
         Ruta al archivo odoo.conf generado.
     """
     if env_values is None:

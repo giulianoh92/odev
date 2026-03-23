@@ -60,7 +60,7 @@ def adopt(
         None,
         "--name",
         "-n",
-        help="Nombre del proyecto (default: nombre del directorio).",
+        help="Nombre del proyecto (por defecto: nombre del directorio).",
     ),
     odoo_version: str = typer.Option(
         None,
@@ -269,7 +269,7 @@ def _wizard_configuracion(puertos: dict[str, int]) -> dict[str, Any]:
         raise typer.Exit()
 
     password_db = questionary.text(
-        "Password de la base de datos:",
+        "Contraseña de la base de datos:",
         default="odoo",
     ).ask()
     if password_db is None:

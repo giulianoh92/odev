@@ -22,7 +22,7 @@ class ActionsBar(Static):
         """
         return (
             "[bold]Acciones[/]\n\n"
-            "[cyan]U[/] Up      [cyan]D[/] Down\n"
-            "[cyan]R[/] Restart [cyan]S[/] Shell\n"
-            "[cyan]C[/] Context [cyan]Q[/] Quit\n"
+            "[cyan]U[/] Levantar  [cyan]D[/] Detener\n"
+            "[cyan]R[/] Reiniciar [cyan]S[/] Shell\n"
+            "[cyan]C[/] Contexto  [cyan]Q[/] Salir\n"
         )

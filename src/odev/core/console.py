@@ -12,7 +12,7 @@ console = Console()
 def success(message: str) -> None:
     """Imprime un mensaje de exito con indicador verde.
 
-    Args:
+    Argumentos:
         message: Texto del mensaje a mostrar.
     """
     console.print(f"[bold green]OK[/] {message}")
@@ -21,7 +21,7 @@ def success(message: str) -> None:
 def error(message: str) -> None:
     """Imprime un mensaje de error con indicador rojo.
 
-    Args:
+    Argumentos:
         message: Texto del mensaje de error a mostrar.
     """
     console.print(f"[bold red]ERROR[/] {message}")
@@ -30,7 +30,7 @@ def error(message: str) -> None:
 def warning(message: str) -> None:
     """Imprime un mensaje de advertencia con indicador amarillo.
 
-    Args:
+    Argumentos:
         message: Texto de la advertencia a mostrar.
     """
     console.print(f"[bold yellow]WARN[/] {message}")
@@ -39,7 +39,7 @@ def warning(message: str) -> None:
 def info(message: str) -> None:
     """Imprime un mensaje informativo con indicador azul.
 
-    Args:
+    Argumentos:
         message: Texto informativo a mostrar.
     """
     console.print(f"[bold blue]INFO[/] {message}")

@@ -1,9 +1,9 @@
 #!/bin/bash
 set -e
 
-# Wait for database DNS resolution and TCP connectivity.
-# depends_on + service_healthy handles the startup order, but after a
-# down/up cycle Docker's internal DNS may not be ready immediately.
+# Esperar la resolucion DNS de la base de datos y conectividad TCP.
+# depends_on + service_healthy maneja el orden de inicio, pero despues de un
+# ciclo down/up el DNS interno de Docker puede no estar listo inmediatamente.
 DB_HOST="${HOST:-db}"
 DB_PORT=5432
 MAX_RETRIES=30
@@ -18,13 +18,13 @@ except Exception:
 " 2>/dev/null; then
         break
     fi
-    echo "Waiting for database at $DB_HOST:$DB_PORT... ($i/$MAX_RETRIES)"
+    echo "Esperando base de datos en $DB_HOST:$DB_PORT... ($i/$MAX_RETRIES)"
     sleep 1
 done
 
 if [ "$DEBUGPY" = "True" ]; then
     if ! python3 -c "import debugpy" 2>/dev/null; then
-        echo "Installing debugpy..."
+        echo "Instalando debugpy..."
         pip install debugpy -t /tmp/debugpy --no-cache-dir
     fi
     export PYTHONPATH="/tmp/debugpy:${PYTHONPATH:-}"
@@ -35,7 +35,7 @@ else
     ARGS=("--config=/etc/odoo/odoo.conf" "--db-filter=${DB_FILTER}")
 fi
 
-# Helper function to check if language exists
+# Funcion auxiliar para verificar si el idioma ya existe
 check_language_exists() {
     python3 -c "
 import psycopg2
@@ -53,18 +53,18 @@ try:
     cur.execute(\"SELECT 1 FROM res_lang WHERE code = %s\", (os.environ.get('LOAD_LANGUAGE'),))
     exists = cur.fetchone()
     if exists:
-        sys.exit(0) # Exists
+        sys.exit(0) # Existe
     else:
-        sys.exit(1) # Not exists
+        sys.exit(1) # No existe
 except Exception as e:
-    # If connection fails or DB doesn't exist yet (first run), we assume it doesn't exist
-    # But wait, if DB doesn't exist, psycopg2 will fail to connect to 'odoo_db'.
-    # In that case, Odoo will create it. So language definitely doesn't exist.
+    # Si la conexion falla o la BD no existe todavia (primera ejecucion), asumimos que no existe
+    # Si la BD no existe, psycopg2 va a fallar al conectar a 'odoo_db'.
+    # En ese caso, Odoo la va a crear. Asi que el idioma definitivamente no existe.
     sys.exit(1)
 "
 }
 
-# Install Python dependencies from addons requirements.txt (like Odoo.sh does)
+# Instalar dependencias Python de los requirements.txt de addons (como hace Odoo.sh)
 {% if addon_dirs_container is defined %}
 ADDONS_DIRS="{{ addon_dirs_container | join(' ') }}"
 {% else %}
@@ -72,29 +72,29 @@ ADDONS_DIRS="/mnt/extra-addons /mnt/enterprise-addons"
 {% endif %}
 REQ_FILES=$(find $ADDONS_DIRS -maxdepth 3 -name 'requirements.txt' -not -empty 2>/dev/null || true)
 if [ -n "$REQ_FILES" ]; then
-    echo "Installing Python dependencies from addons requirements.txt files..."
+    echo "Instalando dependencias Python de los archivos requirements.txt de addons..."
     for req in $REQ_FILES; do
         pip install --break-system-packages --quiet -r "$req" 2>/dev/null || true
     done
 fi
 
-# Add WITHOUT_DEMO if set (v19: boolean flag, no value)
+# Agregar WITHOUT_DEMO si esta seteado (v19: flag booleano, sin valor)
 if [ -n "$WITHOUT_DEMO" ] && [ "$WITHOUT_DEMO" != "False" ]; then
     ARGS+=("--without-demo")
 fi
 
-# Init modules handling
+# Manejo de inicializacion de modulos
 MODULES_TO_INIT="${INIT_MODULES}"
 
-# Language Loading Logic
+# Logica de carga de idioma
 if [ -n "$LOAD_LANGUAGE" ]; then
-    echo "Checking if language $LOAD_LANGUAGE is already loaded..."
+    echo "Verificando si el idioma $LOAD_LANGUAGE ya esta cargado..."
     if check_language_exists; then
-        echo "Language $LOAD_LANGUAGE already exists. Skipping load."
+        echo "El idioma $LOAD_LANGUAGE ya existe. Salteando carga."
     else
-        echo "Language $LOAD_LANGUAGE not found or DB not initialized. Adding --load-language flag and forcing base init."
+        echo "Idioma $LOAD_LANGUAGE no encontrado o BD no inicializada. Agregando flag --load-language y forzando init de base."
         ARGS+=("--load-language=${LOAD_LANGUAGE}")
-        # Force 'base' initialization to ensure DB tables are created
+        # Forzar inicializacion de 'base' para asegurar que se creen las tablas de la BD
         if [[ -z "$MODULES_TO_INIT" ]]; then
             MODULES_TO_INIT="base"
         else
@@ -103,17 +103,17 @@ if [ -n "$LOAD_LANGUAGE" ]; then
     fi
 fi
 
-# Apply init modules if any
+# Aplicar modulos de inicializacion si hay alguno
 if [ -n "$MODULES_TO_INIT" ]; then
     ARGS+=("--init=${MODULES_TO_INIT}")
 fi
 
-# Always add dev mode for hot reloading in this dev environment
+# Siempre agregar modo dev para hot reloading en este entorno de desarrollo
 ARGS+=("--dev=reload,xml")
 
 LOG_FILE="/var/log/odoo/odoo.log"
-echo "Starting Odoo with command: $CMD ${ARGS[*]}"
+echo "Iniciando Odoo con comando: $CMD ${ARGS[*]}"
 
-# Run Odoo and duplicate output to log file while keeping stderr for Docker logs.
-# Use exec to replace shell, with process substitution to tee into the log file.
+# Ejecutar Odoo y duplicar la salida al archivo de log manteniendo stderr para los logs de Docker.
+# Usar exec para reemplazar el shell, con sustitucion de proceso para tee al archivo de log.
 exec $CMD "${ARGS[@]}" > >(tee -a "$LOG_FILE") 2>&1

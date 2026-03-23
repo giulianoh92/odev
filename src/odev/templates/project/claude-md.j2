@@ -3,22 +3,22 @@
 
 ## Contexto del Proyecto
 - **Proyecto**: {{ project_name }}
-- **Odoo Version**: {{ odoo_version }}
+- **Version de Odoo**: {{ odoo_version }}
 - **Descripcion**: {{ project_description | default('Proyecto Odoo') }}
 
-## Pipeline SDD (Flujo de Desarrollo)
+## Pipeline SDD (Flujo de desarrollo)
 
 Todas las tareas deben seguir este flujo secuencial:
 
-1. **Explorer**: Analizar codigo actual y contexto.
-2. **Requirements (Spec)**: Crear `docs/spec.md` con alcance y reglas de negocio.
-3. **Architecture (Design)**: Crear `docs/design.md` con solucion tecnica.
-4. **HUMAN GATE**: Pedir aprobacion de spec y design.
-5. **Task Planner**: Crear `docs/task.md` con checklist de tareas atomicas.
-6. **HUMAN GATE**: Pedir aprobacion del plan.
-7. **Implementer**: Escribir codigo basado en el plan aprobado.
-8. **Verifier**: Validar que el codigo cumple la especificacion.
-9. **Archiver**: Guardar decisiones y limpiar artefactos temporales.
+1. **Explorador**: Analizar codigo actual y contexto.
+2. **Requerimientos (Spec)**: Crear `docs/spec.md` con alcance y reglas de negocio.
+3. **Arquitectura (Design)**: Crear `docs/design.md` con solucion tecnica.
+4. **APROBACION HUMANA**: Pedir aprobacion de spec y design.
+5. **Planificador de Tareas**: Crear `docs/task.md` con checklist de tareas atomicas.
+6. **APROBACION HUMANA**: Pedir aprobacion del plan.
+7. **Implementador**: Escribir codigo basado en el plan aprobado.
+8. **Verificador**: Validar que el codigo cumple la especificacion.
+9. **Archivador**: Guardar decisiones y limpiar artefactos temporales.
 
 ## Contexto Tecnico
 - **Framework**: Odoo {{ odoo_version }} / Python 3.10+

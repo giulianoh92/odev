@@ -23,10 +23,10 @@ def puerto_disponible(puerto: int) -> bool:
     Intenta hacer bind en el puerto especificado en localhost.
     Si tiene exito, el puerto esta libre.
 
-    Args:
+    Argumentos:
         puerto: Numero de puerto TCP a verificar.
 
-    Returns:
+    Retorna:
         True si el puerto esta disponible, False si esta ocupado.
     """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -44,10 +44,10 @@ def sugerir_puertos() -> dict[str, int]:
     Si alguno esta ocupado, incrementa TODOS los puertos del set
     en 1 hasta encontrar un set completo disponible.
 
-    Limite de seguridad: intenta hasta 100 offsets antes de retornar
-    los puertos base como fallback.
+    Limite de seguridad: intenta hasta 100 incrementos antes de retornar
+    los puertos base como valor por defecto.
 
-    Returns:
+    Retorna:
         Diccionario con nombre de variable -> puerto disponible.
     """
     offset = 0
@@ -56,5 +56,5 @@ def sugerir_puertos() -> dict[str, int]:
         if all(puerto_disponible(p) for p in puertos.values()):
             return puertos
         offset += 1
-    # Fallback: retorna los puertos base sin verificar
+    # Valor por defecto: retorna los puertos base sin verificar
     return CONJUNTOS_PUERTOS.copy()

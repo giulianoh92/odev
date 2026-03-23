@@ -2,7 +2,7 @@
 
 Gestiona un archivo YAML centralizado que almacena la informacion de todos
 los proyectos odev conocidos por el sistema. Permite registrar, buscar,
-listar y eliminar proyectos, con soporte para file locking en escritura
+listar y eliminar proyectos, con soporte para bloqueo de archivo en escritura
 para manejar acceso concurrente.
 """
 
@@ -29,7 +29,7 @@ PROJECTS_DIR = ODEV_HOME / "projects"
 class RegistryEntry:
     """Entrada de un proyecto en el registro global.
 
-    Attributes:
+    Atributos:
         nombre: Nombre del proyecto (clave unica en el registro).
         directorio_trabajo: Directorio donde vive el codigo del proyecto.
         directorio_config: Directorio donde odev guarda sus archivos de config.
@@ -66,7 +66,7 @@ class Registry:
     def _leer(self) -> dict[str, RegistryEntry]:
         """Lee el registry.yaml y retorna un dict nombre -> RegistryEntry.
 
-        Returns:
+        Retorna:
             Diccionario con las entradas del registro. Retorna dict vacio
             si el archivo no existe, esta vacio o contiene YAML invalido.
         """
@@ -115,9 +115,9 @@ class Registry:
         return resultado
 
     def _escribir(self, entries: dict[str, RegistryEntry]) -> None:
-        """Escribe el registry.yaml con file locking.
+        """Escribe el registry.yaml con bloqueo de archivo.
 
-        Args:
+        Argumentos:
             entries: Diccionario nombre -> RegistryEntry a persistir.
         """
         self._asegurar_directorio()
@@ -150,7 +150,7 @@ class Registry:
     def registrar(self, entry: RegistryEntry) -> None:
         """Agrega o actualiza un proyecto en el registro.
 
-        Args:
+        Argumentos:
             entry: Entrada del proyecto a registrar. Si ya existe una
                    entrada con el mismo nombre, se sobreescribe.
         """
@@ -162,10 +162,10 @@ class Registry:
     def eliminar(self, nombre: str) -> bool:
         """Elimina un proyecto del registro.
 
-        Args:
+        Argumentos:
             nombre: Nombre del proyecto a eliminar.
 
-        Returns:
+        Retorna:
             True si el proyecto existia y fue eliminado, False si no existia.
         """
         entries = self._leer()
@@ -179,10 +179,10 @@ class Registry:
     def obtener(self, nombre: str) -> RegistryEntry | None:
         """Obtiene un proyecto por nombre.
 
-        Args:
+        Argumentos:
             nombre: Nombre del proyecto a buscar.
 
-        Returns:
+        Retorna:
             La entrada del proyecto si existe, None si no.
         """
         entries = self._leer()
@@ -191,7 +191,7 @@ class Registry:
     def listar(self) -> list[RegistryEntry]:
         """Lista todos los proyectos registrados.
 
-        Returns:
+        Retorna:
             Lista de todas las entradas del registro, ordenadas por nombre.
         """
         entries = self._leer()
@@ -200,16 +200,16 @@ class Registry:
     def buscar_por_directorio(self, directorio: Path) -> list[RegistryEntry]:
         """Busca proyectos cuyo directorio_trabajo contiene el directorio dado.
 
-        Usa prefix matching: si el directorio dado es un subdirectorio
+        Usa coincidencia por prefijo: si el directorio dado es un subdirectorio
         (o el mismo directorio) que el directorio_trabajo de un proyecto,
-        se considera un match. Resuelve symlinks y normaliza las rutas
+        se considera una coincidencia. Resuelve symlinks y normaliza las rutas
         antes de comparar.
 
-        Args:
+        Argumentos:
             directorio: Directorio a buscar (tipicamente el cwd actual).
 
-        Returns:
-            Lista de entradas que matchean. El llamador maneja la ambiguedad
+        Retorna:
+            Lista de entradas que coinciden. El llamador maneja la ambiguedad
             si hay multiples resultados.
         """
         directorio_resuelto = directorio.resolve()
@@ -231,7 +231,7 @@ class Registry:
     def limpiar_obsoletos(self) -> list[str]:
         """Elimina entradas cuyo directorio_trabajo ya no existe.
 
-        Returns:
+        Retorna:
             Lista de nombres de proyectos eliminados.
         """
         entries = self._leer()

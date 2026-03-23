@@ -62,7 +62,7 @@ class TipoRepo(str, Enum):
 class RepoLayout:
     """Resultado del analisis de layout de un repositorio Odoo.
 
-    Attributes:
+    Atributos:
         tipo: Tipo de layout detectado.
         rutas_addons: Directorios que contienen modulos Odoo.
         tiene_enterprise: Si se detecto un directorio enterprise.
@@ -93,10 +93,10 @@ def detectar_layout(ruta: Path) -> RepoLayout:
         4. Parsea .gitmodules para encontrar submodulos y sus addons.
         5. Clasifica segun los hallazgos.
 
-    Args:
+    Argumentos:
         ruta: Directorio raiz del repositorio a analizar.
 
-    Returns:
+    Retorna:
         RepoLayout con el resultado del analisis.
     """
     ruta = ruta.resolve()
@@ -189,10 +189,10 @@ def _es_modulo_odoo(ruta: Path) -> bool:
     Comprueba la existencia de __manifest__.py (Odoo 10+) o
     __openerp__.py (versiones anteriores).
 
-    Args:
+    Argumentos:
         ruta: Directorio a verificar.
 
-    Returns:
+    Retorna:
         True si el directorio contiene un manifiesto de modulo Odoo.
     """
     if not ruta.is_dir():
@@ -206,10 +206,10 @@ def _buscar_modulos_en(directorio: Path) -> list[Path]:
     Solo escanea un nivel de profundidad. Omite directorios ocultos
     (que empiezan con '.') y directorios conocidos que no son modulos.
 
-    Args:
+    Argumentos:
         directorio: Directorio donde buscar modulos.
 
-    Returns:
+    Retorna:
         Lista de rutas a los directorios de modulos encontrados.
     """
     modulos: list[Path] = []
@@ -245,10 +245,10 @@ def _parsear_gitmodules(ruta: Path) -> list[Path]:
     [submodule "nombre"] y una clave 'path' que indica la ruta relativa
     del submodulo respecto a la raiz del repositorio.
 
-    Args:
+    Argumentos:
         ruta: Directorio raiz del repositorio (donde esta .gitmodules).
 
-    Returns:
+    Retorna:
         Lista de rutas relativas (como Path) de los submodulos encontrados.
     """
     archivo_gitmodules = ruta / ".gitmodules"
@@ -281,10 +281,10 @@ def _detectar_enterprise(ruta: Path) -> bool:
     2. Algun subdirectorio inmediato de la raiz tiene un nombre que
        coincide con modulos conocidos de Enterprise.
 
-    Args:
+    Argumentos:
         ruta: Directorio raiz del repositorio.
 
-    Returns:
+    Retorna:
         True si se detecta la presencia de addons enterprise.
     """
     # Verificar directorio enterprise/ explicitamente

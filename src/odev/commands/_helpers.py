@@ -1,4 +1,4 @@
-"""Helpers compartidos para los comandos de odev."""
+"""Funciones auxiliares compartidas para los comandos de odev."""
 
 from __future__ import annotations
 

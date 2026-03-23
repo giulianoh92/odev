@@ -22,7 +22,7 @@ def down(
     """Detiene y elimina los contenedores del proyecto.
 
     Ejecuta 'docker compose down' sobre el proyecto detectado.
-    Opcionalmente elimina los volumenes asociados con el flag -v.
+    Opcionalmente elimina los volumenes asociados con la opcion -v.
     """
     from odev.main import obtener_nombre_proyecto
     contexto = requerir_proyecto(obtener_nombre_proyecto())

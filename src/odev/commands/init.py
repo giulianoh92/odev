@@ -168,7 +168,7 @@ def _wizard_interactivo(
     Returns:
         Diccionario con todos los valores necesarios para renderizar templates.
     """
-    info("Bienvenido al wizard de odev.\n")
+    info("Bienvenido al asistente de configuracion de odev.\n")
 
     # Nombre del proyecto
     nombre_proyecto = questionary.text(
@@ -217,7 +217,7 @@ def _wizard_interactivo(
     if usuario_db is None:
         raise typer.Exit()
 
-    password_db = questionary.text("Password de la base de datos:", default="odoo").ask()
+    password_db = questionary.text("Contraseña de la base de datos:", default="odoo").ask()
     if password_db is None:
         raise typer.Exit()
 
@@ -509,9 +509,9 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install ruff
-      - name: Ruff lint
+      - name: Ruff linting
         run: ruff check addons/
-      - name: Ruff format check
+      - name: Ruff verificar formato
         run: ruff format --check addons/
 
   test:
@@ -537,7 +537,7 @@ jobs:
           if [ -n "$MODULES" ]; then
             docker compose exec web odoo --test-enable --stop-after-init -d {valores.get("DB_NAME", "odoo_db")} -u "$MODULES"
           fi
-      - name: Cleanup
+      - name: Limpieza
         if: always()
         run: docker compose down -v
 """
