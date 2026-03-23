@@ -51,6 +51,20 @@ Issues = "https://github.com/giuliano/odev/issues"
 testpaths = ["tests"]
 norecursedirs = ["src/odev/templates"]
 
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.coverage.run]
+source = ["odev"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["odev*"]
