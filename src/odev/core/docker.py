@@ -13,12 +13,15 @@ DockerCompose con el project_root correcto.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from odev.core.resolver import ProjectContext
@@ -252,6 +255,7 @@ class DockerCompose:
                     try:
                         resultados.append(json.loads(linea))
                     except json.JSONDecodeError:
+                        logger.debug("Linea JSON invalida ignorada en ps: %s", linea)
                         continue
             return resultados
 

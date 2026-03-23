@@ -15,29 +15,23 @@ from typing import Any
 
 import questionary
 import typer
-from jinja2 import Environment, FileSystemLoader
 from rich.panel import Panel
 
 from odev import __version__
+from odev.commands._wizards import (
+    MAPEO_VERSION_PG,
+    VERSIONES_ODOO,
+    preguntar_configuracion_base,
+    renderizar_templates,
+    valores_configuracion_por_defecto,
+)
 from odev.core.config import construir_addon_mounts, generate_odoo_conf
 from odev.core.console import console, error, info, success, warning
 from odev.core.detect import RepoLayout, TipoRepo, detectar_layout
-from odev.core.paths import get_project_templates_dir
 from odev.core.ports import sugerir_puertos
 from odev.core.registry import PROJECTS_DIR, Registry, RegistryEntry
 
 # -- Constantes ----------------------------------------------------------------
-
-VERSIONES_ODOO: list[str] = ["19.0", "18.0", "17.0", "16.0"]
-"""Versiones de Odoo soportadas por el wizard (mas reciente primero)."""
-
-MAPEO_VERSION_PG: dict[str, str] = {
-    "19.0": "16",
-    "18.0": "16",
-    "17.0": "15",
-    "16.0": "15",
-}
-"""Mapeo de version de Odoo a tag de imagen PostgreSQL recomendada."""
 
 # Templates a renderizar y su ruta destino relativa al directorio de config
 _MAPA_TEMPLATES: list[tuple[str, str]] = [
@@ -79,7 +73,7 @@ def adopt(
     ruta = Path(directorio).resolve()
     if not ruta.is_dir():
         error(f"'{ruta}' no es un directorio valido.")
-        raise SystemExit(1)
+        raise typer.Exit(1)
 
     # 2. Verificar si ya es un proyecto odev -----------------------------------
     if (ruta / ".odev.yaml").exists():
@@ -87,7 +81,7 @@ def adopt(
             f"'{ruta}' ya es un proyecto odev (tiene .odev.yaml). "
             "Usa 'odev up' directamente."
         )
-        raise SystemExit(1)
+        raise typer.Exit(1)
 
     # 3. Detectar layout -------------------------------------------------------
     layout = detectar_layout(ruta)
@@ -97,18 +91,18 @@ def adopt(
             "Detectado repositorio Odoo fuente completo (odoo-bin). "
             "Este tipo de proyecto no esta soportado aun."
         )
-        raise SystemExit(1)
+        raise typer.Exit(1)
 
     if layout.tipo == TipoRepo.DESCONOCIDO:
         warning("No se detectaron modulos Odoo en este directorio.")
         if no_interactive:
-            raise SystemExit(1)
+            raise typer.Exit(1)
         continuar = questionary.confirm(
             "Continuar de todos modos?",
             default=False,
         ).ask()
         if not continuar:
-            raise SystemExit(0)
+            raise typer.Exit()
 
     # 4. Mostrar resultados de deteccion ---------------------------------------
     _mostrar_deteccion(layout)
@@ -133,7 +127,7 @@ def adopt(
     existente = registro.obtener(name)
     if existente:
         error(f"Ya existe un proyecto '{name}' en el registro.")
-        raise SystemExit(1)
+        raise typer.Exit(1)
 
     # 7. Recopilar version de Odoo ---------------------------------------------
     if odoo_version is None:
@@ -152,9 +146,9 @@ def adopt(
     puertos = sugerir_puertos()
 
     if not no_interactive:
-        valores_extra = _wizard_configuracion(puertos)
+        valores_extra = preguntar_configuracion_base(puertos)
     else:
-        valores_extra = _valores_por_defecto(puertos)
+        valores_extra = valores_configuracion_por_defecto(puertos)
 
     # 9. Crear directorio de configuracion -------------------------------------
     directorio_config = PROJECTS_DIR / name
@@ -176,7 +170,7 @@ def adopt(
 
     # 11. Renderizar templates al directorio de config -------------------------
     info(f"Generando configuracion en {directorio_config}...")
-    _renderizar_templates(directorio_config, valores)
+    renderizar_templates(directorio_config, valores, _MAPA_TEMPLATES)
 
     # Hacer entrypoint.sh ejecutable
     ruta_entrypoint = directorio_config / "entrypoint.sh"
@@ -227,123 +221,6 @@ def _mostrar_deteccion(layout: RepoLayout) -> None:
     for ruta_addon in layout.rutas_addons:
         console.print(f"  [dim]•[/dim] {ruta_addon}")
 
-
-def _wizard_configuracion(puertos: dict[str, int]) -> dict[str, Any]:
-    """Ejecuta el wizard interactivo para recopilar configuracion adicional.
-
-    Args:
-        puertos: Puertos sugeridos por sugerir_puertos().
-
-    Returns:
-        Diccionario con los valores recopilados del usuario.
-    """
-    # Puerto web
-    puerto_web = questionary.text(
-        f"Puerto de Odoo ({puertos['WEB_PORT']}):",
-        default=str(puertos["WEB_PORT"]),
-    ).ask()
-    if puerto_web is None:
-        raise typer.Exit()
-
-    # Puerto pgweb
-    puerto_pgweb = questionary.text(
-        f"Puerto de pgweb ({puertos['PGWEB_PORT']}):",
-        default=str(puertos["PGWEB_PORT"]),
-    ).ask()
-    if puerto_pgweb is None:
-        raise typer.Exit()
-
-    # Base de datos
-    nombre_db = questionary.text(
-        "Nombre de la base de datos:",
-        default="odoo_db",
-    ).ask()
-    if nombre_db is None:
-        raise typer.Exit()
-
-    usuario_db = questionary.text(
-        "Usuario de la base de datos:",
-        default="odoo",
-    ).ask()
-    if usuario_db is None:
-        raise typer.Exit()
-
-    password_db = questionary.text(
-        "Contraseña de la base de datos:",
-        default="odoo",
-    ).ask()
-    if password_db is None:
-        raise typer.Exit()
-
-    # Idioma
-    idioma = questionary.text(
-        "Idioma por defecto (ej. en_US, es_AR, fr_FR):",
-        default="en_US",
-    ).ask()
-    if idioma is None:
-        raise typer.Exit()
-
-    # Datos de demo
-    sin_demo = questionary.select(
-        "Datos de demo:",
-        choices=[
-            questionary.Choice("Omitir datos de demo", value="all"),
-            questionary.Choice("Cargar datos de demo", value=""),
-        ],
-        default="all",
-    ).ask()
-    if sin_demo is None:
-        raise typer.Exit()
-
-    # Debugpy
-    habilitar_debugpy = questionary.confirm(
-        "Habilitar debugpy para depuracion remota?",
-        default=False,
-    ).ask()
-    if habilitar_debugpy is None:
-        raise typer.Exit()
-
-    # pgweb
-    habilitar_pgweb = questionary.confirm(
-        "Habilitar pgweb?",
-        default=True,
-    ).ask()
-    if habilitar_pgweb is None:
-        raise typer.Exit()
-
-    return {
-        "web_port": puerto_web,
-        "pgweb_port": puerto_pgweb,
-        "db_name": nombre_db,
-        "db_user": usuario_db,
-        "db_password": password_db,
-        "idioma": idioma,
-        "sin_demo": sin_demo,
-        "habilitar_debugpy": habilitar_debugpy,
-        "habilitar_pgweb": habilitar_pgweb,
-    }
-
-
-def _valores_por_defecto(puertos: dict[str, int]) -> dict[str, Any]:
-    """Genera valores por defecto para el modo no-interactivo.
-
-    Args:
-        puertos: Puertos sugeridos por sugerir_puertos().
-
-    Returns:
-        Diccionario con valores por defecto.
-    """
-    return {
-        "web_port": str(puertos["WEB_PORT"]),
-        "pgweb_port": str(puertos["PGWEB_PORT"]),
-        "db_name": "odoo_db",
-        "db_user": "odoo",
-        "db_password": "odoo",
-        "idioma": "en_US",
-        "sin_demo": "all",
-        "habilitar_debugpy": False,
-        "habilitar_pgweb": True,
-    }
 
 
 def _construir_valores(
@@ -447,33 +324,6 @@ def _extraer_env_values(valores: dict[str, Any]) -> dict[str, str]:
     }
     return {k: str(v) for k, v in valores.items() if k in claves_env}
 
-
-def _renderizar_templates(
-    directorio_config: Path,
-    valores: dict[str, Any],
-) -> None:
-    """Renderiza los templates Jinja2 y los escribe en el directorio de config.
-
-    Args:
-        directorio_config: Directorio donde escribir los archivos generados.
-        valores: Diccionario de valores para renderizar los templates.
-    """
-    entorno_jinja = Environment(
-        loader=FileSystemLoader(str(get_project_templates_dir())),
-        keep_trailing_newline=True,
-    )
-
-    for nombre_template, ruta_relativa_destino in _MAPA_TEMPLATES:
-        ruta_destino = directorio_config / ruta_relativa_destino
-
-        # Asegurar que el directorio padre exista
-        ruta_destino.parent.mkdir(parents=True, exist_ok=True)
-
-        # Renderizar template
-        template = entorno_jinja.get_template(nombre_template)
-        contenido = template.render(**valores)
-        ruta_destino.write_text(contenido)
-        success(ruta_relativa_destino)
 
 
 def _mostrar_resumen(
