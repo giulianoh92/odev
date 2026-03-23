@@ -164,27 +164,27 @@
 
 | ID | Item | Phase | Status | Commit |
 |----|------|-------|--------|--------|
-| S1 | Fix SQL Injection en `neutralize.py` | 1 — Seguridad | ⬜ Pending | — |
-| S2 | Pinnear versiones de imágenes Docker | 1 — Seguridad | ⬜ Pending | — |
-| S3 | Validar `nombre_bd` y `usuario_bd` en `neutralize.py` | 1 — Seguridad | ⬜ Pending | — |
-| S4 | Validar `service` en `docker.py exec_cmd` | 1 — Seguridad | ⬜ Pending | — |
-| S5 | Validar `project_root` en `docker.py __init__` | 1 — Seguridad | ⬜ Pending | — |
-| E1 | Fix pytest collection error | 2 — Estabilidad | ⬜ Pending | — |
-| E2 | Schema validation para `.odev.yaml` | 2 — Estabilidad | ⬜ Pending | — |
-| E3 | Fix race condition en `registry.py` | 2 — Estabilidad | ⬜ Pending | — |
-| E4 | Crear método público en DockerCompose | 2 — Estabilidad | ⬜ Pending | — |
-| E5 | Agregar healthchecks a pgweb y mailhog | 2 — Estabilidad | ⬜ Pending | — |
-| E6 | Hacer puerto debugpy condicional | 2 — Estabilidad | ⬜ Pending | — |
-| M1 | Extraer wizards compartidos a `_wizards.py` | 3 — Mantenibilidad | ⬜ Pending | — |
-| M2 | Unificar `install.py` y `update.py` | 3 — Mantenibilidad | ⬜ Pending | — |
-| M3 | Estandarizar manejo de errores | 3 — Mantenibilidad | ⬜ Pending | — |
-| M4 | Estandarizar confirmaciones | 3 — Mantenibilidad | ⬜ Pending | — |
-| M5 | Agregar logging en excepciones silenciadas | 3 — Mantenibilidad | ⬜ Pending | — |
-| J1 | Configuración de herramientas en `pyproject.toml` | 4 — Mejoras | ⬜ Pending | — |
-| J2 | Sección de performance en `odoo.conf.j2` | 4 — Mejoras | ⬜ Pending | — |
-| J3 | Mejorar `restart` command | 4 — Mejoras | ⬜ Pending | — |
-| J4 | Tests de renderizado de templates Jinja2 | 4 — Mejoras | ⬜ Pending | — |
-| J5 | Agregar `--service` a `shell` command | 4 — Mejoras | ⬜ Pending | — |
+| S1 | Fix SQL Injection en `neutralize.py` | 1 — Seguridad | ✅ Done | `3d9d827` |
+| S2 | Pinnear versiones de imágenes Docker | 1 — Seguridad | ✅ Done | `3d9d827` |
+| S3 | Validar `nombre_bd` y `usuario_bd` en `neutralize.py` | 1 — Seguridad | ✅ Done | `3d9d827` |
+| S4 | Validar `service` en `docker.py exec_cmd` | 1 — Seguridad | ✅ Done | `3d9d827` |
+| S5 | Validar `project_root` en `docker.py __init__` | 1 — Seguridad | ✅ Done | `3d9d827` |
+| E1 | Fix pytest collection error | 2 — Estabilidad | ✅ Done | `66bc18f` |
+| E2 | Schema validation para `.odev.yaml` | 2 — Estabilidad | ✅ Done | `66bc18f` |
+| E3 | Fix race condition en `registry.py` | 2 — Estabilidad | ✅ Done | `66bc18f` |
+| E4 | Crear método público en DockerCompose | 2 — Estabilidad | ✅ Done | `66bc18f` |
+| E5 | Agregar healthchecks a pgweb y mailhog | 2 — Estabilidad | ✅ Done | `66bc18f` |
+| E6 | Hacer puerto debugpy condicional | 2 — Estabilidad | ✅ Done | `66bc18f` |
+| M1 | Extraer wizards compartidos a `_wizards.py` | 3 — Mantenibilidad | ✅ Done | `f191c53` |
+| M2 | Unificar `install.py` y `update.py` | 3 — Mantenibilidad | ✅ Done | `f191c53` |
+| M3 | Estandarizar manejo de errores | 3 — Mantenibilidad | ✅ Done | `f191c53` |
+| M4 | Estandarizar confirmaciones | 3 — Mantenibilidad | ⏭️ Skipped | — |
+| M5 | Agregar logging en excepciones silenciadas | 3 — Mantenibilidad | ✅ Done | `f191c53` |
+| J1 | Configuración de herramientas en `pyproject.toml` | 4 — Mejoras | ✅ Done | `3ccd164` |
+| J2 | Sección de performance en `odoo.conf.j2` | 4 — Mejoras | ✅ Done | `3ccd164` |
+| J3 | Mejorar `restart` command | 4 — Mejoras | ✅ Done | `3ccd164` |
+| J4 | Tests de renderizado de templates Jinja2 | 4 — Mejoras | ✅ Done | `3ccd164` |
+| J5 | Agregar `--service` a `shell` command | 4 — Mejoras | ✅ Done | `3ccd164` |
 
 ---
 
