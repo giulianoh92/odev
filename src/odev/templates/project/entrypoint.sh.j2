@@ -1,8 +1,26 @@
 #!/bin/bash
 set -e
 
-# Wait for the database using the implicit wait or custom check if needed.
-# Since depends_on + service_healthy is used, we assume DB is up.
+# Wait for database DNS resolution and TCP connectivity.
+# depends_on + service_healthy handles the startup order, but after a
+# down/up cycle Docker's internal DNS may not be ready immediately.
+DB_HOST="${HOST:-db}"
+DB_PORT=5432
+MAX_RETRIES=30
+for i in $(seq 1 $MAX_RETRIES); do
+    if getent hosts "$DB_HOST" > /dev/null 2>&1 && python3 -c "
+import socket, sys
+try:
+    s = socket.create_connection(('$DB_HOST', $DB_PORT), timeout=2)
+    s.close()
+except Exception:
+    sys.exit(1)
+" 2>/dev/null; then
+        break
+    fi
+    echo "Waiting for database at $DB_HOST:$DB_PORT... ($i/$MAX_RETRIES)"
+    sleep 1
+done
 
 if [ "$DEBUGPY" = "True" ]; then
     if ! python3 -c "import debugpy" 2>/dev/null; then
