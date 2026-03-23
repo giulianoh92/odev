@@ -14,6 +14,11 @@ odev es un toolkit de linea de comandos que provee un entorno de desarrollo Odoo
 
 ```bash
 pip install git+https://github.com/relexsrl/odev
+```
+
+### Proyecto nuevo
+
+```bash
 odev init mi-proyecto
 cd mi-proyecto
 odev up
@@ -28,13 +33,26 @@ Para una configuracion no interactiva con valores por defecto razonables:
 odev init mi-proyecto --no-interactive
 ```
 
+### Proyecto existente
+
+Si ya tenes un repositorio con modulos Odoo:
+
+```bash
+cd mi-repo-odoo
+odev adopt
+odev up
+```
+
+El comando `adopt` detecta automaticamente el layout del repositorio (modulo unico, multi-addon, Odoo.sh), configura el entorno Docker y registra el proyecto en el registro global de odev.
+
 ## Funcionalidades
 
 - **Configuracion en un comando** -- `odev init` genera un proyecto completo con Docker Compose, configuracion de Odoo, `.env`, `.gitignore`, hooks de pre-commit y pipeline CI opcional
+- **Adopcion de proyectos existentes** -- `odev adopt` detecta el layout de un repositorio Odoo existente y lo configura para usar odev
 - **Hot-reload** -- Odoo corre en modo dev; los cambios en XML, QWeb y JS se detectan automaticamente
 - **Snapshots de base de datos** -- Guarda y restaura el estado de la base de datos en cualquier momento con `odev db snapshot` / `odev db restore`
 - **Scaffolding de modulos** -- `odev scaffold` genera un esqueleto completo de modulo Odoo (modelos, vistas, seguridad, tests)
-- **Soporte multi-proyecto** -- Deteccion automatica de puertos para que multiples proyectos puedan correr simultaneamente sin conflictos
+- **Soporte multi-proyecto** -- Deteccion automatica de puertos para que multiples proyectos puedan correr simultaneamente sin conflictos. `odev projects` permite listar, eliminar y limpiar proyectos registrados
 - **TUI interactiva** -- Dashboard de terminal con estado de servicios en vivo, streaming de logs y atajos de teclado
 - **Carga de backups externos** -- Importa backups `.zip` de Odoo.sh o Database Manager con neutralizacion automatica
 - **Anonimizacion de datos** -- Elimina datos personales de copias de bases de datos de produccion para desarrollo seguro
@@ -45,17 +63,47 @@ odev init mi-proyecto --no-interactive
 
 ## Referencia de Comandos
 
+### Referencia Rapida
+
+| Comando | Descripcion |
+|---------|-------------|
+| `odev init [nombre]` | Crear un nuevo proyecto Odoo |
+| `odev adopt [directorio]` | Adoptar un proyecto Odoo existente |
+| `odev up` | Levantar el entorno de desarrollo |
+| `odev down` | Detener y eliminar contenedores |
+| `odev restart [servicio]` | Reiniciar un servicio (default: web) |
+| `odev status` | Ver estado de los servicios |
+| `odev logs [servicio]` | Ver logs de un servicio |
+| `odev shell [servicio]` | Abrir terminal en un contenedor |
+| `odev scaffold <nombre>` | Crear un nuevo modulo Odoo |
+| `odev addon-install <modulo>` | Instalar un modulo |
+| `odev update <modulo>` | Actualizar un modulo |
+| `odev test <modulo>` | Ejecutar tests de un modulo |
+| `odev db snapshot <nombre>` | Crear snapshot de la base de datos |
+| `odev db restore <nombre>` | Restaurar un snapshot |
+| `odev db list` | Listar snapshots disponibles |
+| `odev db anonymize` | Anonimizar datos personales |
+| `odev load-backup <archivo>` | Cargar backup de Odoo.sh |
+| `odev reset-db` | Destruir y recrear la base de datos |
+| `odev context` | Generar PROJECT_CONTEXT.md para IA |
+| `odev doctor` | Diagnosticar el entorno |
+| `odev tui` | Dashboard interactivo |
+| `odev projects` | Gestionar proyectos registrados |
+| `odev migrate` | Migrar proyecto legacy |
+| `odev self-update` | Actualizar odev |
+
 ### Comandos Principales
 
 | Comando | Descripcion |
 |---------|-------------|
 | `odev init [nombre]` | Crear un nuevo proyecto Odoo (wizard interactivo o `--no-interactive`) |
+| `odev adopt [directorio]` | Adoptar un proyecto Odoo existente para gestionarlo con odev |
 | `odev up` | Iniciar el entorno de desarrollo (`--build` para reconstruir, `--watch` para modo watch) |
 | `odev down` | Detener y eliminar contenedores (`-v` para eliminar tambien los volumenes) |
-| `odev restart` | Reiniciar el contenedor web de Odoo |
+| `odev restart [servicio]` | Reiniciar un servicio del stack Docker (por defecto: `web`) |
 | `odev status` | Mostrar tabla de estado de servicios (nombre, estado, salud, puertos) |
 | `odev logs [servicio]` | Seguir logs de un servicio (`web`, `db` o `all`; `--tail`, `--no-follow`) |
-| `odev shell` | Abrir un shell bash interactivo dentro del contenedor de Odoo |
+| `odev shell [servicio]` | Abrir un shell bash interactivo dentro de un contenedor (por defecto: `web`) |
 | `odev test <modulo>` | Ejecutar tests de un modulo (o `all`; `--log-level` para controlar verbosidad) |
 | `odev scaffold <nombre>` | Crear un nuevo modulo Odoo desde el template incluido |
 | `odev addon-install <modulo>` | Instalar un modulo por primera vez y reiniciar |
@@ -64,6 +112,7 @@ odev init mi-proyecto --no-interactive
 | `odev load-backup <ruta>` | Cargar un backup de Odoo.sh / Database Manager (`.zip`; `--no-neutralize`) |
 | `odev context` | Generar `PROJECT_CONTEXT.md` a partir del analisis de modulos |
 | `odev tui` | Lanzar el dashboard interactivo TUI |
+| `odev projects` | Gestionar proyectos registrados (listar, eliminar, limpiar) |
 | `odev migrate` | Migrar un proyecto legacy `odoo-dev-env` al nuevo formato |
 | `odev doctor` | Diagnosticar el entorno de desarrollo y reportar problemas |
 | `odev self-update` | Actualizar odev a la ultima version |
@@ -76,6 +125,65 @@ odev init mi-proyecto --no-interactive
 | `odev db restore <nombre>` | Restaurar base de datos desde un snapshot (por nombre o prefijo) |
 | `odev db list` | Listar todos los snapshots disponibles con fecha y tamano |
 | `odev db anonymize` | Anonimizar datos personales (nombres, emails, telefonos) y resetear passwords |
+
+### `odev adopt [directorio]`
+
+Adopta un proyecto Odoo existente para gestionarlo con odev. Detecta automaticamente
+el layout del repositorio (modulo unico, multi-addon, Odoo.sh), configura el entorno
+Docker y registra el proyecto en el registro global.
+
+```bash
+# Adoptar el directorio actual
+odev adopt
+
+# Adoptar un directorio especifico con nombre
+odev adopt /path/to/repo --name mi-proyecto --odoo-version 18.0
+
+# Modo no-interactivo
+odev adopt . --no-interactive
+```
+
+Opciones:
+- `--name, -n` — Nombre del proyecto (por defecto: nombre del directorio).
+- `--odoo-version` — Version de Odoo (19.0, 18.0, 17.0, 16.0).
+- `--no-interactive` — Usar valores por defecto sin preguntar.
+
+### `odev restart [servicio]`
+
+Reinicia un servicio del stack Docker (por defecto: web).
+
+```bash
+odev restart        # Reinicia el servicio web
+odev restart db     # Reinicia la base de datos
+odev restart pgweb  # Reinicia pgweb
+```
+
+### `odev shell [servicio]`
+
+Abre una terminal bash dentro de un contenedor (por defecto: web).
+
+```bash
+odev shell          # Terminal en el contenedor web (Odoo)
+odev shell db       # Terminal en el contenedor de base de datos
+```
+
+### `odev projects`
+
+Gestiona los proyectos registrados en el registro global de odev.
+
+```bash
+# Listar todos los proyectos registrados
+odev projects
+
+# Eliminar un proyecto del registro
+odev projects remove mi-proyecto
+
+# Eliminar y borrar la configuracion
+odev projects remove mi-proyecto --delete-config
+
+# Limpiar proyectos cuyo directorio ya no existe
+odev projects clean
+```
 
 ## Estructura del Proyecto
 
@@ -162,6 +270,8 @@ Proyecto C: Odoo en 8071, pgweb en 8083, DB en 5434
 ```
 
 Cada proyecto tiene su propio stack de Docker Compose con contenedores y volumenes aislados. Solo ejecuta `odev up` en el directorio de cada proyecto.
+
+Para ver y gestionar todos los proyectos registrados, usa `odev projects`. Ver la seccion [odev projects](#odev-projects) para mas detalles.
 
 ## Gestion de Base de Datos
 
