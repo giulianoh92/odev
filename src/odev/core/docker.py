@@ -160,18 +160,21 @@ class DockerCompose:
             return subprocess.run(cmd, cwd=self._project_root)
         return subprocess.run(cmd, cwd=self._project_root, check=True)
 
-    def up(self, build: bool = False, watch: bool = False) -> None:
+    def up(self, build: bool = False, watch: bool = False, services: list[str] | None = None) -> None:
         """Levanta los servicios de docker compose en modo detached.
 
         Argumentos:
             build: Si True, reconstruye las imagenes antes de levantar.
             watch: Si True, activa el modo watch para recarga en caliente.
+            services: Lista de servicios especificos a levantar. Si es None, levanta todos.
         """
         args = ["up", "-d"]
         if build:
             args.append("--build")
         if watch:
             args.append("--watch")
+        if services:
+            args.extend(services)
         self._run(args)
 
     def down(self, volumes: bool = False) -> None:
@@ -185,9 +188,23 @@ class DockerCompose:
             args.append("-v")
         self._run(args)
 
-    def stop(self) -> None:
-        """Detiene los contenedores sin eliminarlos."""
-        self._run(["stop"])
+    def stop(self, *services: str) -> None:
+        """Detiene los contenedores sin eliminarlos.
+
+        Argumentos:
+            services: Servicios especificos a detener. Si no se pasan, detiene todos.
+        """
+        args = ["stop", *services]
+        self._run(args)
+
+    def start(self, *services: str) -> None:
+        """Inicia servicios previamente detenidos.
+
+        Argumentos:
+            services: Servicios a iniciar.
+        """
+        args = ["start", *services]
+        self._run(args)
 
     def restart(self, service: str = "web") -> None:
         """Reinicia un servicio especifico.

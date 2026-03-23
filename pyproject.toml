@@ -47,6 +47,10 @@ Homepage = "https://github.com/giuliano/odev"
 Repository = "https://github.com/giuliano/odev"
 Issues = "https://github.com/giuliano/odev/issues"
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["src/odev/templates"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["odev*"]

@@ -65,7 +65,7 @@ def reset_db(
         configurar_parametros_desarrollo(dc, nombre_bd, usuario_bd, puerto_web)
 
         info("Reiniciando servicios tras neutralizacion...")
-        dc._run(["restart", "web"])
+        dc.restart("web")
 
     success(
         f"Base de datos reiniciada y configurada para desarrollo. "

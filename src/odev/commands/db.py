@@ -99,7 +99,7 @@ def restore(
         raise typer.Exit()
 
     info("Deteniendo servicio web...")
-    dc._run(["stop", "web"])
+    dc.stop("web")
 
     info(f"Eliminando base de datos '{nombre_bd}'...")
     dc.exec_cmd("db", ["dropdb", "-U", usuario_bd, "--if-exists", nombre_bd])
@@ -116,7 +116,7 @@ def restore(
     )
 
     info("Iniciando servicio web...")
-    dc._run(["start", "web"])
+    dc.start("web")
 
     success(f"Base de datos restaurada desde: {ruta_archivo.name}")
 

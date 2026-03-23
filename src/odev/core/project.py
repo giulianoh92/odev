@@ -6,6 +6,7 @@ de version entre el CLI instalado y la version minima requerida
 por el proyecto.
 """
 
+import logging
 from pathlib import Path
 
 import yaml
@@ -13,6 +14,8 @@ from packaging.version import Version
 
 from odev import __version__
 from odev.core.console import warning
+
+logger = logging.getLogger(__name__)
 
 
 # Valores por defecto para un proyecto nuevo
@@ -50,6 +53,53 @@ _CONFIGURACION_POR_DEFECTO: dict = {
 }
 
 
+_ESQUEMA_ODEV_YAML: dict[str, type | tuple[type, ...]] = {
+    "odev_min_version": str,
+    "odoo": dict,
+    "database": dict,
+    "enterprise": dict,
+    "services": dict,
+    "paths": dict,
+    "project": dict,
+}
+
+
+def _validar_esquema(datos: dict, ruta_archivo: Path) -> list[str]:
+    """Valida la estructura basica del archivo .odev.yaml.
+
+    Verifica que las claves de primer nivel sean conocidas y que
+    los tipos sean correctos. No valida la estructura interna de
+    cada seccion (se confia en los defaults de _mezclar_profundo).
+
+    Argumentos:
+        datos: Diccionario con los datos cargados del YAML.
+        ruta_archivo: Ruta al archivo para mensajes de error.
+
+    Retorna:
+        Lista de advertencias encontradas (puede estar vacia).
+    """
+    advertencias = []
+    claves_conocidas = set(_ESQUEMA_ODEV_YAML.keys()) | {"mode", "sdd"}
+
+    # Detectar claves desconocidas (posibles typos)
+    for clave in datos:
+        if clave not in claves_conocidas:
+            advertencias.append(
+                f"Clave desconocida '{clave}' en {ruta_archivo}. "
+                "Posible error tipografico."
+            )
+
+    # Validar tipos de primer nivel
+    for clave, tipo_esperado in _ESQUEMA_ODEV_YAML.items():
+        if clave in datos and not isinstance(datos[clave], tipo_esperado):
+            advertencias.append(
+                f"La clave '{clave}' en {ruta_archivo} deberia ser {tipo_esperado.__name__}, "
+                f"pero es {type(datos[clave]).__name__}."
+            )
+
+    return advertencias
+
+
 class ProjectConfig:
     """Configuracion de un proyecto odev cargada desde .odev.yaml.
 
@@ -75,6 +125,10 @@ class ProjectConfig:
             )
         with open(self.ruta_archivo, encoding="utf-8") as archivo:
             datos_crudos = yaml.safe_load(archivo) or {}
+        # Validar esquema basico del YAML
+        advertencias = _validar_esquema(datos_crudos, self.ruta_archivo)
+        for adv in advertencias:
+            warning(adv)
         # Mezclar con valores por defecto para garantizar estructura completa
         self.datos = _mezclar_profundo(_CONFIGURACION_POR_DEFECTO.copy(), datos_crudos)
         # Coercion paths.addons: string -> lista (compatibilidad con archivos viejos)
