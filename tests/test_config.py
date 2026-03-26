@@ -195,7 +195,7 @@ class TestGenerateOdooConf:
         assert "addons_path = /mnt/extra-addons,/mnt/extra-addons-1" in contenido
 
     def test_addons_path_con_enterprise(self, tmp_path):
-        """Con enterprise habilitado, addons_path incluye /mnt/enterprise-addons."""
+        """Con enterprise habilitado, addons_path incluye /mnt/enterprise-addons PRIMERO."""
         config_dir = tmp_path / "config"
         addon_mounts = [{"container_path": "/mnt/extra-addons", "host_path": "./addons", "nombre": "addons"}]
 
@@ -207,7 +207,36 @@ class TestGenerateOdooConf:
         )
 
         contenido = (config_dir / "odoo.conf").read_text()
-        assert "addons_path = /mnt/extra-addons,/mnt/enterprise-addons" in contenido
+        assert "addons_path = /mnt/enterprise-addons,/mnt/extra-addons" in contenido
+
+    def test_addons_path_sin_enterprise(self, tmp_path):
+        """Sin enterprise habilitado, addons_path NO incluye /mnt/enterprise-addons."""
+        config_dir = tmp_path / "config"
+        addon_mounts = [{"container_path": "/mnt/extra-addons", "host_path": "./addons", "nombre": "addons"}]
+
+        generate_odoo_conf(
+            env_values={"DB_HOST": "db"},
+            config_dir=config_dir,
+            addon_mounts=addon_mounts,
+            enterprise_enabled=False,
+        )
+
+        contenido = (config_dir / "odoo.conf").read_text()
+        assert "addons_path = /mnt/extra-addons" in contenido
+        assert "enterprise-addons" not in contenido
+
+    def test_addons_path_enterprise_fallback(self, tmp_path):
+        """Con enterprise habilitado y sin addon_mounts, enterprise va primero en el fallback."""
+        config_dir = tmp_path / "config"
+
+        generate_odoo_conf(
+            env_values={"DB_HOST": "db"},
+            config_dir=config_dir,
+            enterprise_enabled=True,
+        )
+
+        contenido = (config_dir / "odoo.conf").read_text()
+        assert "addons_path = /mnt/enterprise-addons,/mnt/extra-addons" in contenido
 
     def test_addons_path_sin_mounts_default(self, tmp_path):
         """Sin addon mounts, addons_path usa el valor por defecto /mnt/extra-addons."""

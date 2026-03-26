@@ -115,8 +115,20 @@ except ImportError:
     pass
 
 try:
+    from odev.commands.reconfigure import reconfigure
+    app.command(name="reconfigure")(reconfigure)
+except ImportError:
+    pass
+
+try:
     from odev.commands.projects import app as projects_app
     app.add_typer(projects_app, name="projects")
+except ImportError:
+    pass
+
+try:
+    from odev.commands.enterprise import app as enterprise_app
+    app.add_typer(enterprise_app, name="enterprise")
 except ImportError:
     pass
 

@@ -64,12 +64,51 @@ _ESQUEMA_ODEV_YAML: dict[str, type | tuple[type, ...]] = {
 }
 
 
-def _validar_esquema(datos: dict, ruta_archivo: Path) -> list[str]:
-    """Valida la estructura basica del archivo .odev.yaml.
+_ESQUEMA_NESTED: dict[str, dict[str, type | tuple[type, ...]]] = {
+    "odoo": {
+        "version": str,
+        "image": str,
+    },
+    "database": {
+        "image": str,
+    },
+    "enterprise": {
+        "enabled": bool,
+        "path": str,
+    },
+    "services": {
+        "pgweb": bool,
+    },
+    "paths": {
+        "addons": (list, str),
+        "config": str,
+        "snapshots": str,
+        "logs": str,
+        "docs": str,
+    },
+    "project": {
+        "name": str,
+        "description": str,
+        "working_dir": str,
+    },
+    "sdd": {
+        "enabled": bool,
+        "language": str,
+    },
+}
 
-    Verifica que las claves de primer nivel sean conocidas y que
-    los tipos sean correctos. No valida la estructura interna de
-    cada seccion (se confia en los defaults de _mezclar_profundo).
+
+def _validar_esquema(datos: dict, ruta_archivo: Path) -> list[str]:
+    """Valida la estructura del archivo .odev.yaml.
+
+    Verifica:
+    1. Claves desconocidas de primer nivel (comportamiento existente)
+    2. Tipos incorrectos de primer nivel (comportamiento existente)
+    3. Claves desconocidas dentro de cada seccion anidada (NUEVO)
+    4. Tipos incorrectos en valores anidados (NUEVO)
+
+    Todas las validaciones producen advertencias (no errores) para
+    mantener compatibilidad hacia adelante.
 
     Argumentos:
         datos: Diccionario con los datos cargados del YAML.
@@ -81,7 +120,7 @@ def _validar_esquema(datos: dict, ruta_archivo: Path) -> list[str]:
     advertencias = []
     claves_conocidas = set(_ESQUEMA_ODEV_YAML.keys()) | {"mode", "sdd"}
 
-    # Detectar claves desconocidas (posibles typos)
+    # 1. Detectar claves desconocidas de primer nivel (posibles typos)
     for clave in datos:
         if clave not in claves_conocidas:
             advertencias.append(
@@ -89,13 +128,56 @@ def _validar_esquema(datos: dict, ruta_archivo: Path) -> list[str]:
                 "Posible error tipografico."
             )
 
-    # Validar tipos de primer nivel
+    # 2. Validar tipos de primer nivel
     for clave, tipo_esperado in _ESQUEMA_ODEV_YAML.items():
         if clave in datos and not isinstance(datos[clave], tipo_esperado):
             advertencias.append(
                 f"La clave '{clave}' en {ruta_archivo} deberia ser {tipo_esperado.__name__}, "
                 f"pero es {type(datos[clave]).__name__}."
             )
+
+    # 3. Validar claves y tipos dentro de secciones anidadas
+    for seccion, esquema_seccion in _ESQUEMA_NESTED.items():
+        if seccion not in datos or not isinstance(datos[seccion], dict):
+            continue
+
+        datos_seccion = datos[seccion]
+
+        # Claves desconocidas dentro de la seccion
+        for clave in datos_seccion:
+            if clave not in esquema_seccion:
+                advertencias.append(
+                    f"Clave desconocida '{clave}' en seccion '{seccion}' "
+                    f"de {ruta_archivo}. Posible error tipografico."
+                )
+
+        # Tipos incorrectos en valores de la seccion
+        for clave, tipo_esperado in esquema_seccion.items():
+            if clave not in datos_seccion:
+                continue
+            valor = datos_seccion[clave]
+            if valor is None:
+                # None (null en YAML) no es un tipo valido para ninguna clave
+                if isinstance(tipo_esperado, tuple):
+                    nombres_tipos = " o ".join(t.__name__ for t in tipo_esperado)
+                else:
+                    nombres_tipos = tipo_esperado.__name__
+                advertencias.append(
+                    f"'{seccion}.{clave}' deberia ser {nombres_tipos}, "
+                    f"pero es NoneType."
+                )
+            elif isinstance(tipo_esperado, tuple):
+                if not isinstance(valor, tipo_esperado):
+                    nombres_tipos = " o ".join(t.__name__ for t in tipo_esperado)
+                    advertencias.append(
+                        f"'{seccion}.{clave}' deberia ser {nombres_tipos}, "
+                        f"pero es {type(valor).__name__}."
+                    )
+            elif not isinstance(valor, tipo_esperado):
+                advertencias.append(
+                    f"'{seccion}.{clave}' deberia ser {tipo_esperado.__name__}, "
+                    f"pero es {type(valor).__name__}."
+                )
 
     return advertencias
 
@@ -160,6 +242,31 @@ class ProjectConfig:
     def enterprise_habilitado(self) -> bool:
         """Si los addons enterprise estan habilitados."""
         return self.datos.get("enterprise", {}).get("enabled", False)
+
+    @property
+    def ruta_enterprise(self) -> str:
+        """Ruta al directorio de addons enterprise.
+
+        Resolucion por prioridad:
+        1. Si hay un path explicito en odev.yaml (distinto del default) -> usarlo.
+        2. Si existe ~/.odev/enterprise/{version}/ -> usarlo como fallback.
+        3. Caso contrario -> retornar el default "./enterprise".
+        """
+        ruta_configurada = self.datos.get("enterprise", {}).get("path", "./enterprise")
+
+        # Si el usuario configuro un path explicito (distinto del default), respetar
+        if ruta_configurada != "./enterprise":
+            return ruta_configurada
+
+        # Fallback: buscar en almacenamiento compartido
+        from odev.core.registry import ENTERPRISE_DIR
+
+        version = self.version_odoo
+        ruta_compartida = ENTERPRISE_DIR / version
+        if ruta_compartida.exists():
+            return str(ruta_compartida)
+
+        return ruta_configurada
 
     @property
     def nombre_proyecto(self) -> str:

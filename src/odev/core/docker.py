@@ -259,6 +259,24 @@ class DockerCompose:
                         continue
             return resultados
 
+    def is_service_running(self, service: str) -> bool:
+        """Check if a specific service has a running container.
+
+        Uses `docker compose ps --format json` and checks for the service
+        in the parsed output with State == "running".
+
+        Args:
+            service: Name of the service to check (e.g., "db", "web").
+
+        Returns:
+            True if the service is running, False otherwise.
+        """
+        servicios = self.ps_parsed()
+        for svc in servicios:
+            if svc.get("Service") == service and svc.get("State") == "running":
+                return True
+        return False
+
     def logs(self, service: str | None = None, follow: bool = True, tail: int = 100) -> None:
         """Muestra los logs de los servicios.
 

@@ -247,6 +247,33 @@ class TestDockerComposePsParsed:
         assert resultado == []
 
 
+class TestIsServiceRunning:
+    """Tests for DockerCompose.is_service_running()."""
+
+    def test_returns_true_when_running(self):
+        """Returns True when service State is 'running'."""
+        dc = DockerCompose.__new__(DockerCompose)
+        dc.ps_parsed = lambda: [
+            {"Service": "db", "State": "running"},
+            {"Service": "web", "State": "running"},
+        ]
+        assert dc.is_service_running("db") is True
+
+    def test_returns_false_when_not_running(self):
+        """Returns False when service State is not 'running'."""
+        dc = DockerCompose.__new__(DockerCompose)
+        dc.ps_parsed = lambda: [
+            {"Service": "db", "State": "exited"},
+        ]
+        assert dc.is_service_running("db") is False
+
+    def test_returns_false_when_service_absent(self):
+        """Returns False when service is not in ps output."""
+        dc = DockerCompose.__new__(DockerCompose)
+        dc.ps_parsed = lambda: []
+        assert dc.is_service_running("db") is False
+
+
 class TestDockerComposeInit:
     """Grupo de tests para la inicializacion de DockerCompose."""
 

@@ -66,6 +66,12 @@ def adopt(
         "--no-interactive",
         help="Modo no-interactivo (usar valores por defecto).",
     ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Force re-adopt: remove existing registry entry and regenerate config.",
+    ),
 ) -> None:
     """Adopta un proyecto Odoo existente para gestionarlo con odev."""
 
@@ -76,10 +82,10 @@ def adopt(
         raise typer.Exit(1)
 
     # 2. Verificar si ya es un proyecto odev -----------------------------------
-    if (ruta / ".odev.yaml").exists():
+    if (ruta / ".odev.yaml").exists() and not force:
         error(
             f"'{ruta}' ya es un proyecto odev (tiene .odev.yaml). "
-            "Usa 'odev up' directamente."
+            "Usa 'odev up' directamente o --force para re-adoptar."
         )
         raise typer.Exit(1)
 
@@ -126,8 +132,21 @@ def adopt(
     registro = Registry()
     existente = registro.obtener(name)
     if existente:
-        error(f"Ya existe un proyecto '{name}' en el registro.")
-        raise typer.Exit(1)
+        if force:
+            import shutil
+
+            warning(f"Removing existing project '{name}' from registry...")
+            registro.eliminar(name)
+            # Clean up old config directory
+            if existente.directorio_config.exists():
+                shutil.rmtree(existente.directorio_config)
+            info(f"Cleaned up: {existente.directorio_config}")
+        else:
+            error(
+                f"Ya existe un proyecto '{name}' en el registro. "
+                "Usa --force para re-adoptar."
+            )
+            raise typer.Exit(1)
 
     # 7. Recopilar version de Odoo ---------------------------------------------
     if odoo_version is None:
@@ -166,6 +185,7 @@ def adopt(
         directorio_config=directorio_config,
         puertos=puertos,
         extras=valores_extra,
+        no_interactive=no_interactive,
     )
 
     # 11. Renderizar templates al directorio de config -------------------------
@@ -232,6 +252,7 @@ def _construir_valores(
     directorio_config: Path,
     puertos: dict[str, int],
     extras: dict[str, Any],
+    no_interactive: bool = False,
 ) -> dict[str, Any]:
     """Construye el diccionario unificado de valores para renderizar templates.
 
@@ -243,6 +264,7 @@ def _construir_valores(
         directorio_config: Directorio de configuracion de odev.
         puertos: Puertos sugeridos.
         extras: Valores adicionales del wizard o por defecto.
+        no_interactive: Si True, acepta automaticamente el enterprise compartido.
 
     Returns:
         Diccionario con todas las claves necesarias para renderizar templates.
@@ -258,7 +280,35 @@ def _construir_valores(
     if layout.tiene_enterprise:
         enterprise_path = str(ruta / "enterprise")
     else:
-        enterprise_path = "./enterprise"
+        # Verificar si existe enterprise compartido para esta version
+        from odev.commands.enterprise import ENTERPRISE_DIR
+
+        shared_enterprise = ENTERPRISE_DIR / odoo_version
+        if shared_enterprise.exists() and shared_enterprise.is_dir():
+            usar_shared = True
+            if not no_interactive:
+                usar_shared = questionary.confirm(
+                    f"Shared enterprise addons found for {odoo_version}. Use them?",
+                    default=True,
+                ).ask()
+                if usar_shared is None:
+                    usar_shared = False
+            if usar_shared:
+                enterprise_path = str(shared_enterprise.resolve())
+                info(f"Usando enterprise compartido: {enterprise_path}")
+                # Forzar habilitacion en el layout para que enterprise_enabled=True
+                layout = RepoLayout(
+                    tipo=layout.tipo,
+                    rutas_addons=layout.rutas_addons,
+                    tiene_enterprise=True,
+                    tiene_submodulos=layout.tiene_submodulos,
+                    ruta_raiz=layout.ruta_raiz,
+                    modulos_encontrados=layout.modulos_encontrados,
+                )
+            else:
+                enterprise_path = "./enterprise"
+        else:
+            enterprise_path = "./enterprise"
 
     habilitar_debugpy = extras.get("habilitar_debugpy", False)
 

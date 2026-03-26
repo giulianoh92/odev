@@ -1,8 +1,8 @@
 [options]
 {% if addon_container_paths is defined %}
-addons_path = {{ addon_container_paths | join(',') }}{% if enterprise_enabled %},/mnt/enterprise-addons{% endif %}
+addons_path = {% if enterprise_enabled %}/mnt/enterprise-addons,{% endif %}{{ addon_container_paths | join(',') }}
 {% else %}
-addons_path = /mnt/extra-addons{% if enterprise_enabled %},/mnt/enterprise-addons{% endif %}
+addons_path = {% if enterprise_enabled %}/mnt/enterprise-addons,{% endif %}/mnt/extra-addons
 {% endif %}
 data_dir = /var/lib/odoo
 admin_passwd = {{ ADMIN_PASSWORD | default('admin') }}

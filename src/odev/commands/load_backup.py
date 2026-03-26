@@ -34,6 +34,11 @@ def load_backup(
         True,
         help="Neutralizar la base de datos (desactivar crons, correo, etc.).",
     ),
+    yes: bool = typer.Option(
+        False,
+        "--yes", "-y",
+        help="Skip confirmation prompt (for automation/CI).",
+    ),
 ) -> None:
     """Carga un backup de Odoo.sh (o el Gestor de Base de Datos) en el entorno local.
 
@@ -57,6 +62,14 @@ def load_backup(
         raise typer.Exit(1)
 
     dc = obtener_docker(contexto)
+
+    # Pre-flight: verify db container is running
+    if not dc.is_service_running("db"):
+        error(
+            "El servicio de base de datos no esta corriendo. "
+            "Ejecuta 'odev up' primero."
+        )
+        raise typer.Exit(1)
 
     # -- Validar backup -------------------------------------------------------
     if not zipfile.is_zipfile(backup):
@@ -86,7 +99,7 @@ def load_backup(
     info(f"  Filestore: {'si' if tiene_filestore else 'no'}")
 
     warning(f"Esto REEMPLAZARA la base de datos '{nombre_bd}' con el contenido del backup!")
-    if not typer.confirm("Continuar?", default=False):
+    if not yes and not typer.confirm("Continuar?", default=False):
         info("Operacion cancelada.")
         raise typer.Exit()
 
