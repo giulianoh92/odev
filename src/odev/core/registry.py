@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 ODEV_HOME = Path.home() / ".odev"
 REGISTRY_PATH = ODEV_HOME / "registry.yaml"
 PROJECTS_DIR = ODEV_HOME / "projects"
+ENTERPRISE_DIR = ODEV_HOME / "enterprise"  # ~/.odev/enterprise/
 
 
 @dataclass

@@ -5,6 +5,35 @@ Todos los cambios notables en este proyecto se documentan en este archivo.
 El formato esta basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 y este proyecto adhiere a [Versionado Semantico](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-03-26
+
+### Agregado
+
+- Nuevo comando `reconfigure` -- Regenera docker-compose.yml y odoo.conf desde odev.yaml sin re-adoptar
+- Nuevo modulo `core/regen.py` -- Motor de regeneracion compartido (usado por reconfigure, up, adopt)
+- Nuevo subcomando `enterprise` con 4 operaciones:
+  - `enterprise import <version> <ruta>` -- Importar addons enterprise a almacenamiento compartido
+  - `enterprise path <version>` -- Mostrar ruta de enterprise para una version
+  - `enterprise status` -- Listar versiones enterprise disponibles y proyectos que las usan
+  - `enterprise link` -- Vincular enterprise compartido al proyecto actual
+- Almacenamiento compartido de enterprise en `~/.odev/enterprise/{version}/` (evita copias por proyecto)
+- Auto-regeneracion de configs en `odev up` cuando odev.yaml cambia (deteccion por mtime)
+- Flag `--force` / `-f` en `adopt` para re-adoptar proyectos existentes
+- Flag `--yes` / `-y` en `load-backup` y `reset-db` para omitir confirmacion (automatizacion/CI)
+- Verificacion pre-vuelo en `load-backup`: detecta si el contenedor de BD esta corriendo antes de proceder
+- Metodo `is_service_running()` en DockerCompose para verificar estado de servicios
+- Validacion de esquema nested en odev.yaml con warnings para claves desconocidas y tipos incorrectos
+- Propiedad `ruta_enterprise` en ProjectConfig con fallback a enterprise compartido
+- 58 tests nuevos (237 → 295), 0 regresiones
+
+### Corregido
+
+- Enterprise ahora es PRIMERO en addons_path de odoo.conf (antes se agregaba al final, causando que modulos CE overridearan EE)
+
+### Documentacion
+
+- Especificaciones SDD completas en `docs/sdd/` (proposal, spec, design, tasks)
+
 ## [0.1.0] - 2026-03-19
 
 ### Agregado

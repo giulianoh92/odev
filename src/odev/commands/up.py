@@ -13,7 +13,7 @@ import typer
 
 from odev.commands._helpers import obtener_docker, obtener_rutas, requerir_proyecto
 from odev.core.config import construir_addon_mounts, generate_odoo_conf, load_env
-from odev.core.console import info, success
+from odev.core.console import info, success, warning
 from odev.core.paths import ProjectPaths
 
 
@@ -53,28 +53,39 @@ def up(
         error("No se encontro el archivo .env. Ejecuta 'odev init' primero.")
         raise typer.Exit(1)
 
-    valores_env = load_env(rutas.env_file)
+    # --- Check if odev.yaml changed and trigger full regen ---
+    from odev.core.regen import necesita_regeneracion, regenerar_configuracion
 
-    # Construir addon_mounts si hay config disponible
-    addon_mounts = None
-    if contexto.config and contexto.config.rutas_addons:
-        addon_mounts = construir_addon_mounts(
-            contexto.config.rutas_addons,
-            contexto.directorio_config,
+    if necesita_regeneracion(contexto):
+        warning("odev.yaml changed since last generation. Regenerating configs...")
+        resultado = regenerar_configuracion(contexto)
+        if resultado.archivos_regenerados:
+            info(
+                f"Regenerated: {', '.join(a.name for a in resultado.archivos_regenerados)}"
+            )
+    else:
+        # --- Fallback to .env-only mtime check for odoo.conf ---
+        valores_env = load_env(rutas.env_file)
+        addon_mounts = None
+        if contexto.config and contexto.config.rutas_addons:
+            addon_mounts = construir_addon_mounts(
+                contexto.config.rutas_addons,
+                contexto.directorio_config,
+            )
+        enterprise_enabled = bool(
+            contexto.config and contexto.config.enterprise_habilitado
         )
-
-    # Auto-regenerar odoo.conf si el .env es mas reciente
-    enterprise_enabled = bool(
-        contexto.config and contexto.config.enterprise_habilitado
-    )
-    archivo_odoo_conf = rutas.config_dir / "odoo.conf"
-    if not archivo_odoo_conf.exists() or rutas.env_file.stat().st_mtime > archivo_odoo_conf.stat().st_mtime:
-        generate_odoo_conf(
-            valores_env, rutas.config_dir,
-            addon_mounts=addon_mounts,
-            enterprise_enabled=enterprise_enabled,
-        )
-        info("Se regenero config/odoo.conf desde .env")
+        archivo_odoo_conf = rutas.config_dir / "odoo.conf"
+        if (
+            not archivo_odoo_conf.exists()
+            or rutas.env_file.stat().st_mtime > archivo_odoo_conf.stat().st_mtime
+        ):
+            generate_odoo_conf(
+                valores_env, rutas.config_dir,
+                addon_mounts=addon_mounts,
+                enterprise_enabled=enterprise_enabled,
+            )
+            info("Se regenero config/odoo.conf desde .env")
 
     _asegurar_directorio_logs(rutas)
 
@@ -82,6 +93,7 @@ def up(
     dc = obtener_docker(contexto)
     dc.up(build=build, watch=watch)
 
+    valores_env = load_env(rutas.env_file)
     puerto_web = valores_env.get("WEB_PORT", "8069")
     puerto_pgweb = valores_env.get("PGWEB_PORT", "8081")
     success("Entorno iniciado correctamente.")

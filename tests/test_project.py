@@ -118,6 +118,32 @@ class TestProjectConfig:
 
         assert pc.ruta_archivo == tmp_path / ".odev.yaml"
 
+    def test_ruta_enterprise_from_config(self, tmp_path):
+        """ruta_enterprise returns the value from enterprise.path in odev.yaml."""
+        config = {
+            "enterprise": {"enabled": True, "path": "/shared/enterprise"},
+        }
+        (tmp_path / ".odev.yaml").write_text(
+            yaml.dump(config, default_flow_style=False),
+            encoding="utf-8",
+        )
+
+        pc = ProjectConfig(tmp_path)
+
+        assert pc.ruta_enterprise == "/shared/enterprise"
+
+    def test_ruta_enterprise_default(self, tmp_path):
+        """ruta_enterprise defaults to './enterprise' when not set."""
+        config = {"project": {"name": "minimal"}}
+        (tmp_path / ".odev.yaml").write_text(
+            yaml.dump(config, default_flow_style=False),
+            encoding="utf-8",
+        )
+
+        pc = ProjectConfig(tmp_path)
+
+        assert pc.ruta_enterprise == "./enterprise"
+
 
 class TestMezclarProfundo:
     """Grupo de tests para la funcion auxiliar _mezclar_profundo()."""
@@ -148,3 +174,116 @@ class TestMezclarProfundo:
         _mezclar_profundo(base, actualizacion)
 
         assert base == {"a": {"x": 1}}
+
+
+class TestValidarEsquemaNested:
+    """Tests para la validacion anidada de esquema en _validar_esquema."""
+
+    def test_typo_in_nested_key_produces_warning(self, tmp_path):
+        """Un typo en una clave anidada (ej. enterprise.enbled) produce warning."""
+        config = {"enterprise": {"enbled": True}}
+        (tmp_path / ".odev.yaml").write_text(yaml.dump(config))
+
+        with patch("odev.core.project.warning") as mock_warning:
+            pc = ProjectConfig(tmp_path)
+
+        # Debe haber al menos un warning sobre la clave desconocida 'enbled'
+        calls = [str(c) for c in mock_warning.call_args_list]
+        assert any("enbled" in c and "enterprise" in c for c in calls)
+        # El typo fue ignorado, el default se aplico
+        assert pc.enterprise_habilitado is False
+
+    def test_wrong_type_in_nested_value_produces_warning(self, tmp_path):
+        """Un tipo incorrecto (ej. enterprise.enabled: 'yes') produce warning."""
+        config = {"enterprise": {"enabled": "yes"}}
+        (tmp_path / ".odev.yaml").write_text(yaml.dump(config))
+
+        with patch("odev.core.project.warning") as mock_warning:
+            ProjectConfig(tmp_path)
+
+        # Al menos un warning mencionando 'bool'
+        calls = [str(c) for c in mock_warning.call_args_list]
+        assert any("bool" in c for c in calls)
+
+    def test_valid_nested_config_no_warnings(self, tmp_path):
+        """Una configuracion valida completa no produce warnings."""
+        config = {
+            "odoo": {"version": "19.0", "image": "odoo:19"},
+            "enterprise": {"enabled": True, "path": "./enterprise"},
+        }
+        (tmp_path / ".odev.yaml").write_text(yaml.dump(config))
+
+        with patch("odev.core.project.warning") as mock_warning:
+            ProjectConfig(tmp_path)
+
+        mock_warning.assert_not_called()
+
+    def test_paths_addons_accepts_list_and_string(self, tmp_path):
+        """No produce warning para paths.addons como lista ni como string."""
+        # Caso 1: lista (tipo primario)
+        config_list = {"paths": {"addons": ["./addons", "./extra"]}}
+        (tmp_path / ".odev.yaml").write_text(yaml.dump(config_list))
+
+        with patch("odev.core.project.warning") as mock_warning:
+            ProjectConfig(tmp_path)
+
+        mock_warning.assert_not_called()
+
+        # Caso 2: string (tipo alternativo, coercionado despues)
+        config_str = {"paths": {"addons": "./addons"}}
+        (tmp_path / ".odev.yaml").write_text(yaml.dump(config_str))
+
+        with patch("odev.core.project.warning") as mock_warning:
+            ProjectConfig(tmp_path)
+
+        mock_warning.assert_not_called()
+
+    def test_none_value_produces_warning(self, tmp_path):
+        """Un valor null (None) produce warning de tipo."""
+        config = {"enterprise": {"path": None}}
+        (tmp_path / ".odev.yaml").write_text(yaml.dump(config))
+
+        with patch("odev.core.project.warning") as mock_warning:
+            ProjectConfig(tmp_path)
+
+        calls = [str(c) for c in mock_warning.call_args_list]
+        assert any("NoneType" in c for c in calls)
+
+    def test_paths_addons_int_produces_warning(self, tmp_path):
+        """paths.addons: 42 (int) produce warning mencionando list o str."""
+        config = {"paths": {"addons": 42}}
+        (tmp_path / ".odev.yaml").write_text(yaml.dump(config))
+
+        with patch("odev.core.project.warning") as mock_warning:
+            ProjectConfig(tmp_path)
+
+        calls = [str(c) for c in mock_warning.call_args_list]
+        assert any("list" in c and "str" in c and "int" in c for c in calls)
+
+    def test_unknown_toplevel_keys_still_produce_warnings(self, tmp_path):
+        """Las claves desconocidas de primer nivel siguen produciendo warnings."""
+        config = {"clave_inventada": "valor"}
+        (tmp_path / ".odev.yaml").write_text(yaml.dump(config))
+
+        with patch("odev.core.project.warning") as mock_warning:
+            ProjectConfig(tmp_path)
+
+        calls = [str(c) for c in mock_warning.call_args_list]
+        assert any("clave_inventada" in c for c in calls)
+
+    def test_project_loads_normally_with_warnings(self, tmp_path):
+        """El proyecto se carga normalmente incluso con warnings."""
+        config = {
+            "enterprise": {"enbled": True, "enabled": "yes"},
+            "odoo": {"version": "18.0", "vresion": "typo"},
+        }
+        (tmp_path / ".odev.yaml").write_text(yaml.dump(config))
+
+        with patch("odev.core.project.warning"):
+            pc = ProjectConfig(tmp_path)
+
+        # El proyecto carga y opera normalmente a pesar de los warnings
+        assert pc.version_odoo == "18.0"
+        # "yes" se mantiene como valor (mezcla prioriza lo del usuario),
+        # la validacion solo advierte, no corrige
+        assert pc.enterprise_habilitado == "yes"

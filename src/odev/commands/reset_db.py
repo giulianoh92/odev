@@ -22,6 +22,11 @@ def reset_db(
         True,
         help="Neutralizar la base de datos despues de reiniciar (desactivar crons, correo, etc.).",
     ),
+    yes: bool = typer.Option(
+        False,
+        "--yes", "-y",
+        help="Skip confirmation prompt (for automation/CI).",
+    ),
 ) -> None:
     """Destruye la base de datos y volumenes, luego reinicia el entorno desde cero.
 
@@ -37,10 +42,11 @@ def reset_db(
     contexto = requerir_proyecto(obtener_nombre_proyecto())
 
     warning("Esto ELIMINARA la base de datos y TODOS los datos!")
-    confirmacion = typer.confirm("Estas seguro?", default=False)
-    if not confirmacion:
-        info("Operacion cancelada.")
-        raise typer.Exit()
+    if not yes:
+        confirmacion = typer.confirm("Estas seguro?", default=False)
+        if not confirmacion:
+            info("Operacion cancelada.")
+            raise typer.Exit()
 
     rutas = obtener_rutas(contexto)
     valores_env = load_env(rutas.env_file)
