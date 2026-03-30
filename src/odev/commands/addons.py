@@ -5,7 +5,6 @@ Permite listar, actualizar y gestionar addons compartidos entre proyectos.
 
 import typer
 from pathlib import Path
-from typing import Optional
 
 from odev.core.console import console, info, success, warning, error
 from odev.core.context import ObtenerContexto
@@ -225,7 +224,7 @@ def _get_git_info(directory: Path) -> str:
         )
         if result.returncode == 0:
             return result.stdout.strip()
-    except:
+    except (subprocess.SubprocessError, FileNotFoundError, OSError):
         pass
     return "(not a git repo)"
 
@@ -260,7 +259,7 @@ def _check_git_updates(directory: Path) -> dict:
             }
 
         return {"has_updates": False, "message": ""}
-    except:
+    except (subprocess.SubprocessError, FileNotFoundError, OSError):
         return {"has_updates": False, "message": ""}
 
 
