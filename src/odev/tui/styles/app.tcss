@@ -17,7 +17,7 @@ Screen {
     padding: 1;
 }
 
-#actions-bar {
+#project-info {
     width: 1fr;
     border: solid $secondary;
     padding: 1;
@@ -32,11 +32,50 @@ Screen {
     height: 100%;
 }
 
+#service-label {
+    height: auto;
+    color: $secondary;
+    text-style: bold;
+    padding: 0 1;
+    background: $surface;
+}
+
 #rich-log {
-    height: 100%;
+    height: 1fr;
     scrollbar-size: 1 1;
 }
 
 #status-table {
     height: auto;
+}
+
+HelpScreen {
+    align: center middle;
+}
+
+#help-container {
+    width: 60;
+    height: auto;
+    border: solid $primary;
+    padding: 1 2;
+    background: $surface;
+    layer: dialog;
+}
+
+#help-titulo {
+    text-align: center;
+    text-style: bold;
+    color: $primary;
+    margin-bottom: 1;
+}
+
+#help-table {
+    height: auto;
+    margin-top: 1;
+}
+
+#help-footer {
+    text-align: center;
+    color: $text-muted;
+    margin-top: 1;
 }
