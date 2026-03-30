@@ -120,5 +120,11 @@ try:
 except ImportError:
     pass
 
+try:
+    from odev.commands.addons import app as addons_app
+    app.add_typer(addons_app, name="addons", help="Manage shared addons across projects")
+except ImportError:
+    pass
+
 if __name__ == "__main__":
     app()
