@@ -28,21 +28,21 @@ For non-interactive setup with sensible defaults:
 odev init my-project --no-interactive
 ```
 
-## First Time Using odev?
+## ¿Primera Vez Usando odev?
 
-New to odev? Start here: **[📖 Getting Started Guide](GETTING_STARTED.md)**
+¿Nuevo en odev? Empieza aquí: **[📖 Guía de Inicio](GUIA_INICIO.md)**
 
-This comprehensive guide covers:
-- What odev is and why you should use it
-- Installation step-by-step
-- Creating your first project
-- Basic development workflow
-- Database management
-- Using enterprise addons
-- Running multiple projects
-- Troubleshooting common issues
+Esta guía completa cubre:
+- Qué es odev y por qué deberías usarlo
+- Instalación paso-a-paso
+- Crear tu primer proyecto
+- Flujo de trabajo básico
+- Gestión de base de datos
+- Usar módulos enterprise
+- Ejecutar múltiples proyectos
+- Solucionar problemas comunes
 
-👉 **[Read the Getting Started Guide →](GETTING_STARTED.md)**
+👉 **[Lee la Guía de Inicio →](GUIA_INICIO.md)**
 
 ## Features
 
