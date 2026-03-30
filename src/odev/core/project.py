@@ -67,6 +67,7 @@ class ProjectConfig:
         Raises:
             FileNotFoundError: Si no existe .odev.yaml en la ruta indicada.
         """
+        self.ruta_proyecto = ruta_proyecto
         self.ruta_archivo = ruta_proyecto / ".odev.yaml"
         if not self.ruta_archivo.exists():
             raise FileNotFoundError(
@@ -81,6 +82,34 @@ class ProjectConfig:
         rutas = self.datos.get("paths", {})
         if isinstance(rutas.get("addons"), str):
             rutas["addons"] = [rutas["addons"]]
+
+        # Validate enterprise path if enabled
+        if self.enterprise_habilitado:
+            self._validar_ruta_enterprise()
+
+    def _validar_ruta_enterprise(self) -> None:
+        """Verifica que la ruta enterprise existe si esta habilitada.
+
+        Raises:
+            FileNotFoundError: Si la ruta enterprise no existe y esta habilitada.
+        """
+        enterprise_path_str = self.datos.get("enterprise", {}).get("path")
+
+        if not enterprise_path_str:
+            return
+
+        # Resolver rutas relativas vs. absolutas
+        enterprise_path = Path(enterprise_path_str)
+        if not enterprise_path.is_absolute():
+            enterprise_path = self.ruta_proyecto / enterprise_path_str
+
+        if not enterprise_path.exists():
+            raise FileNotFoundError(
+                f"Enterprise path does not exist: {enterprise_path}\n"
+                f"Clone with:\n"
+                f"  git clone --branch {self.version_odoo} "
+                f"https://github.com/odoo/enterprise.git {enterprise_path}"
+            )
 
     @property
     def version_minima(self) -> str:
