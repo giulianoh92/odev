@@ -236,8 +236,8 @@ def enterprise_link(
         )
         raise SystemExit(1)
 
-    # Actualizar odev.yaml
-    ruta_yaml = contexto.directorio_config / ".odev.yaml"
+    # Actualizar odev.yaml (usar la ruta exacta que cargo ProjectConfig)
+    ruta_yaml = contexto.config.ruta_archivo
     with open(ruta_yaml, encoding="utf-8") as f:
         datos = yaml.safe_load(f) or {}
 

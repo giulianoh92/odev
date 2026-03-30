@@ -199,10 +199,18 @@ class ProjectConfig:
         Lanza:
             FileNotFoundError: Si no existe .odev.yaml en la ruta indicada.
         """
-        self.ruta_archivo = ruta_proyecto / ".odev.yaml"
-        if not self.ruta_archivo.exists():
+        # Soporte para ambos nombres de archivo:
+        # - ".odev.yaml" (proyectos inline, dentro del directorio de trabajo)
+        # - "odev.yaml"  (proyectos externos adoptados, en ~/.odev/projects/<nombre>/)
+        ruta_con_punto = ruta_proyecto / ".odev.yaml"
+        ruta_sin_punto = ruta_proyecto / "odev.yaml"
+        if ruta_con_punto.exists():
+            self.ruta_archivo = ruta_con_punto
+        elif ruta_sin_punto.exists():
+            self.ruta_archivo = ruta_sin_punto
+        else:
             raise FileNotFoundError(
-                f"No se encontro .odev.yaml en {ruta_proyecto}. "
+                f"No se encontro .odev.yaml ni odev.yaml en {ruta_proyecto}. "
                 "Ejecuta 'odev init' para crear un proyecto."
             )
         with open(self.ruta_archivo, encoding="utf-8") as archivo:
