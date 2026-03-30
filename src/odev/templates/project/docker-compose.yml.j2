@@ -80,6 +80,14 @@ services:
             - __pycache__
             - .git
 {% endif %}
+{% if enterprise_enabled %}
+        - action: sync
+          path: {{ enterprise_path | default('./enterprise') }}
+          target: /mnt/enterprise-addons
+          ignore:
+            - __pycache__
+            - .git
+{% endif %}
     command: ["odoo"]
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8069/web/health || exit 1"]
