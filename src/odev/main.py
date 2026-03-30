@@ -126,5 +126,11 @@ try:
 except ImportError:
     pass
 
+try:
+    from odev.commands.sync_config import sync_config
+    app.command(name="sync-config")(sync_config)
+except ImportError:
+    pass
+
 if __name__ == "__main__":
     app()
