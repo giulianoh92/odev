@@ -28,6 +28,22 @@ For non-interactive setup with sensible defaults:
 odev init my-project --no-interactive
 ```
 
+## First Time Using odev?
+
+New to odev? Start here: **[📖 Getting Started Guide](GETTING_STARTED.md)**
+
+This comprehensive guide covers:
+- What odev is and why you should use it
+- Installation step-by-step
+- Creating your first project
+- Basic development workflow
+- Database management
+- Using enterprise addons
+- Running multiple projects
+- Troubleshooting common issues
+
+👉 **[Read the Getting Started Guide →](GETTING_STARTED.md)**
+
 ## Features
 
 - **One-command setup** -- `odev init` scaffolds an entire project with Docker Compose, Odoo config, `.env`, `.gitignore`, pre-commit hooks, and optional CI pipeline
