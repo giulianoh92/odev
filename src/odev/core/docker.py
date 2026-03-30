@@ -78,7 +78,7 @@ class DockerCompose:
 
         instancia = cls(contexto.directorio_config)
         if contexto.modo == ModoProyecto.EXTERNAL:
-            instancia._project_name = contexto.nombre
+            instancia._project_name = contexto.nombre.lower()
         return instancia
 
     @staticmethod
