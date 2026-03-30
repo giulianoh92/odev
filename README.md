@@ -42,6 +42,8 @@ odev init my-project --no-interactive
 - **Legacy migration** -- Migrate from the old `odoo-dev-env` layout to independent projects
 - **Environment diagnostics** -- `odev doctor` checks Docker, Compose, ports, config files, and version compatibility
 - **Self-update** -- `odev self-update` upgrades to the latest version via pip
+- **Shared addon management** -- Manage enterprise and shared addons across multiple projects with `odev addons`
+- **Config regeneration** -- `odev sync-config` regenerates docker-compose.yml and odoo.conf without restarting containers
 
 ## Commands Reference
 
@@ -65,6 +67,7 @@ odev init my-project --no-interactive
 | `odev context` | Generate `PROJECT_CONTEXT.md` from module analysis |
 | `odev tui` | Launch the interactive TUI dashboard |
 | `odev migrate` | Migrate a legacy `odoo-dev-env` project to the new format |
+| `odev sync-config` | Regenerate docker-compose.yml and odoo.conf from odev.yaml without restarting |
 | `odev doctor` | Diagnose the development environment and report problems |
 | `odev self-update` | Update odev to the latest version |
 
@@ -76,6 +79,16 @@ odev init my-project --no-interactive
 | `odev db restore <name>` | Restore database from a snapshot (by name or prefix) |
 | `odev db list` | List all available snapshots with date and size |
 | `odev db anonymize` | Anonymize personal data (names, emails, phones) and reset passwords |
+
+### Addon Subcommands (`odev addons`)
+
+| Command | Description |
+|---------|-------------|
+| `odev addons list` | List all addons used by the current project |
+| `odev addons list --global` | List all shared addons available in `~/.odev/addons/` |
+| `odev addons check-updates` | Check for updates in shared addons used by the project |
+| `odev addons pull <addon>` | Update a shared addon from its remote repository |
+| `odev addons used-by <addon>` | Show which projects use a specific shared addon |
 
 ## Project Structure
 
@@ -223,6 +236,53 @@ odev reset-db
 ```
 
 This runs `docker compose down -v` followed by `docker compose up -d`.
+
+## Shared Addon Management
+
+odev supports managing enterprise and shared addons across multiple projects. All shared addons are stored in a single location (`~/.odev/addons/`) and referenced by projects via the `addons_paths` configuration in `.odev.yaml`.
+
+### Setup Shared Enterprise
+
+Clone the Odoo enterprise repository once to a shared location:
+
+```bash
+mkdir -p ~/.odev/addons/enterprise/19.0
+git clone --branch 19.0 https://github.com/odoo/enterprise.git ~/.odev/addons/enterprise/19.0
+```
+
+### Use in Your Project
+
+In your project's `.odev.yaml`, reference the shared addon path:
+
+```yaml
+addons_paths:
+  - "./addons"                                    # Project-specific
+  - "~/.odev/addons/enterprise/19.0"             # Shared enterprise
+```
+
+Then run `odev up` as usual. odev automatically:
+- Mounts the shared addon path in Docker
+- Includes it in Odoo's `addons_path` configuration
+- Sets up hot-reload for code changes
+- Validates that the path exists (with helpful error message if missing)
+
+### Discover and Manage Shared Addons
+
+```bash
+# See what addons this project uses
+odev addons list
+
+# See all shared addons available globally
+odev addons list --global
+
+# Check which projects use a specific shared addon
+odev addons used-by enterprise/19.0
+
+# Update a shared addon (affects all projects using it)
+odev addons pull enterprise
+```
+
+For comprehensive documentation on shared addon management, see [~/.odev/addons/README.md](~/.odev/addons/README.md).
 
 ## Module Development
 
