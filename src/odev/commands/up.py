@@ -63,10 +63,24 @@ def up(
             contexto.directorio_config,
         )
 
-    # Auto-regenerar odoo.conf si el .env es mas reciente
+    # Auto-regenerar docker-compose.yml y odoo.conf si los archivos de config son mas recientes
     enterprise_enabled = bool(
         contexto.config and contexto.config.enterprise_habilitado
     )
+
+    # Check if odev.yaml is newer than docker-compose.yml
+    odev_config_file = rutas.odev_config
+    docker_compose_file = rutas.docker_compose_file
+
+    if odev_config_file.exists():
+        odev_mtime = odev_config_file.stat().st_mtime
+
+        # Regenerate docker-compose.yml if odev.yaml changed
+        if not docker_compose_file.exists() or odev_mtime > docker_compose_file.stat().st_mtime:
+            info("odev.yaml cambió - regenerando docker-compose.yml...")
+            docker_compose_file.unlink(missing_ok=True)
+
+    # Auto-regenerar odoo.conf si el .env es mas reciente
     archivo_odoo_conf = rutas.config_dir / "odoo.conf"
     if not archivo_odoo_conf.exists() or rutas.env_file.stat().st_mtime > archivo_odoo_conf.stat().st_mtime:
         generate_odoo_conf(
