@@ -132,12 +132,18 @@ class TestProjectConfig:
 
         assert pc.ruta_enterprise == "/shared/enterprise"
 
-    def test_ruta_enterprise_default(self, tmp_path):
+    def test_ruta_enterprise_default(self, tmp_path, monkeypatch):
         """ruta_enterprise defaults to './enterprise' when not set."""
         config = {"project": {"name": "minimal"}}
         (tmp_path / ".odev.yaml").write_text(
             yaml.dump(config, default_flow_style=False),
             encoding="utf-8",
+        )
+
+        # Evitar que el fallback a ~/.odev/enterprise/{version}/ interfiera
+        monkeypatch.setattr(
+            "odev.core.registry.ENTERPRISE_DIR",
+            tmp_path / "nonexistent_enterprise",
         )
 
         pc = ProjectConfig(tmp_path)
