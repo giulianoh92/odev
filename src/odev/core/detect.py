@@ -28,6 +28,17 @@ _DIRS_IGNORADOS = frozenset({
     "egg-info",
 })
 
+# Nombres convencionales de subdirectorios que contienen addons Odoo.
+# Se escanean a un segundo nivel de profundidad si no se encuentran
+# modulos directamente en la raiz.
+_DIRS_ADDONS_CONVENCIONALES = frozenset({
+    "addons",
+    "custom",
+    "custom_addons",
+    "extra-addons",
+    "third-party",
+})
+
 # Nombres de modulos conocidos de Odoo Enterprise para deteccion heuristica
 _MODULOS_ENTERPRISE_CONOCIDOS = frozenset({
     "account_accountant",
@@ -93,6 +104,8 @@ def detectar_layout(ruta: Path) -> RepoLayout:
         1. Verifica si es el codigo fuente de Odoo (odoo-bin en raiz).
         2. Verifica si la raiz es un modulo unico (__manifest__.py).
         3. Escanea subdirectorios inmediatos buscando modulos.
+        3b. Si no hay modulos en raiz, busca en subdirectorios convencionales
+            (addons/, custom/, custom_addons/, etc.) a un segundo nivel.
         4. Parsea .gitmodules para encontrar submodulos y sus addons.
         5. Clasifica segun los hallazgos.
 
@@ -125,6 +138,24 @@ def detectar_layout(ruta: Path) -> RepoLayout:
     # 3. Escanear subdirectorios inmediatos de la raiz
     modulos_raiz = _buscar_modulos_en(ruta)
 
+    # 3b. Si no hay modulos en raiz, buscar en subdirectorios convencionales
+    #     (addons/, custom/, custom_addons/, etc.) a un segundo nivel
+    modulos_convencionales: dict[Path, list[Path]] = {}
+    if not modulos_raiz:
+        for entrada in sorted(ruta.iterdir()) if ruta.is_dir() else []:
+            if (
+                entrada.is_dir()
+                and entrada.name in _DIRS_ADDONS_CONVENCIONALES
+            ):
+                encontrados = _buscar_modulos_en(entrada)
+                if encontrados:
+                    modulos_convencionales[entrada] = encontrados
+                    logger.debug(
+                        "Encontrados %d modulos en %s/",
+                        len(encontrados),
+                        entrada.name,
+                    )
+
     # 4. Verificar .gitmodules y escanear submodulos
     tiene_submodulos = (ruta / ".gitmodules").is_file()
     rutas_submodulos: list[Path] = []
@@ -149,6 +180,13 @@ def detectar_layout(ruta: Path) -> RepoLayout:
             rutas_addons.append(ruta)
             _rutas_addons_vistas.add(ruta_resuelta)
 
+    # Agregar subdirectorios convencionales que contienen modulos
+    for dir_conv, modulos_en_conv in modulos_convencionales.items():
+        ruta_resuelta = dir_conv.resolve()
+        if ruta_resuelta not in _rutas_addons_vistas:
+            rutas_addons.append(dir_conv)
+            _rutas_addons_vistas.add(ruta_resuelta)
+
     # Agregar directorios de submodulos que contienen modulos
     for ruta_submodulo in rutas_submodulos:
         ruta_absoluta = (ruta / ruta_submodulo).resolve()
@@ -158,7 +196,8 @@ def detectar_layout(ruta: Path) -> RepoLayout:
                 rutas_addons.append(ruta / ruta_submodulo)
                 _rutas_addons_vistas.add(ruta_absoluta)
 
-    total_modulos = len(modulos_raiz) + len(modulos_submodulos)
+    total_modulos_conv = sum(len(m) for m in modulos_convencionales.values())
+    total_modulos = len(modulos_raiz) + total_modulos_conv + len(modulos_submodulos)
     tiene_enterprise = _detectar_enterprise(ruta)
 
     # 6. Clasificar
@@ -166,7 +205,7 @@ def detectar_layout(ruta: Path) -> RepoLayout:
 
     if tiene_submodulos and tiene_submodulos_con_addons:
         tipo = TipoRepo.ODOOSH
-    elif modulos_raiz or modulos_submodulos:
+    elif modulos_raiz or modulos_submodulos or modulos_convencionales:
         tipo = TipoRepo.MULTI_ADDON
     else:
         tipo = TipoRepo.DESCONOCIDO

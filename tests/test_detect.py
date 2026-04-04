@@ -155,6 +155,76 @@ class TestDetectarLayout:
         assert layout.tipo == TipoRepo.MULTI_ADDON
         assert layout.tiene_submodulos
 
+    def test_addons_subdirectorio_convencional(self, tmp_path: Path) -> None:
+        """Modulos dentro de addons/ se detectan como MULTI_ADDON."""
+        addons = tmp_path / "addons"
+        addons.mkdir()
+        for name in ["mod_a", "mod_b"]:
+            mod = addons / name
+            mod.mkdir()
+            (mod / "__manifest__.py").write_text(f"{{'name': '{name}'}}")
+
+        # Archivos extra en raiz (sin __manifest__.py)
+        (tmp_path / "README.md").write_text("# Project")
+
+        layout = detectar_layout(tmp_path)
+
+        assert layout.tipo == TipoRepo.MULTI_ADDON
+        assert layout.modulos_encontrados == 2
+        assert len(layout.rutas_addons) == 1
+        assert layout.rutas_addons[0].name == "addons"
+
+    def test_custom_addons_subdirectorio(self, tmp_path: Path) -> None:
+        """Modulos dentro de custom_addons/ se detectan correctamente."""
+        custom = tmp_path / "custom_addons"
+        custom.mkdir()
+        mod = custom / "mi_modulo"
+        mod.mkdir()
+        (mod / "__manifest__.py").write_text("{'name': 'mi_modulo'}")
+
+        layout = detectar_layout(tmp_path)
+
+        assert layout.tipo == TipoRepo.MULTI_ADDON
+        assert layout.modulos_encontrados == 1
+        assert layout.rutas_addons[0].name == "custom_addons"
+
+    def test_multiples_dirs_convencionales(self, tmp_path: Path) -> None:
+        """Modulos en addons/ y custom/ se detectan ambos."""
+        for dir_name in ["addons", "custom"]:
+            d = tmp_path / dir_name
+            d.mkdir()
+            mod = d / f"mod_{dir_name}"
+            mod.mkdir()
+            (mod / "__manifest__.py").write_text(f"{{'name': 'mod_{dir_name}'}}")
+
+        layout = detectar_layout(tmp_path)
+
+        assert layout.tipo == TipoRepo.MULTI_ADDON
+        assert layout.modulos_encontrados == 2
+        assert len(layout.rutas_addons) == 2
+
+    def test_modulos_raiz_priorizan_sobre_convencionales(self, tmp_path: Path) -> None:
+        """Si hay modulos en raiz, no busca en subdirectorios convencionales."""
+        # Modulo en raiz
+        mod_raiz = tmp_path / "mod_raiz"
+        mod_raiz.mkdir()
+        (mod_raiz / "__manifest__.py").write_text("{'name': 'mod_raiz'}")
+
+        # Modulo en addons/ (no deberia buscarse)
+        addons = tmp_path / "addons"
+        addons.mkdir()
+        mod_addons = addons / "mod_addons"
+        mod_addons.mkdir()
+        (mod_addons / "__manifest__.py").write_text("{'name': 'mod_addons'}")
+
+        layout = detectar_layout(tmp_path)
+
+        assert layout.tipo == TipoRepo.MULTI_ADDON
+        # Solo cuenta modulos de raiz (addons/ no se escanea si hay modulos en raiz)
+        assert layout.modulos_encontrados == 1
+        assert len(layout.rutas_addons) == 1
+        assert layout.rutas_addons[0] == tmp_path
+
     def test_ruta_raiz_se_resuelve(self, tmp_path: Path) -> None:
         """La ruta_raiz del resultado esta resuelta (sin symlinks)."""
         (tmp_path / "__manifest__.py").write_text("{'name': 'Test'}")
