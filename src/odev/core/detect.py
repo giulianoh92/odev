@@ -161,13 +161,41 @@ def detectar_layout(ruta: Path) -> RepoLayout:
     rutas_submodulos: list[Path] = []
     modulos_submodulos: list[Path] = []
 
+    # Directorios convencionales encontrados DENTRO de submodulos
+    # (clave: ruta absoluta del dir convencional, valor: modulos encontrados)
+    dirs_conv_submodulos: dict[Path, list[Path]] = {}
+
     if tiene_submodulos:
         rutas_submodulos = _parsear_gitmodules(ruta)
         for ruta_submodulo in rutas_submodulos:
             ruta_absoluta = ruta / ruta_submodulo
-            if ruta_absoluta.is_dir():
-                encontrados = _buscar_modulos_en(ruta_absoluta)
-                modulos_submodulos.extend(encontrados)
+            if not ruta_absoluta.is_dir():
+                continue
+
+            # 4a. Verificar si el submodulo ES un modulo Odoo
+            if _es_modulo_odoo(ruta_absoluta):
+                modulos_submodulos.append(ruta_absoluta)
+
+            # 4b. Buscar modulos en subdirectorios inmediatos del submodulo
+            encontrados = _buscar_modulos_en(ruta_absoluta)
+            modulos_submodulos.extend(encontrados)
+
+            # 4c. Buscar en directorios convencionales dentro del submodulo
+            for entrada in sorted(ruta_absoluta.iterdir()):
+                if (
+                    entrada.is_dir()
+                    and entrada.name in _DIRS_ADDONS_CONVENCIONALES
+                ):
+                    encontrados_conv = _buscar_modulos_en(entrada)
+                    if encontrados_conv:
+                        dirs_conv_submodulos[entrada] = encontrados_conv
+                        modulos_submodulos.extend(encontrados_conv)
+                        logger.debug(
+                            "Encontrados %d modulos en submodulo %s/%s/",
+                            len(encontrados_conv),
+                            ruta_submodulo,
+                            entrada.name,
+                        )
 
     # 5. Recopilar rutas de addons (directorios que CONTIENEN modulos)
     rutas_addons: list[Path] = []
@@ -190,11 +218,29 @@ def detectar_layout(ruta: Path) -> RepoLayout:
     # Agregar directorios de submodulos que contienen modulos
     for ruta_submodulo in rutas_submodulos:
         ruta_absoluta = (ruta / ruta_submodulo).resolve()
-        if ruta_absoluta.is_dir() and ruta_absoluta not in _rutas_addons_vistas:
+        if not ruta_absoluta.is_dir():
+            continue
+
+        # Si el submodulo ES un modulo, su padre es el directorio de addons
+        if _es_modulo_odoo(ruta_absoluta):
+            ruta_padre = ruta_absoluta.parent.resolve()
+            if ruta_padre not in _rutas_addons_vistas:
+                rutas_addons.append(ruta_absoluta.parent)
+                _rutas_addons_vistas.add(ruta_padre)
+
+        # Si el submodulo contiene modulos en subdirectorios inmediatos
+        if ruta_absoluta not in _rutas_addons_vistas:
             modulos_en_sub = _buscar_modulos_en(ruta_absoluta)
             if modulos_en_sub:
                 rutas_addons.append(ruta / ruta_submodulo)
                 _rutas_addons_vistas.add(ruta_absoluta)
+
+    # Agregar directorios convencionales encontrados dentro de submodulos
+    for dir_conv_sub in dirs_conv_submodulos:
+        ruta_resuelta = dir_conv_sub.resolve()
+        if ruta_resuelta not in _rutas_addons_vistas:
+            rutas_addons.append(dir_conv_sub)
+            _rutas_addons_vistas.add(ruta_resuelta)
 
     total_modulos_conv = sum(len(m) for m in modulos_convencionales.values())
     total_modulos = len(modulos_raiz) + total_modulos_conv + len(modulos_submodulos)

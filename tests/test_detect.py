@@ -225,6 +225,113 @@ class TestDetectarLayout:
         assert len(layout.rutas_addons) == 1
         assert layout.rutas_addons[0] == tmp_path
 
+    def test_submodulo_es_modulo(self, tmp_path: Path) -> None:
+        """Submodulo que ES un modulo Odoo se detecta correctamente."""
+        # Submodulo que tiene __manifest__.py en su raiz
+        sub = tmp_path / "reswoy" / "ntgs_base"
+        sub.mkdir(parents=True)
+        (sub / "__manifest__.py").write_text("{'name': 'ntgs_base'}")
+
+        # Otro submodulo-modulo
+        sub2 = tmp_path / "reswoy" / "reswoy_healthcare"
+        sub2.mkdir(parents=True)
+        (sub2 / "__manifest__.py").write_text("{'name': 'reswoy_healthcare'}")
+
+        (tmp_path / ".gitmodules").write_text(
+            '[submodule "ntgs_base"]\n'
+            "\tpath = reswoy/ntgs_base\n"
+            "\turl = https://github.com/reswoy/ntgs-base.git\n"
+            '[submodule "reswoy_healthcare"]\n'
+            "\tpath = reswoy/reswoy_healthcare\n"
+            "\turl = https://github.com/reswoy/reswoy-healthcare.git\n"
+        )
+
+        layout = detectar_layout(tmp_path)
+
+        assert layout.tipo == TipoRepo.ODOOSH
+        assert layout.modulos_encontrados == 2
+        # El padre de los submodulos-modulo (reswoy/) debe ser addon dir
+        nombres_addons = {p.name for p in layout.rutas_addons}
+        assert "reswoy" in nombres_addons
+
+    def test_submodulo_con_custom_addons(self, tmp_path: Path) -> None:
+        """Submodulo con custom_addons/ interno detecta modulos anidados."""
+        # Submodulo con estructura anidada
+        sub = tmp_path / "reswoy" / "maximia-hr"
+        sub.mkdir(parents=True)
+        custom = sub / "custom_addons"
+        custom.mkdir()
+        for name in ["maximia_operations", "maximia_shifts", "maximia_training"]:
+            mod = custom / name
+            mod.mkdir()
+            (mod / "__manifest__.py").write_text(f"{{'name': '{name}'}}")
+
+        (tmp_path / ".gitmodules").write_text(
+            '[submodule "maximia-hr"]\n'
+            "\tpath = reswoy/maximia-hr\n"
+            "\turl = https://github.com/reswoy/maximia-hr.git\n"
+        )
+
+        layout = detectar_layout(tmp_path)
+
+        assert layout.tipo == TipoRepo.ODOOSH
+        assert layout.modulos_encontrados == 3
+        # custom_addons dentro del submodulo debe estar en rutas_addons
+        nombres_addons = {p.name for p in layout.rutas_addons}
+        assert "custom_addons" in nombres_addons
+
+    def test_submodulo_mixto_modulo_y_addons(self, tmp_path: Path) -> None:
+        """Repo Odoo.sh con submodulos-modulo y submodulo con custom_addons."""
+        # Modulo propio en raiz
+        mod = tmp_path / "mi_modulo"
+        mod.mkdir()
+        (mod / "__manifest__.py").write_text("{'name': 'mi_modulo'}")
+
+        # Submodulo que ES modulo
+        sub_mod = tmp_path / "reswoy" / "ntgs_base"
+        sub_mod.mkdir(parents=True)
+        (sub_mod / "__manifest__.py").write_text("{'name': 'ntgs_base'}")
+
+        # Submodulo con custom_addons
+        sub_hr = tmp_path / "reswoy" / "maximia-hr"
+        sub_hr.mkdir(parents=True)
+        custom = sub_hr / "custom_addons"
+        custom.mkdir()
+        for name in ["maximia_operations", "maximia_shifts"]:
+            m = custom / name
+            m.mkdir()
+            (m / "__manifest__.py").write_text(f"{{'name': '{name}'}}")
+
+        # Submodulo clasico (modulos como hijos directos)
+        sub_oca = tmp_path / "oca-web"
+        sub_oca.mkdir()
+        oca_mod = sub_oca / "web_responsive"
+        oca_mod.mkdir()
+        (oca_mod / "__manifest__.py").write_text("{'name': 'web_responsive'}")
+
+        (tmp_path / ".gitmodules").write_text(
+            '[submodule "ntgs_base"]\n'
+            "\tpath = reswoy/ntgs_base\n"
+            "\turl = https://github.com/reswoy/ntgs-base.git\n"
+            '[submodule "maximia-hr"]\n'
+            "\tpath = reswoy/maximia-hr\n"
+            "\turl = https://github.com/reswoy/maximia-hr.git\n"
+            '[submodule "oca-web"]\n'
+            "\tpath = oca-web\n"
+            "\turl = https://github.com/OCA/web.git\n"
+        )
+
+        layout = detectar_layout(tmp_path)
+
+        assert layout.tipo == TipoRepo.ODOOSH
+        # 1 raiz + 1 ntgs_base + 2 custom_addons + 1 web_responsive = 5
+        assert layout.modulos_encontrados == 5
+        nombres_addons = {p.name for p in layout.rutas_addons}
+        # raiz, reswoy/ (parent de ntgs_base), custom_addons, oca-web
+        assert "reswoy" in nombres_addons
+        assert "custom_addons" in nombres_addons
+        assert "oca-web" in nombres_addons
+
     def test_ruta_raiz_se_resuelve(self, tmp_path: Path) -> None:
         """La ruta_raiz del resultado esta resuelta (sin symlinks)."""
         (tmp_path / "__manifest__.py").write_text("{'name': 'Test'}")
