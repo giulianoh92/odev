@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 import typer
 
 from odev.core.console import error, warning
@@ -27,6 +29,113 @@ MODULOS_BUILTIN: frozenset[str] = frozenset({
     "portal", "product", "uom", "resource", "rating",
     "auth_signup", "digest",
 })
+
+
+def parsear_modulos_csv(valor: str) -> list[str]:
+    """Parsea CSV de modulos en una lista normalizada.
+
+    Comportamiento:
+      - Split por coma, strip whitespace, descarta vacios.
+      - Dedup preservando el orden de primera aparicion.
+      - 'all' permitido SOLO como token unico — mezclado con otros
+        levanta typer.Exit(2).
+      - CSV de un solo elemento ('mod1') retorna ['mod1'] — backward-compat.
+
+    Argumentos:
+        valor: cadena tal cual la entrega Typer (un solo token shell).
+
+    Retorna:
+        Lista de nombres de modulo normalizados.
+
+    Raises:
+        typer.Exit(2): si la lista es vacia o 'all' aparece con otros tokens.
+    """
+    partes = [p.strip() for p in valor.split(",")]
+    partes = [p for p in partes if p]
+
+    if not partes:
+        sys.stderr.write("Lista de modulos vacia\n")
+        raise typer.Exit(2)
+
+    seen: set[str] = set()
+    result: list[str] = []
+    for p in partes:
+        if p not in seen:
+            seen.add(p)
+            result.append(p)
+
+    if "all" in result and len(result) > 1:
+        sys.stderr.write("'all' no puede combinarse con otros modulos\n")
+        raise typer.Exit(2)
+
+    return result
+
+
+def listar_modulos_disponibles(contexto: ProjectContext) -> set[str]:
+    """Enumera modulos descubribles via detectar_layout.
+
+    Reutiliza la logica de deteccion existente. Set para lookup O(1).
+    Retorna set vacio si layout es desconocido (modulos_encontrados == 0)
+    para que callers traten el caso como 'fallback: no bloquear'.
+
+    Argumentos:
+        contexto: contexto del proyecto resuelto.
+
+    Retorna:
+        Conjunto de nombres tecnicos de modulos detectados en addons-path.
+    """
+    layout = detectar_layout(contexto.directorio_config)
+    if layout.modulos_encontrados == 0:
+        return set()
+    nombres: set[str] = set()
+    for ruta_addons in layout.rutas_addons:
+        for p in sorted(ruta_addons.iterdir()):
+            if (p / "__manifest__.py").exists():
+                nombres.add(p.name)
+    return nombres
+
+
+def validar_modulos(
+    nombres: list[str],
+    contexto: ProjectContext,
+    no_validate: bool = False,
+) -> None:
+    """Valida una lista de modulos contra addons-path.
+
+    Reglas:
+      - 'all' como unico token: bypass total.
+      - no_validate=True: bypass total (parsing ya corrio).
+      - Cada nombre se valida; los builtins en MODULOS_BUILTIN se aceptan.
+      - Si layout es desconocido (set vacio), no bloquea (fallback existente).
+      - En error: raise typer.Exit(2) con la lista COMPLETA de faltantes.
+
+    Argumentos:
+        nombres: lista normalizada (post parsear_modulos_csv).
+        contexto: contexto del proyecto.
+        no_validate: si True, omite validacion contra disco.
+
+    Raises:
+        typer.Exit(2): si uno o mas modulos no existen y no son builtin.
+    """
+    if nombres == ["all"]:
+        return
+    if no_validate:
+        return
+
+    # Filtrar builtins antes de ir al disco — si todos son builtins, no hay nada
+    # que validar en filesystem
+    a_validar = [n for n in nombres if n not in MODULOS_BUILTIN]
+    if not a_validar:
+        return
+
+    disponibles = listar_modulos_disponibles(contexto)
+    if not disponibles:
+        return  # Layout desconocido — fallback existente
+
+    faltantes = [n for n in a_validar if n not in disponibles]
+    if faltantes:
+        sys.stderr.write(f"Modulos no encontrados: {', '.join(faltantes)}\n")
+        raise typer.Exit(2)
 
 
 def requerir_proyecto(nombre_proyecto: str | None = None) -> ProjectContext:
@@ -82,12 +191,12 @@ def obtener_rutas(contexto: ProjectContext) -> ProjectPaths:
 
 
 def validar_modulo_existe(nombre: str, contexto: ProjectContext) -> None:
-    """Valida que el modulo exista en addons-path o sea builtin Odoo.
+    """Wrapper retro-compatible; delega en validar_modulos.
 
-    Bypass: 'all' siempre pasa (ejecuta todos los modulos).
-    Builtin: nombres en MODULOS_BUILTIN se aceptan sin tocar filesystem.
-    Fallback: si detectar_layout() retorna 0 modulos, se acepta el
-              nombre (proyecto sin layout reconocido — no bloquear).
+    Mantiene la misma semantica publica y superficie de mock que antes.
+    El mock path 'odev.commands._helpers.detectar_layout' sigue siendo valido
+    porque validar_modulos llama a listar_modulos_disponibles que llama
+    a detectar_layout del mismo modulo.
 
     Argumentos:
         nombre:   Nombre tecnico del modulo a validar.
@@ -95,31 +204,8 @@ def validar_modulo_existe(nombre: str, contexto: ProjectContext) -> None:
 
     Raises:
         typer.Exit(2): cuando el modulo no se encuentra y no es builtin.
-                       stderr lista hasta los primeros 20 modulos detectados.
     """
-    if nombre == "all":
-        return
-    if nombre in MODULOS_BUILTIN:
-        return
-
-    layout = detectar_layout(contexto.directorio_config)
-
-    if layout.modulos_encontrados == 0:
-        # Layout desconocido o sin addons en disco — no bloquear
-        return
-
-    nombres: list[str] = []
-    for ruta_addons in layout.rutas_addons:
-        for p in sorted(ruta_addons.iterdir()):
-            if (p / "__manifest__.py").exists():
-                nombres.append(p.name)
-
-    if nombre not in nombres:
-        error(
-            f"Modulo '{nombre}' no encontrado. "
-            f"Disponibles: {', '.join(sorted(nombres)[:20])}"
-        )
-        raise typer.Exit(2)
+    validar_modulos([nombre], contexto, no_validate=False)
 
 
 def ejecutar_operacion_modulo(
