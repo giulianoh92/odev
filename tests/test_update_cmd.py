@@ -8,19 +8,16 @@ Cubre REQ-3 (update) y REQ-4 (addon-install):
   - --no-validate → bypassa validacion
 
 Usa invocacion directa (sin CliRunner) siguiendo el patron de test_test_cmd.py.
-Las funciones de comando llaman internamente a ejecutar_operacion_modulo que
-a su vez llama requerir_proyecto + obtener_docker, etc.
+Las funciones de comando llaman directamente a docker.exec_cmd despues de
+parsear/validar los modulos via los helpers de _helpers.py.
 """
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 import typer
-
 
 # ---------------------------------------------------------------------------
 # Helpers de test

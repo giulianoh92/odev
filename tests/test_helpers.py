@@ -14,7 +14,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 import typer
 
-
 # ---------------------------------------------------------------------------
 # parsear_modulos_csv — REQ-1
 # ---------------------------------------------------------------------------
@@ -120,8 +119,8 @@ class TestListarModulosDisponibles:
 
     def test_layout_desconocido_retorna_set_vacio(self, tmp_path: Path) -> None:
         """Layout con modulos_encontrados==0 → set vacio (fallback)."""
-        from odev.core.detect import RepoLayout, TipoRepo
         from odev.commands._helpers import listar_modulos_disponibles
+        from odev.core.detect import RepoLayout, TipoRepo
 
         fake_layout = RepoLayout(
             tipo=TipoRepo.DESCONOCIDO,
@@ -138,8 +137,8 @@ class TestListarModulosDisponibles:
 
     def test_layout_con_modulos_retorna_nombres(self, tmp_path: Path) -> None:
         """Layout normal → set con nombres de modulos detectados."""
-        from odev.core.detect import RepoLayout, TipoRepo
         from odev.commands._helpers import listar_modulos_disponibles
+        from odev.core.detect import RepoLayout, TipoRepo
 
         addon_dir = tmp_path / "addons"
         addon_dir.mkdir()
@@ -162,8 +161,8 @@ class TestListarModulosDisponibles:
 
     def test_directorio_sin_manifest_ignorado(self, tmp_path: Path) -> None:
         """Directorios sin __manifest__.py no se incluyen en el set."""
-        from odev.core.detect import RepoLayout, TipoRepo
         from odev.commands._helpers import listar_modulos_disponibles
+        from odev.core.detect import RepoLayout, TipoRepo
 
         addon_dir = tmp_path / "addons"
         addon_dir.mkdir()
@@ -222,8 +221,8 @@ class TestValidarModulos:
 
     def test_disponibles_vacios_bypass(self, tmp_path: Path) -> None:
         """Layout desconocido (disponibles==set()) → no lanza error."""
-        from odev.core.detect import RepoLayout, TipoRepo
         from odev.commands._helpers import validar_modulos
+        from odev.core.detect import RepoLayout, TipoRepo
 
         ctx = self._make_ctx(tmp_path)
         fake_layout = RepoLayout(
@@ -246,8 +245,8 @@ class TestValidarModulos:
 
     def test_2b_un_modulo_faltante_exit_2(self, tmp_path: Path, capsys) -> None:
         """2-B: un modulo inexistente → Exit(2) y stderr menciona el nombre."""
-        from odev.core.detect import RepoLayout, TipoRepo
         from odev.commands._helpers import validar_modulos
+        from odev.core.detect import RepoLayout, TipoRepo
 
         ctx = self._make_ctx(tmp_path)
         addon_dir = tmp_path / "addons"
@@ -273,8 +272,8 @@ class TestValidarModulos:
 
     def test_2c_multiples_faltantes_en_un_mensaje(self, tmp_path: Path, capsys) -> None:
         """2-C: varios faltantes → todos listados en un solo mensaje de error."""
-        from odev.core.detect import RepoLayout, TipoRepo
         from odev.commands._helpers import validar_modulos
+        from odev.core.detect import RepoLayout, TipoRepo
 
         ctx = self._make_ctx(tmp_path)
         addon_dir = tmp_path / "addons"
@@ -302,8 +301,8 @@ class TestValidarModulos:
 
     def test_2a_todos_validos_no_error(self, tmp_path: Path) -> None:
         """2-A: todos los modulos existen → retorna None sin error."""
-        from odev.core.detect import RepoLayout, TipoRepo
         from odev.commands._helpers import validar_modulos
+        from odev.core.detect import RepoLayout, TipoRepo
 
         ctx = self._make_ctx(tmp_path)
         addon_dir = tmp_path / "addons"
@@ -324,8 +323,8 @@ class TestValidarModulos:
 
     def test_mixto_builtin_presente_faltante(self, tmp_path: Path, capsys) -> None:
         """Mezcla builtin + presente + faltante → solo el faltante en error."""
-        from odev.core.detect import RepoLayout, TipoRepo
         from odev.commands._helpers import validar_modulos
+        from odev.core.detect import RepoLayout, TipoRepo
 
         ctx = self._make_ctx(tmp_path)
         addon_dir = tmp_path / "addons"

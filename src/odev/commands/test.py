@@ -30,7 +30,7 @@ from odev.commands._helpers import (
     obtener_rutas,
     parsear_modulos_csv,
     requerir_proyecto,
-    validar_modulo_existe,
+    validar_modulo_existe,  # noqa: F401  # re-exported for test mocks
     validar_modulos,
 )
 from odev.core.config import load_env

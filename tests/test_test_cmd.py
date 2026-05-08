@@ -1058,10 +1058,10 @@ class TestCSVModules:
         idx_tt = cmd.index("--test-tags")
         assert cmd[idx_tt + 1] == "/m1,/m2"
 
-    def test_5c_tags_override_reemplaza_prefijos(
+    def test_5c_tags_append_a_prefijos(
         self, tmp_path: Path, monkeypatch
     ) -> None:
-        """5-C: _run_test('m1,m2', tags='/X:Cls') → --test-tags /m1,/m2,/X:Cls."""
+        """5-C: _run_test('m1,m2', tags='/X:Cls') → --test-tags /m1,/m2,/X:Cls (append)."""
         monkeypatch.setattr("sys.stdout.isatty", lambda: False)
 
         fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
@@ -1101,8 +1101,9 @@ class TestCSVModules:
 
     def test_5e_all_mezclado_exit_2(self, tmp_path: Path, monkeypatch) -> None:
         """5-E: _run_test('m1,all') → exit 2 antes de llamar Odoo."""
-        from odev.commands.test import _run_test
         import typer as ty
+
+        from odev.commands.test import _run_test
 
         ctx = _make_contexto(tmp_path)
         mock_dc = MagicMock()
@@ -1137,8 +1138,9 @@ class TestCSVModules:
         mock_dc = MagicMock()
         mock_dc.exec_cmd_stream.return_value = fake_popen
 
-        from odev.commands.test import _run_test
         import typer as ty
+
+        from odev.commands.test import _run_test
 
         ctx = _make_contexto(tmp_path)
 

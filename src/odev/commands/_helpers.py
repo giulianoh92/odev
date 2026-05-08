@@ -208,39 +208,3 @@ def validar_modulo_existe(nombre: str, contexto: ProjectContext) -> None:
     validar_modulos([nombre], contexto, no_validate=False)
 
 
-def ejecutar_operacion_modulo(
-    modulo: str,
-    flag_odoo: str,
-    verbo_gerundio: str,
-    verbo_pasado: str,
-) -> None:
-    """Ejecuta una operacion de modulo Odoo (instalar o actualizar).
-
-    Argumentos:
-        modulo: Nombre tecnico del modulo.
-        flag_odoo: Flag de Odoo ('-i' para instalar, '-u' para actualizar).
-        verbo_gerundio: Verbo en gerundio para mensajes (ej. 'Instalando').
-        verbo_pasado: Verbo en pasado para mensajes (ej. 'instalado').
-    """
-    from odev.core.config import load_env
-    from odev.core.console import info, success
-    from odev.main import obtener_nombre_proyecto
-
-    contexto = requerir_proyecto(obtener_nombre_proyecto())
-    rutas = obtener_rutas(contexto)
-
-    valores_env = load_env(rutas.env_file)
-    nombre_bd = valores_env.get("DB_NAME", "odoo_db")
-
-    dc = obtener_docker(contexto)
-
-    info(f"{verbo_gerundio} modulo: {modulo}")
-    dc.exec_cmd(
-        "web",
-        ["odoo", flag_odoo, modulo, "-d", nombre_bd, "--stop-after-init"],
-        interactive=True,
-    )
-
-    info("Reiniciando servicio web...")
-    dc.restart("web")
-    success(f"Modulo '{modulo}' {verbo_pasado} y servicio web reiniciado.")

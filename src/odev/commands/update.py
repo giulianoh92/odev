@@ -3,7 +3,6 @@
 import typer
 
 from odev.commands._helpers import (
-    ejecutar_operacion_modulo,
     obtener_docker,
     obtener_rutas,
     parsear_modulos_csv,
