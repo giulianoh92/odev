@@ -18,3 +18,5 @@ htmlcov/
 
 # OS
 .DS_Store
+.atl/
+uv.lock
