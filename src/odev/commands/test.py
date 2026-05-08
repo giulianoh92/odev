@@ -28,8 +28,10 @@ import typer
 from odev.commands._helpers import (
     obtener_docker,
     obtener_rutas,
+    parsear_modulos_csv,
     requerir_proyecto,
     validar_modulo_existe,
+    validar_modulos,
 )
 from odev.core.config import load_env
 from odev.core.console import error, info
@@ -176,26 +178,29 @@ def _run_test(
     json_out: bool,
     tags: Optional[str],
     save_log: Optional[Path],
+    no_validate: bool = False,
 ) -> None:
     """Implementacion principal del comando test.
 
     Separada del decorador Typer para facilitar tests unitarios directos.
 
     Argumentos:
-        module:        Nombre del modulo a testear, o 'all'.
+        module:        Nombre(s) del modulo a testear, o 'all'. CSV soportado.
         log_level:     Nivel de log de Odoo.
         summary:       Si True, imprime resumen estructurado.
         failures_only: Si True, imprime solo bloques FAIL/ERROR.
         json_out:      Si True, emite JSON estructurado.
-        tags:          Expresion de tags para --test-tags de Odoo.
+        tags:          Expresion de tags para --test-tags de Odoo (override/append).
         save_log:      Ruta donde guardar el log crudo.
+        no_validate:   Si True, omite validacion contra addons-path.
     """
     from odev.main import obtener_nombre_proyecto
 
     contexto = requerir_proyecto(obtener_nombre_proyecto())
 
-    # Pre-flight: validar que el modulo exista en addons-path (o sea builtin)
-    validar_modulo_existe(module, contexto)
+    # Pre-flight: parsear y validar modulo(s)
+    modulos = parsear_modulos_csv(module)
+    validar_modulos(modulos, contexto, no_validate=no_validate)
 
     rutas = obtener_rutas(contexto)
 
@@ -220,11 +225,11 @@ def _run_test(
         f"--log-level={log_level}",
     ]
 
-    # Tags: merge module prefix + user tags en un solo --test-tags
+    # Tags: construir --test-tags con prefijos /mod por modulo + user tags append
     tag_parts: list[str] = []
-    if module != "all":
-        comando.extend(["-u", module])
-        tag_parts.append(f"/{module}")
+    if modulos != ["all"]:
+        comando.extend(["-u", ",".join(modulos)])
+        tag_parts.extend(f"/{m}" for m in modulos)
     if tags is not None:
         tag_parts.append(tags)
     if tag_parts:
@@ -279,7 +284,10 @@ def _run_test(
 def test(
     module: str = typer.Argument(
         ...,
-        help="Nombre del modulo a testear, o 'all' para ejecutar todos los tests.",
+        help=(
+            "Modulo(s) a testear. CSV soportado: 'm1,m2'. "
+            "'all' solo como token unico para ejecutar todos los tests."
+        ),
     ),
     log_level: Optional[str] = typer.Option(
         "test",
@@ -309,13 +317,19 @@ def test(
         "--tags",
         help=(
             "Expresion de tags Odoo (ej. /mymod:MyClass o sale,account). "
-            "Se combina con el modulo como /modulo,expr."
+            "Se agrega a los prefijos auto-generados /m1,/m2 como sufijo. "
+            "Anula los prefijos si se usa sin modulos especificos."
         ),
     ),
     save_log: Optional[Path] = typer.Option(
         None,
         "--save-log",
         help="Ruta donde guardar el log crudo de Odoo.",
+    ),
+    no_validate: bool = typer.Option(
+        False,
+        "--no-validate",
+        help="Omite la validacion previa de modulos contra addons-path.",
     ),
 ) -> None:
     """Ejecuta los tests de un modulo Odoo.
@@ -352,4 +366,5 @@ def test(
         json_out=json_out,
         tags=tags,
         save_log=save_log,
+        no_validate=no_validate,
     )

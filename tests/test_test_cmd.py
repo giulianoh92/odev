@@ -977,3 +977,191 @@ class TestJsonNewFields:
         captured = capsys.readouterr()
         data = json.loads(captured.out)
         assert data["fallback_counters_used"] is False
+
+
+# ---------------------------------------------------------------------------
+# T-csv — CSV multi-module support (REQ-5)
+# ---------------------------------------------------------------------------
+
+
+class TestCSVModules:
+    """REQ-5: _run_test acepta CSV de modulos y genera invocacion Odoo agregada."""
+
+    def _call_run_test_csv(self, tmp_path: Path, mock_dc: MagicMock, **overrides):
+        """Llama _run_test con patches para CSV: no parchea validar_modulo_existe
+        sino validar_modulos directamente (nueva implementacion).
+        """
+        from odev.commands.test import _run_test
+
+        ctx = _make_contexto(tmp_path)
+        kwargs = {**_default_run_kwargs(), **overrides}
+
+        exc = None
+        with (
+            patch("odev.commands.test.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.test.obtener_rutas") as mock_rutas,
+            patch("odev.commands.test.obtener_docker", return_value=mock_dc),
+            patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands.test.validar_modulos", return_value=None),
+            patch("odev.commands.test.puerto_disponible", return_value=True),
+        ):
+            mock_rutas.return_value.env_file = tmp_path / ".env"
+            try:
+                _run_test(**kwargs)
+            except (SystemExit, Exception) as e:
+                import typer as ty
+                if isinstance(e, (SystemExit, ty.Exit)):
+                    exc = e
+                else:
+                    raise
+
+        return exc
+
+    def test_5b_csv_genera_u_comma_joined(self, tmp_path: Path, monkeypatch) -> None:
+        """5-B: _run_test('m1,m2') → exec_cmd_stream con -u m1,m2 en args."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        self._call_run_test_csv(
+            tmp_path, mock_dc,
+            module="m1,m2",
+            summary=True,
+        )
+
+        cmd = mock_dc.exec_cmd_stream.call_args[0][1]
+        assert "-u" in cmd
+        idx_u = cmd.index("-u")
+        assert cmd[idx_u + 1] == "m1,m2"
+
+    def test_5b_csv_genera_test_tags_con_prefijos(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """5-B: _run_test('m1,m2') → --test-tags /m1,/m2 en args."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        self._call_run_test_csv(
+            tmp_path, mock_dc,
+            module="m1,m2",
+            summary=True,
+        )
+
+        cmd = mock_dc.exec_cmd_stream.call_args[0][1]
+        assert "--test-tags" in cmd
+        idx_tt = cmd.index("--test-tags")
+        assert cmd[idx_tt + 1] == "/m1,/m2"
+
+    def test_5c_tags_override_reemplaza_prefijos(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """5-C: _run_test('m1,m2', tags='/X:Cls') → --test-tags /m1,/m2,/X:Cls."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        self._call_run_test_csv(
+            tmp_path, mock_dc,
+            module="m1,m2",
+            tags="/X:Cls",
+            summary=True,
+        )
+
+        cmd = mock_dc.exec_cmd_stream.call_args[0][1]
+        idx_tt = cmd.index("--test-tags")
+        assert cmd[idx_tt + 1] == "/m1,/m2,/X:Cls"
+
+    def test_5d_all_solo_sin_u_sin_test_tags(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """5-D: _run_test('all') → no -u, no --test-tags prefix."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        self._call_run_test_csv(
+            tmp_path, mock_dc,
+            module="all",
+            summary=True,
+        )
+
+        cmd = mock_dc.exec_cmd_stream.call_args[0][1]
+        assert "-u" not in cmd
+        assert "--test-tags" not in cmd
+
+    def test_5e_all_mezclado_exit_2(self, tmp_path: Path, monkeypatch) -> None:
+        """5-E: _run_test('m1,all') → exit 2 antes de llamar Odoo."""
+        from odev.commands.test import _run_test
+        import typer as ty
+
+        ctx = _make_contexto(tmp_path)
+        mock_dc = MagicMock()
+
+        with (
+            patch("odev.commands.test.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.test.obtener_rutas") as mock_rutas,
+            patch("odev.commands.test.obtener_docker", return_value=mock_dc),
+            patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands.test.puerto_disponible", return_value=True),
+        ):
+            mock_rutas.return_value.env_file = tmp_path / ".env"
+            with pytest.raises((SystemExit, ty.Exit)) as exc_info:
+                _run_test(
+                    **{**_default_run_kwargs(), "module": "m1,all", "no_validate": False}
+                )
+
+        exc = exc_info.value
+        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
+        assert code == 2
+        mock_dc.exec_cmd_stream.assert_not_called()
+        mock_dc.exec_cmd.assert_not_called()
+
+    def test_no_validate_bypassa_validacion(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """--no-validate en _run_test bypassa la validacion de modulos."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        from odev.commands.test import _run_test
+        import typer as ty
+
+        ctx = _make_contexto(tmp_path)
+
+        with (
+            patch("odev.commands.test.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.test.obtener_rutas") as mock_rutas,
+            patch("odev.commands.test.obtener_docker", return_value=mock_dc),
+            patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands._helpers.listar_modulos_disponibles", return_value={"sale"}),
+            patch("odev.commands.test.puerto_disponible", return_value=True),
+        ):
+            mock_rutas.return_value.env_file = tmp_path / ".env"
+            exc = None
+            try:
+                _run_test(
+                    **{**_default_run_kwargs(), "module": "ghost_mod", "no_validate": True}
+                )
+            except (SystemExit, ty.Exit) as e:
+                exc = e
+
+        # No debe haber salido con exit 2 por validacion
+        if exc is not None:
+            code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
+            assert code != 2
+        mock_dc.exec_cmd_stream.assert_called_once()
