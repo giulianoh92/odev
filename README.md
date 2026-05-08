@@ -75,6 +75,9 @@ El comando `adopt` detecta automaticamente el layout del repositorio (modulo uni
 | `odev status` | Ver estado de los servicios |
 | `odev logs [servicio]` | Ver logs de un servicio |
 | `odev shell [servicio]` | Abrir terminal en un contenedor |
+| `odev shell <svc> -c "<cmd>"` | Ejecutar comando bash no-interactivo |
+| `odev sql <query>` | Ejecutar SQL en el contenedor db |
+| `odev py <expresion>` | Evaluar expresion Python en odoo shell |
 | `odev scaffold <nombre>` | Crear un nuevo modulo Odoo |
 | `odev addon-install <modulo(s)>` | Instalar modulo(s) — CSV soportado: `m1,m2` |
 | `odev update <modulo(s)>` | Actualizar modulo(s) — CSV soportado: `m1,m2` |
@@ -104,6 +107,9 @@ El comando `adopt` detecta automaticamente el layout del repositorio (modulo uni
 | `odev status` | Mostrar tabla de estado de servicios (nombre, estado, salud, puertos) |
 | `odev logs [servicio]` | Seguir logs de un servicio (`web`, `db` o `all`; `--tail`, `--no-follow`) |
 | `odev shell [servicio]` | Abrir un shell bash interactivo dentro de un contenedor (por defecto: `web`) |
+| `odev shell <svc> -c "<cmd>"` | Ejecutar un comando bash no-interactivo en el contenedor |
+| `odev sql <query>` | Ejecutar SQL en el contenedor db via psql (`--csv` para salida sin bordes) |
+| `odev py <expresion>` | Evaluar expresion Python en odoo shell via stdin |
 | `odev test <modulo(s)>` | Ejecutar tests de modulo(s) (CSV: `m1,m2`; `all`; `--log-level`; `--no-validate`) |
 | `odev scaffold <nombre>` | Crear un nuevo modulo Odoo desde el template incluido |
 | `odev addon-install <modulo(s)>` | Instalar modulo(s) — CSV: `m1,m2`; `--no-validate` |
@@ -166,6 +172,45 @@ Abre una terminal bash dentro de un contenedor (por defecto: web).
 odev shell          # Terminal en el contenedor web (Odoo)
 odev shell db       # Terminal en el contenedor de base de datos
 ```
+
+Con `-c`, ejecuta un comando de forma no-interactiva y propaga el exit code
+(util para scripts y pipelines CI/IA):
+
+```bash
+odev shell web -c "ls /mnt/extra-addons"
+odev shell web -c "python -c 'import odoo; print(odoo.__version__)'"
+```
+
+### `odev sql <query> [--csv]`
+
+Ejecuta una sentencia SQL en el contenedor `db` via `psql -c` y propaga stdout/exit code.
+Lee `DB_NAME` y `DB_USER` del `.env` del proyecto (defaults: `odoo_db` / `odoo`).
+
+```bash
+odev sql "SELECT count(*) FROM res_partner"
+odev sql "SELECT id, name FROM res_partner LIMIT 3" --csv
+```
+
+El flag `--csv` agrega `-A -t -F','` a psql (salida sin bordes, solo datos, separados por coma).
+No es RFC 4180 CSV — campos con comas o comillas no se escapan.
+
+Codigos de salida: `0` exito, `1` error de psql, `2` query vacia.
+
+### `odev py <expresion>`
+
+Evalua una expresion Python en `odoo shell` via stdin (flag `--no-http`) y propaga stdout/exit code.
+Lee `DB_NAME` del `.env` del proyecto (default: `odoo_db`).
+
+```bash
+odev py "env['res.partner'].search_count([])"
+odev py "env['product.template'].search_count([('active', '=', True)])"
+```
+
+Caveats:
+- El banner de Odoo puede aparecer en stdout (v1 — passthrough raw).
+- Side-effects ORM (`.create()`, `.write()`) se commitean. Usar `env.cr.rollback()` si se necesita dry-run.
+
+Codigos de salida: `0` exito, `1` error en odoo shell, `2` expresion vacia.
 
 ### `odev projects`
 
