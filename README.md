@@ -76,9 +76,9 @@ El comando `adopt` detecta automaticamente el layout del repositorio (modulo uni
 | `odev logs [servicio]` | Ver logs de un servicio |
 | `odev shell [servicio]` | Abrir terminal en un contenedor |
 | `odev scaffold <nombre>` | Crear un nuevo modulo Odoo |
-| `odev addon-install <modulo>` | Instalar un modulo |
-| `odev update <modulo>` | Actualizar un modulo |
-| `odev test <modulo>` | Ejecutar tests de un modulo |
+| `odev addon-install <modulo(s)>` | Instalar modulo(s) — CSV soportado: `m1,m2` |
+| `odev update <modulo(s)>` | Actualizar modulo(s) — CSV soportado: `m1,m2` |
+| `odev test <modulo(s)>` | Ejecutar tests — CSV soportado: `m1,m2` |
 | `odev db snapshot <nombre>` | Crear snapshot de la base de datos |
 | `odev db restore <nombre>` | Restaurar un snapshot |
 | `odev db list` | Listar snapshots disponibles |
@@ -104,10 +104,10 @@ El comando `adopt` detecta automaticamente el layout del repositorio (modulo uni
 | `odev status` | Mostrar tabla de estado de servicios (nombre, estado, salud, puertos) |
 | `odev logs [servicio]` | Seguir logs de un servicio (`web`, `db` o `all`; `--tail`, `--no-follow`) |
 | `odev shell [servicio]` | Abrir un shell bash interactivo dentro de un contenedor (por defecto: `web`) |
-| `odev test <modulo>` | Ejecutar tests de un modulo (o `all`; `--log-level` para controlar verbosidad) |
+| `odev test <modulo(s)>` | Ejecutar tests de modulo(s) (CSV: `m1,m2`; `all`; `--log-level`; `--no-validate`) |
 | `odev scaffold <nombre>` | Crear un nuevo modulo Odoo desde el template incluido |
-| `odev addon-install <modulo>` | Instalar un modulo por primera vez y reiniciar |
-| `odev update <modulo>` | Actualizar un modulo y reiniciar |
+| `odev addon-install <modulo(s)>` | Instalar modulo(s) — CSV: `m1,m2`; `--no-validate` |
+| `odev update <modulo(s)>` | Actualizar modulo(s) — CSV: `m1,m2`; `--no-validate` |
 | `odev reset-db` | Destruir base de datos y volumenes, reiniciar con un entorno limpio |
 | `odev load-backup <ruta>` | Cargar un backup de Odoo.sh / Database Manager (`.zip`; `--no-neutralize`) |
 | `odev context` | Generar `PROJECT_CONTEXT.md` a partir del analisis de modulos |
@@ -184,6 +184,102 @@ odev projects remove mi-proyecto --delete-config
 # Limpiar proyectos cuyo directorio ya no existe
 odev projects clean
 ```
+
+### Soporte CSV de Modulos (`update`, `addon-install`, `test`)
+
+Los comandos `update`, `addon-install` y `test` aceptan uno o varios modulos
+en un solo token separado por comas. Odoo recibe una unica invocacion, no N
+invocaciones secuenciales.
+
+#### Ejemplos basicos
+
+```bash
+# Un solo modulo (backward-compatible)
+odev update sale
+odev addon-install account
+odev test crm
+
+# Varios modulos via CSV
+odev update sale,stock,crm
+odev addon-install sale,account,purchase
+odev test sale,crm
+```
+
+El argumento debe ser un **unico token de shell**. Si tus modulos tienen espacios
+en sus nombres, usa comillas: `odev update "sale,stock"`. No uses espacios
+directamente entre modulos (`odev update sale stock` es un error — Typer rechaza
+argumentos extra).
+
+#### `odev update <modulos> [--no-validate]`
+
+```bash
+# Actualizar multiples modulos en una sola invocacion Odoo
+odev update sale,crm,stock
+
+# Saltar la validacion previa (util si el modulo es nuevo o esta fuera del addons-path)
+odev update mi_modulo --no-validate
+
+# 'all' sigue funcionando como siempre
+odev update all
+```
+
+#### `odev addon-install <modulos> [--no-validate]`
+
+```bash
+# Instalar varios modulos de una sola vez
+odev addon-install sale,account,base_setup
+
+# Saltar validacion
+odev addon-install nuevo_modulo --no-validate
+```
+
+#### `odev test <modulos> [--no-validate]`
+
+```bash
+# Testear multiples modulos: genera -u sale,crm --test-tags /sale,/crm
+odev test sale,crm
+
+# Agregar filtro de tag extra (se agrega al final del --test-tags auto-generado)
+odev test sale,crm --tags :test_create
+# Resultado: --test-tags /sale,/crm,:test_create
+
+# Saltar validacion previa de modulos
+odev test sale,crm --no-validate
+
+# 'all' sigue sin filtros de modulo ni de tags
+odev test all
+```
+
+#### Flag `--no-validate`
+
+Por defecto `update`, `addon-install` y `test` verifican que cada modulo
+exista en el `addons-path` del proyecto antes de invocar a Odoo. Si la
+verificacion falla, el comando sale con exit code `2` y muestra la lista
+completa de modulos no encontrados.
+
+`--no-validate` omite esta verificacion de disco. El parsing del CSV sigue
+corriendo (errores de formato como `'all' mezclado con otros modulos` se
+reportan igual).
+
+#### Regla `all`
+
+El token `all` solo puede usarse **solo**. Mezclarlo con otros modulos
+(`odev update sale,all`) es un error y sale con exit code `2`.
+
+```bash
+odev update all       # OK: actualiza todos los modulos
+odev update sale,all  # ERROR: exit 2 — 'all' no puede combinarse
+```
+
+#### Codigos de salida
+
+| Codigo | Condicion |
+|--------|-----------|
+| `0` | Exito |
+| `2` | Error de uso: modulo(s) no encontrado(s), `all` mezclado, o lista vacia |
+| `3` | Error de entorno: puerto ocupado (solo `test`) |
+
+---
 
 ## Estructura del Proyecto
 
