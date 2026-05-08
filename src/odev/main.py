@@ -24,6 +24,7 @@ from odev.commands import (
     scaffold,
     self_update,
     shell,
+    sql,
     status,
     test,
     tui,
@@ -107,6 +108,7 @@ app.command(
         "  tag1,tag2              filtrar por @tagged()"
     ),
 )(test.test)
+app.command(name="sql")(sql.sql)
 app.command(name="scaffold")(scaffold.scaffold)
 app.command(name="addon-install")(install.install)
 app.command(name="update")(update.update)
