@@ -19,6 +19,7 @@ from odev.commands import (
     load_backup,
     logs,
     migrate,
+    py,
     reset_db,
     restart,
     scaffold,
@@ -109,6 +110,7 @@ app.command(
     ),
 )(test.test)
 app.command(name="sql")(sql.sql)
+app.command(name="py")(py.py)
 app.command(name="scaffold")(scaffold.scaffold)
 app.command(name="addon-install")(install.install)
 app.command(name="update")(update.update)
