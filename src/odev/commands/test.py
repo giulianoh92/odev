@@ -123,7 +123,9 @@ def render_failures(result: TestResult) -> None:
 
     for failure in result.failures:
         label = "[bold red]FAIL[/]" if failure.kind == "FAIL" else "[bold yellow]ERROR[/]"
-        console.print(f"\n{label} {failure.test_class}.{failure.method}")
+        cls_name = failure.test_class or "<loading>"
+        mth_name = failure.method or "?"
+        console.print(f"\n{label} {cls_name}.{mth_name}")
         if failure.traceback:
             console.print(failure.traceback)
 

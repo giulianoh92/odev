@@ -4,14 +4,14 @@ Convierte la salida de texto del test runner de Odoo en estructuras de datos
 tipadas, permitiendo consumo programatico por agentes IA, CI pipelines y
 modos de salida filtrados.
 
-Soporta formatos Odoo v14-v18. Formato v19 en espera de fixture confirmado.
+Soporta formatos Odoo v14-v18 y v19 (dos pasadas).
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Iterable, Literal
+from typing import Iterable, Literal, Optional
 
 # ---------------------------------------------------------------------------
 # Regex compilados al nivel de modulo (no dentro de funciones)
@@ -38,6 +38,24 @@ RE_RESULT_FAILED = re.compile(
 # Separadores de bloque: "======" o "------" (5+ caracteres)
 RE_SEPARATOR = re.compile(r"^[=\-]{5,}\s*$")
 
+# Odoo v19: linea de resumen "N failed, M error(s) of T tests when loading database 'db'"
+RE_ODOO19_SUMMARY = re.compile(
+    r"(\d+) failed, (\d+) error\(s\) of (\d+) tests when loading database"
+)
+
+# Odoo v19: linea de duracion "odoo.tests.stats: <module>: N tests X.Xs Q queries"
+RE_ODOO19_DURATION = re.compile(
+    r"odoo\.tests\.stats:\s+\S+:\s+(\d+) tests ([\d.]+)s (\d+) queries"
+)
+
+# Cabecera setUpClass: "ERROR: setUpClass (odoo.addons.mod.tests.file.Class)"
+RE_FAIL_SETUP = re.compile(
+    r"\b(FAIL|ERROR):\s+setUpClass\s+\(([\w.]+)\)"
+)
+
+# Inicio de traceback bare (sin cabecera FAIL/ERROR previa)
+RE_TRACEBACK_START = re.compile(r"Traceback \(most recent call last\):")
+
 
 # ---------------------------------------------------------------------------
 # Dataclasses
@@ -49,18 +67,18 @@ class TestFailure:
     """Representa un test fallido o con error.
 
     Campos:
-        test_class: Nombre de la clase de test.
-        method:     Nombre del metodo de test.
-        kind:       'FAIL' para assertion failures, 'ERROR' para excepciones.
+        test_class: Nombre de la clase de test (None para LOADING_ERROR).
+        method:     Nombre del metodo de test (None para LOADING_ERROR).
+        kind:       'FAIL', 'ERROR' o 'LOADING_ERROR'.
         message:    Primera linea del traceback (puede estar vacia).
         traceback:  Contenido completo del traceback capturado.
     """
 
-    test_class: str
-    method: str
-    kind: Literal["FAIL", "ERROR"]
-    message: str
-    traceback: str
+    test_class: Optional[str] = None
+    method: Optional[str] = None
+    kind: Literal["FAIL", "ERROR", "LOADING_ERROR"] = "FAIL"
+    message: str = ""
+    traceback: str = ""
 
 
 @dataclass
@@ -68,14 +86,16 @@ class TestResult:
     """Resultado completo de una corrida de tests Odoo.
 
     Campos:
-        total:        Total de tests ejecutados (de 'Ran N tests').
-        passed:       Tests exitosos (= total - failed - errors).
-        failed:       Tests con assertion failure.
-        errors:       Tests con excepcion no capturada.
-        duration:     Duracion total en segundos.
-        failures:     Lista de TestFailure con detalles de cada fallo/error.
-        parse_failed: True si la salida no pudo parsearse (sin linea 'Ran X tests').
-        raw_output:   Salida original concatenada (presente cuando parse_failed=True).
+        total:               Total de tests ejecutados.
+        passed:              Tests exitosos (= total - failed - errors).
+        failed:              Tests con assertion failure.
+        errors:              Tests con excepcion no capturada.
+        duration:            Duracion total en segundos.
+        failures:            Lista de TestFailure con detalles de cada fallo/error.
+        parse_failed:        True si la salida no pudo parsearse.
+        raw_output:          Salida original concatenada (cuando parse_failed=True).
+        raw_summary_line:    Linea de resumen v19 capturada (None en v14-v18).
+        fallback_counters_used: True si los contadores vienen del segundo paso v19.
     """
 
     total: int = 0
@@ -86,6 +106,8 @@ class TestResult:
     failures: list[TestFailure] = field(default_factory=list)
     parse_failed: bool = False
     raw_output: str = ""
+    raw_summary_line: Optional[str] = None
+    fallback_counters_used: bool = False
 
     @property
     def returncode_hint(self) -> int:
@@ -135,9 +157,9 @@ def parse_odoo_test_output(lines: Iterable[str]) -> TestResult:
     failures: list[TestFailure] = []
 
     # Estado para traceback en curso
-    current_kind: Literal["FAIL", "ERROR"] | None = None
-    current_class: str = ""
-    current_method: str = ""
+    current_kind: Literal["FAIL", "ERROR", "LOADING_ERROR"] | None = None
+    current_class: Optional[str] = None
+    current_method: Optional[str] = None
     current_tb_lines: list[str] = []
 
     def _finalize_current_failure() -> None:
@@ -156,8 +178,8 @@ def parse_odoo_test_output(lines: Iterable[str]) -> TestResult:
                 )
             )
             current_kind = None
-            current_class = ""
-            current_method = ""
+            current_class = None
+            current_method = None
             current_tb_lines = []
 
     for line in all_lines:
@@ -176,6 +198,29 @@ def parse_odoo_test_output(lines: Iterable[str]) -> TestResult:
                 state = _STATE_COLLECTING
                 continue
 
+            # Detectar cabecera setUpClass: "ERROR: setUpClass (mod.path.Class)"
+            m_setup = RE_FAIL_SETUP.search(stripped)
+            if m_setup:
+                _finalize_current_failure()
+                current_kind = m_setup.group(1)  # type: ignore[assignment]
+                dotted = m_setup.group(2)
+                current_class = dotted.rsplit(".", 1)[-1]  # ultimo segmento
+                current_method = "setUpClass"
+                current_tb_lines = []
+                state = _STATE_COLLECTING
+                continue
+
+            # Detectar bare traceback (sin cabecera FAIL/ERROR previa)
+            if RE_TRACEBACK_START.search(stripped):
+                if current_kind is None:  # solo si no hay failure activo
+                    _finalize_current_failure()
+                    current_kind = "LOADING_ERROR"  # type: ignore[assignment]
+                    current_class = None
+                    current_method = None
+                    current_tb_lines = [line]
+                    state = _STATE_COLLECTING
+                    continue
+
             # Detectar linea "Ran N tests in X.Xs"
             m_ran = RE_RAN.search(stripped)
             if m_ran:
@@ -189,13 +234,22 @@ def parse_odoo_test_output(lines: Iterable[str]) -> TestResult:
         elif state == _STATE_COLLECTING:
             # Boundary: nuevo timestamp o separador → cerrar traceback actual
             if RE_TIMESTAMP.match(stripped):
-                # Puede ser nueva cabecera FAIL/ERROR en esta misma linea
+                # Puede ser nueva cabecera FAIL/ERROR o setUpClass en esta linea
                 m_fail = RE_FAIL.search(stripped)
+                m_setup = RE_FAIL_SETUP.search(stripped)
                 if m_fail:
                     _finalize_current_failure()
                     current_kind = m_fail.group(1)  # type: ignore[assignment]
                     current_class = m_fail.group(2)
                     current_method = m_fail.group(3)
+                    current_tb_lines = []
+                    # Seguir en COLLECTING
+                elif m_setup:
+                    _finalize_current_failure()
+                    current_kind = m_setup.group(1)  # type: ignore[assignment]
+                    dotted = m_setup.group(2)
+                    current_class = dotted.rsplit(".", 1)[-1]
+                    current_method = "setUpClass"
                     current_tb_lines = []
                     # Seguir en COLLECTING
                 else:
@@ -235,10 +289,34 @@ def parse_odoo_test_output(lines: Iterable[str]) -> TestResult:
             failed_count = int(m_failed.group(1) or 0)
             errors_count = int(m_failed.group(2) or 0)
 
+    # Segundo paso: buscar resumen Odoo v19 si la linea 'Ran X tests' no aparecio
+    raw_summary_line: Optional[str] = None
+    fallback_counters_used = False
+    if not ran_found:
+        for line in all_lines:
+            stripped = line.rstrip("\n").rstrip("\r")
+            m19 = RE_ODOO19_SUMMARY.search(stripped)
+            if m19:
+                failed_count = int(m19.group(1))
+                errors_count = int(m19.group(2))
+                total = int(m19.group(3))
+                raw_summary_line = stripped
+                fallback_counters_used = True
+                ran_found = True
+                break
+        if ran_found:
+            for line in all_lines:
+                stripped = line.rstrip("\n").rstrip("\r")
+                m_dur = RE_ODOO19_DURATION.search(stripped)
+                if m_dur:
+                    duration = float(m_dur.group(2))
+                    break
+
     # Si la linea 'Ran X tests' nunca aparecio → fallback a raw output
+    # Nota: se preservan los failures recolectados (setUpClass/LOADING_ERROR)
     if not ran_found:
         raw = "".join(all_lines)
-        return TestResult(parse_failed=True, raw_output=raw)
+        return TestResult(parse_failed=True, raw_output=raw, failures=failures)
 
     passed = total - failed_count - errors_count
     return TestResult(
@@ -250,4 +328,6 @@ def parse_odoo_test_output(lines: Iterable[str]) -> TestResult:
         failures=failures,
         parse_failed=False,
         raw_output="",
+        raw_summary_line=raw_summary_line,
+        fallback_counters_used=fallback_counters_used,
     )
