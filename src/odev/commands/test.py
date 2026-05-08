@@ -152,6 +152,8 @@ def render_json(result: TestResult) -> None:
         "errors": result.errors,
         "duration": result.duration,
         "parse_failed": result.parse_failed,
+        "raw_summary_line": result.raw_summary_line,
+        "fallback_counters_used": result.fallback_counters_used,
         "failures": [
             {
                 "class": f.test_class,
@@ -218,11 +220,15 @@ def _run_test(
         f"--log-level={log_level}",
     ]
 
+    # Tags: merge module prefix + user tags en un solo --test-tags
+    tag_parts: list[str] = []
     if module != "all":
-        comando.extend(["-u", module, "--test-tags", f"/{module}"])
-
+        comando.extend(["-u", module])
+        tag_parts.append(f"/{module}")
     if tags is not None:
-        comando.extend(["--test-tags", tags])
+        tag_parts.append(tags)
+    if tag_parts:
+        comando.extend(["--test-tags", ",".join(tag_parts)])
 
     dc = obtener_docker(contexto)
 
@@ -249,7 +255,7 @@ def _run_test(
     lines, returncode = _stream_and_collect(popen, save_log_path=save_log)
     result = parse_odoo_test_output(lines)
 
-    # Defensa en profundidad: si Odoo sale con 0 pero el parseo fallo
+    # Defensa en profundidad: si Odoo saly con 0 pero el parseo fallo
     # y el stream contiene "Address already in use" → forzar exit 3
     if returncode == 0 and result.parse_failed:
         if any("Address already in use" in ln for ln in lines):
@@ -301,7 +307,10 @@ def test(
     tags: Optional[str] = typer.Option(
         None,
         "--tags",
-        help="Expresion de tags para --test-tags de Odoo.",
+        help=(
+            "Expresion de tags Odoo (ej. /mymod:MyClass o sale,account). "
+            "Se combina con el modulo como /modulo,expr."
+        ),
     ),
     save_log: Optional[Path] = typer.Option(
         None,
@@ -314,6 +323,26 @@ def test(
     Ejecuta los tests del modulo especificado usando el framework
     de tests de Odoo. Usa 'all' para ejecutar todos los tests
     disponibles (puede tomar bastante tiempo).
+
+    Codigos de salida:
+
+      0  Tests pasaron sin failures ni errores
+
+      1  Hubo failures o errores en tests
+
+      2  Error de uso (modulo no existe)
+
+      3  Error de entorno (puerto ocupado, DB no disponible)
+
+    Formato de --tags (Odoo --test-tags):
+
+      /modulo:Clase           filtrar por clase
+
+      /modulo:Clase.metodo   filtrar por metodo
+
+      :metodo                 metodo en cualquier clase
+
+      tag1,tag2              filtrar por @tagged()
     """
     _run_test(
         module=module,

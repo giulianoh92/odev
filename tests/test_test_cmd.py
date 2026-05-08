@@ -75,6 +75,13 @@ _FIXTURE_MALFORMED = """\
 Process died unexpectedly
 """
 
+# Fixture Odoo v19 para tests de nuevos campos JSON
+_FIXTURE_V19_CLEAN = """\
+2025-01-10 09:00:01,000 1234 INFO odoo.addons.my_module.tests.test_basic TestFlow.test_create: Finished
+2025-01-10 09:00:01,400 1234 INFO odoo.tests.stats odoo.tests.stats: my_module: 4 tests 0.12s 8 queries
+0 failed, 0 error(s) of 4 tests when loading database 'test_db'
+"""
+
 # Fixture con "Address already in use" y sin resumen parseble (port conflict)
 _FIXTURE_PORT_CONFLICT = """\
 2025-01-10 09:00:00,001 1234 INFO odoo.server Starting Odoo HTTP service
@@ -831,3 +838,142 @@ class TestPortConflictStream:
 
         code = exc.code if isinstance(exc, SystemExit) else exc.exit_code if exc else 0
         assert code == 0
+
+
+# ---------------------------------------------------------------------------
+# T-tags — --tags merge into single --test-tags flag
+# ---------------------------------------------------------------------------
+
+
+class TestTagsMerge:
+    """Fix de merge de --tags: un solo --test-tags en el comando."""
+
+    def test_modulo_y_tags_produce_un_solo_test_tags(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """module='my_mod' + tags='MyClass' → exactamente un --test-tags /my_mod,MyClass."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        _call_run_test(tmp_path, mock_dc, module="my_mod", tags="MyClass")
+
+        args = mock_dc.exec_cmd_stream.call_args[0]
+        cmd_list = args[1]
+        test_tags_indices = [i for i, a in enumerate(cmd_list) if a == "--test-tags"]
+        assert len(test_tags_indices) == 1, (
+            f"Expected exactly 1 --test-tags, got {len(test_tags_indices)}: {cmd_list}"
+        )
+        assert cmd_list[test_tags_indices[0] + 1] == "/my_mod,MyClass"
+
+    def test_modulo_sin_tags_produce_solo_prefijo(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """module='my_mod' sin tags → --test-tags /my_mod (sin coma)."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        _call_run_test(tmp_path, mock_dc, module="my_mod", tags=None)
+
+        args = mock_dc.exec_cmd_stream.call_args[0]
+        cmd_list = args[1]
+        test_tags_indices = [i for i, a in enumerate(cmd_list) if a == "--test-tags"]
+        assert len(test_tags_indices) == 1
+        assert cmd_list[test_tags_indices[0] + 1] == "/my_mod"
+
+    def test_all_con_tags_produce_tag_sin_prefijo(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """module='all' + tags='sale' → --test-tags sale (sin prefijo /all)."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        _call_run_test(tmp_path, mock_dc, module="all", tags="sale")
+
+        args = mock_dc.exec_cmd_stream.call_args[0]
+        cmd_list = args[1]
+        test_tags_indices = [i for i, a in enumerate(cmd_list) if a == "--test-tags"]
+        assert len(test_tags_indices) == 1
+        assert cmd_list[test_tags_indices[0] + 1] == "sale"
+
+    def test_all_sin_tags_no_produce_test_tags(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """module='all' sin tags → --test-tags NO aparece en el comando."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        _call_run_test(tmp_path, mock_dc, module="all", tags=None)
+
+        args = mock_dc.exec_cmd_stream.call_args[0]
+        cmd_list = args[1]
+        assert "--test-tags" not in cmd_list
+
+
+# ---------------------------------------------------------------------------
+# T-json-new — raw_summary_line + fallback_counters_used en JSON
+# ---------------------------------------------------------------------------
+
+
+class TestJsonNewFields:
+    """Nuevos campos en JSON output: raw_summary_line y fallback_counters_used."""
+
+    def test_json_contiene_raw_summary_line(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """--json con fixture v19 → JSON contiene 'raw_summary_line'."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+
+        fake_popen = FakePopen(_FIXTURE_V19_CLEAN, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        _call_run_test(tmp_path, mock_dc, json_out=True)
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert "raw_summary_line" in data
+
+    def test_json_contiene_fallback_counters_used(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """--json con fixture v19 → JSON contiene 'fallback_counters_used'."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+
+        fake_popen = FakePopen(_FIXTURE_V19_CLEAN, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        _call_run_test(tmp_path, mock_dc, json_out=True)
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert "fallback_counters_used" in data
+        assert isinstance(data["fallback_counters_used"], bool)
+
+    def test_json_fallback_false_en_v14(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """--json con fixture v14 → 'fallback_counters_used': false."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        _call_run_test(tmp_path, mock_dc, json_out=True)
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["fallback_counters_used"] is False

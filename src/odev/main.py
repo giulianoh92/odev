@@ -92,7 +92,21 @@ app.command(name="restart")(restart.restart)
 app.command(name="status")(status.status)
 app.command(name="logs")(logs.logs)
 app.command(name="shell")(shell.shell)
-app.command(name="test")(test.test)
+app.command(
+    name="test",
+    epilog=(
+        "Codigos de salida:\n"
+        "  0  Tests pasaron sin failures ni errores\n"
+        "  1  Hubo failures o errores en tests\n"
+        "  2  Error de uso (modulo no existe)\n"
+        "  3  Error de entorno (puerto ocupado, DB no disponible)\n\n"
+        "Formato de --tags (Odoo --test-tags):\n"
+        "  /modulo:Clase           filtrar por clase\n"
+        "  /modulo:Clase.metodo   filtrar por metodo\n"
+        "  :metodo                 metodo en cualquier clase\n"
+        "  tag1,tag2              filtrar por @tagged()"
+    ),
+)(test.test)
 app.command(name="scaffold")(scaffold.scaffold)
 app.command(name="addon-install")(install.install)
 app.command(name="update")(update.update)
