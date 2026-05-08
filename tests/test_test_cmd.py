@@ -1,9 +1,10 @@
 """Tests para el comando 'odev test' — modos de salida y flags.
 
 Verifica el routing TTY/no-TTY, flags --summary/--failures/--json/--save-log,
-propagacion del exit code, y manejo de Ctrl+C. Usa FakePopen para evitar
-subprocesos reales. Llama _run_test() directamente para evitar problemas
-con OptionInfo defaults de Typer al invocar test() fuera del CLI runner.
+propagacion del exit code, manejo de Ctrl+C, pre-flights de modulo/puerto y
+merge de --tags. Usa FakePopen para evitar subprocesos reales.
+Llama _run_test() directamente para evitar problemas con OptionInfo defaults
+de Typer al invocar test() fuera del CLI runner.
 """
 
 from __future__ import annotations
@@ -74,6 +75,13 @@ _FIXTURE_MALFORMED = """\
 Process died unexpectedly
 """
 
+# Fixture con "Address already in use" y sin resumen parseble (port conflict)
+_FIXTURE_PORT_CONFLICT = """\
+2025-01-10 09:00:00,001 1234 INFO odoo.server Starting Odoo HTTP service
+2025-01-10 09:00:00,100 1234 ERROR werkzeug Address already in use
+Port 8069 is in use by another program.
+"""
+
 
 # ---------------------------------------------------------------------------
 # Helper: contexto mock y patches compartidos
@@ -104,7 +112,14 @@ def _default_run_kwargs() -> dict:
 
 
 def _call_run_test(tmp_path: Path, mock_dc: MagicMock, **overrides):
-    """Llama _run_test con contexto mockeado y kwargs base + overrides."""
+    """Llama _run_test con contexto mockeado y kwargs base + overrides.
+
+    Parches incluidos por defecto (no-op):
+      - validar_modulo_existe: retorna None (bypass pre-flight de modulo)
+      - puerto_disponible: retorna True (puerto libre por defecto)
+    Los tests especificos de esas rutas deben pasarlos como 'overrides'
+    usando patch.object o desactivando los mocks en su propio contexto.
+    """
     from odev.commands.test import _run_test
 
     ctx = _make_contexto(tmp_path)
@@ -116,6 +131,8 @@ def _call_run_test(tmp_path: Path, mock_dc: MagicMock, **overrides):
         patch("odev.commands.test.obtener_docker", return_value=mock_dc),
         patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
         patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+        patch("odev.commands.test.validar_modulo_existe", return_value=None),
+        patch("odev.commands.test.puerto_disponible", return_value=True),
     ):
         mock_rutas.return_value.env_file = tmp_path / ".env"
         try:
@@ -417,6 +434,8 @@ class TestExitCodePropagation:
             patch("odev.commands.test.obtener_docker", return_value=mock_dc),
             patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
             patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands.test.validar_modulo_existe", return_value=None),
+            patch("odev.commands.test.puerto_disponible", return_value=True),
         ):
             mock_rutas.return_value.env_file = tmp_path / ".env"
             with pytest.raises((SystemExit, typer.Exit)) as exc_info:
@@ -447,6 +466,8 @@ class TestExitCodePropagation:
             patch("odev.commands.test.obtener_docker", return_value=mock_dc),
             patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
             patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands.test.validar_modulo_existe", return_value=None),
+            patch("odev.commands.test.puerto_disponible", return_value=True),
         ):
             mock_rutas.return_value.env_file = tmp_path / ".env"
             try:
@@ -498,3 +519,315 @@ class TestJsonFailuresComposable:
         captured = capsys.readouterr()
         data = json.loads(captured.out)
         assert data["failures"] == []
+
+
+# ---------------------------------------------------------------------------
+# T-module — Module pre-flight (validar_modulo_existe wired in T7)
+# ---------------------------------------------------------------------------
+
+
+class TestModulePreFlight:
+    """Pre-flight de modulo: rechaza nombres desconocidos, acepta builtins y 'all'."""
+
+    def test_modulo_inexistente_exit_2(self, tmp_path: Path, monkeypatch) -> None:
+        """Modulo no encontrado → typer.Exit(2) y stderr menciona el modulo."""
+        import typer
+
+        from odev.commands.test import _run_test
+
+        ctx = _make_contexto(tmp_path)
+        addon_dir = tmp_path / "addons"
+        addon_dir.mkdir()
+        (addon_dir / "invoice_importer_app" / "__manifest__.py").parent.mkdir()
+        (addon_dir / "invoice_importer_app" / "__manifest__.py").touch()
+
+        from odev.core.detect import RepoLayout, TipoRepo
+        fake_layout = RepoLayout(
+            tipo=TipoRepo.MULTI_ADDON,
+            rutas_addons=[addon_dir],
+            modulos_encontrados=1,
+        )
+
+        with (
+            patch("odev.commands.test.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.test.obtener_rutas") as mock_rutas,
+            patch("odev.commands.test.obtener_docker", return_value=MagicMock()),
+            patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands._helpers.detectar_layout", return_value=fake_layout),
+            patch("odev.commands.test.puerto_disponible", return_value=True),
+        ):
+            mock_rutas.return_value.env_file = tmp_path / ".env"
+            with pytest.raises((SystemExit, typer.Exit)) as exc_info:
+                _run_test(
+                    **{**_default_run_kwargs(), "module": "typo_module"}
+                )
+
+        exc = exc_info.value
+        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
+        assert code == 2
+
+    def test_modulo_builtin_pasa_sin_detect(self, tmp_path: Path, monkeypatch) -> None:
+        """Modulo builtin (base) → no llama detectar_layout, command sigue."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+        from odev.commands.test import _run_test
+
+        ctx = _make_contexto(tmp_path)
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        with (
+            patch("odev.commands.test.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.test.obtener_rutas") as mock_rutas,
+            patch("odev.commands.test.obtener_docker", return_value=mock_dc),
+            patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands._helpers.detectar_layout") as mock_detect,
+            patch("odev.commands.test.puerto_disponible", return_value=True),
+        ):
+            mock_rutas.return_value.env_file = tmp_path / ".env"
+            try:
+                _run_test(**{**_default_run_kwargs(), "module": "base"})
+            except (SystemExit, Exception) as e:
+                import typer
+                if isinstance(e, typer.Exit):
+                    assert e.exit_code == 0
+
+            # detectar_layout NO debe haberse llamado (builtin bypass)
+            mock_detect.assert_not_called()
+
+    def test_modulo_all_bypass(self, tmp_path: Path, monkeypatch) -> None:
+        """module='all' → no pre-flight, exec_cmd_stream llamado."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        with (
+            patch("odev.commands._helpers.detectar_layout") as mock_detect,
+        ):
+            _call_run_test(tmp_path, mock_dc, module="all")
+            mock_detect.assert_not_called()
+        mock_dc.exec_cmd_stream.assert_called_once()
+
+    def test_modulo_valido_continua(self, tmp_path: Path, monkeypatch) -> None:
+        """Modulo encontrado en addons-path → exec_cmd_stream llamado."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+
+        addon_dir = tmp_path / "addons"
+        addon_dir.mkdir()
+        (addon_dir / "my_valid_mod").mkdir()
+        (addon_dir / "my_valid_mod" / "__manifest__.py").touch()
+
+        from odev.core.detect import RepoLayout, TipoRepo
+        fake_layout = RepoLayout(
+            tipo=TipoRepo.MULTI_ADDON,
+            rutas_addons=[addon_dir],
+            modulos_encontrados=1,
+        )
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        from odev.commands.test import _run_test
+        ctx = _make_contexto(tmp_path)
+        with (
+            patch("odev.commands.test.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.test.obtener_rutas") as mock_rutas,
+            patch("odev.commands.test.obtener_docker", return_value=mock_dc),
+            patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands._helpers.detectar_layout", return_value=fake_layout),
+            patch("odev.commands.test.puerto_disponible", return_value=True),
+        ):
+            mock_rutas.return_value.env_file = tmp_path / ".env"
+            try:
+                _run_test(**{**_default_run_kwargs(), "module": "my_valid_mod"})
+            except (SystemExit, Exception) as e:
+                import typer
+                if isinstance(e, typer.Exit):
+                    pass
+
+        mock_dc.exec_cmd_stream.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# T-port — Port pre-flight (WEB_PORT env + puerto_disponible)
+# ---------------------------------------------------------------------------
+
+
+class TestPortPreFlight:
+    """Pre-flight de puerto: respeta WEB_PORT, sale con exit 3 si ocupado."""
+
+    def test_puerto_ocupado_exit_3(self, tmp_path: Path, monkeypatch) -> None:
+        """puerto_disponible=False → typer.Exit(3), exec_cmd_stream no llamado."""
+        import typer
+
+        from odev.commands.test import _run_test
+
+        ctx = _make_contexto(tmp_path)
+        mock_dc = MagicMock()
+
+        with (
+            patch("odev.commands.test.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.test.obtener_rutas") as mock_rutas,
+            patch("odev.commands.test.obtener_docker", return_value=mock_dc),
+            patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands.test.validar_modulo_existe", return_value=None),
+            patch("odev.commands.test.puerto_disponible", return_value=False),
+        ):
+            mock_rutas.return_value.env_file = tmp_path / ".env"
+            with pytest.raises((SystemExit, typer.Exit)) as exc_info:
+                _run_test(**_default_run_kwargs())
+
+        exc = exc_info.value
+        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
+        assert code == 3
+        mock_dc.exec_cmd_stream.assert_not_called()
+
+    def test_puerto_libre_usa_web_port(self, tmp_path: Path, monkeypatch) -> None:
+        """WEB_PORT=9070 libre → comando incluye --http-port=9070."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+        from odev.commands.test import _run_test
+
+        ctx = _make_contexto(tmp_path)
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        with (
+            patch("odev.commands.test.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.test.obtener_rutas") as mock_rutas,
+            patch("odev.commands.test.obtener_docker", return_value=mock_dc),
+            patch(
+                "odev.commands.test.load_env",
+                return_value={"DB_NAME": "test_db", "WEB_PORT": "9070"},
+            ),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands.test.validar_modulo_existe", return_value=None),
+            patch("odev.commands.test.puerto_disponible", return_value=True),
+        ):
+            mock_rutas.return_value.env_file = tmp_path / ".env"
+            try:
+                _run_test(**_default_run_kwargs())
+            except (SystemExit, Exception) as e:
+                import typer
+                if isinstance(e, typer.Exit):
+                    pass
+
+        args = mock_dc.exec_cmd_stream.call_args[0]
+        cmd_list = args[1]
+        assert "--http-port=9070" in cmd_list
+
+    def test_puerto_default_8069(self, tmp_path: Path, monkeypatch) -> None:
+        """Sin WEB_PORT en env → comando usa --http-port=8069."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+        from odev.commands.test import _run_test
+
+        ctx = _make_contexto(tmp_path)
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        with (
+            patch("odev.commands.test.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.test.obtener_rutas") as mock_rutas,
+            patch("odev.commands.test.obtener_docker", return_value=mock_dc),
+            patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands.test.validar_modulo_existe", return_value=None),
+            patch("odev.commands.test.puerto_disponible", return_value=True),
+        ):
+            mock_rutas.return_value.env_file = tmp_path / ".env"
+            try:
+                _run_test(**_default_run_kwargs())
+            except (SystemExit, Exception) as e:
+                import typer
+                if isinstance(e, typer.Exit):
+                    pass
+
+        args = mock_dc.exec_cmd_stream.call_args[0]
+        cmd_list = args[1]
+        assert "--http-port=8069" in cmd_list
+
+
+# ---------------------------------------------------------------------------
+# T-stream — Stream-level port conflict fallback
+# ---------------------------------------------------------------------------
+
+
+class TestPortConflictStream:
+    """Deteccion de conflicto de puerto en stream (TOCTOU guard)."""
+
+    def test_address_in_use_en_stream_fuerza_exit_3(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """returncode=0 + parse_failed=True + 'Address already in use' → exit 3."""
+        import typer
+
+        from odev.commands.test import _run_test
+
+        ctx = _make_contexto(tmp_path)
+        # Output con Address already in use y sin linea 'Ran N tests'
+        fake_popen = FakePopen(_FIXTURE_PORT_CONFLICT, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        with (
+            patch("odev.commands.test.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.test.obtener_rutas") as mock_rutas,
+            patch("odev.commands.test.obtener_docker", return_value=mock_dc),
+            patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands.test.validar_modulo_existe", return_value=None),
+            patch("odev.commands.test.puerto_disponible", return_value=True),
+        ):
+            mock_rutas.return_value.env_file = tmp_path / ".env"
+            with pytest.raises((SystemExit, typer.Exit)) as exc_info:
+                _run_test(**{**_default_run_kwargs(), "summary": True})
+
+        exc = exc_info.value
+        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
+        assert code == 3
+
+    def test_address_in_use_con_parse_exitoso_no_fuerza_exit_3(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """parse_failed=False aunque haya 'Address already in use' → exit 0."""
+        from odev.commands.test import _run_test
+
+        ctx = _make_contexto(tmp_path)
+        # Output con 'Address already in use' PERO tambien tiene 'Ran N tests'
+        fixture_con_ran = (
+            "2024-01-15 10:00:00,001 1234 INFO odoo.server Address already in use\n"
+            "Ran 2 tests in 0.200s\n\nOK\n"
+        )
+        fake_popen = FakePopen(fixture_con_ran, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        with (
+            patch("odev.commands.test.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.test.obtener_rutas") as mock_rutas,
+            patch("odev.commands.test.obtener_docker", return_value=mock_dc),
+            patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands.test.validar_modulo_existe", return_value=None),
+            patch("odev.commands.test.puerto_disponible", return_value=True),
+        ):
+            mock_rutas.return_value.env_file = tmp_path / ".env"
+            exc = None
+            try:
+                _run_test(**{**_default_run_kwargs(), "summary": True})
+            except (SystemExit, Exception) as e:
+                import typer as t
+                if isinstance(e, (SystemExit, t.Exit)):
+                    exc = e
+                else:
+                    raise
+
+        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code if exc else 0
+        assert code == 0

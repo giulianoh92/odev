@@ -5,6 +5,7 @@ from __future__ import annotations
 import typer
 
 from odev.core.console import error, warning
+from odev.core.detect import detectar_layout
 from odev.core.docker import DockerCompose
 from odev.core.paths import ProjectPaths
 from odev.core.resolver import (
@@ -13,6 +14,19 @@ from odev.core.resolver import (
     ProyectoNoEncontradoError,
     resolver_proyecto,
 )
+
+# ---------------------------------------------------------------------------
+# Modulos builtin de Odoo — bypass del pre-flight de validacion
+# ---------------------------------------------------------------------------
+
+MODULOS_BUILTIN: frozenset[str] = frozenset({
+    "base", "web", "web_tour", "mail", "bus", "barcodes",
+    "sale", "sale_management", "purchase", "account",
+    "stock", "hr", "hr_holidays", "point_of_sale",
+    "calendar", "contacts", "fleet", "lunch", "note",
+    "portal", "product", "uom", "resource", "rating",
+    "auth_signup", "digest",
+})
 
 
 def requerir_proyecto(nombre_proyecto: str | None = None) -> ProjectContext:
@@ -67,6 +81,47 @@ def obtener_rutas(contexto: ProjectContext) -> ProjectPaths:
     )
 
 
+def validar_modulo_existe(nombre: str, contexto: ProjectContext) -> None:
+    """Valida que el modulo exista en addons-path o sea builtin Odoo.
+
+    Bypass: 'all' siempre pasa (ejecuta todos los modulos).
+    Builtin: nombres en MODULOS_BUILTIN se aceptan sin tocar filesystem.
+    Fallback: si detectar_layout() retorna 0 modulos, se acepta el
+              nombre (proyecto sin layout reconocido — no bloquear).
+
+    Argumentos:
+        nombre:   Nombre tecnico del modulo a validar.
+        contexto: Contexto del proyecto para detectar addons-path.
+
+    Raises:
+        typer.Exit(2): cuando el modulo no se encuentra y no es builtin.
+                       stderr lista hasta los primeros 20 modulos detectados.
+    """
+    if nombre == "all":
+        return
+    if nombre in MODULOS_BUILTIN:
+        return
+
+    layout = detectar_layout(contexto.directorio_config)
+
+    if layout.modulos_encontrados == 0:
+        # Layout desconocido o sin addons en disco — no bloquear
+        return
+
+    nombres: list[str] = []
+    for ruta_addons in layout.rutas_addons:
+        for p in sorted(ruta_addons.iterdir()):
+            if (p / "__manifest__.py").exists():
+                nombres.append(p.name)
+
+    if nombre not in nombres:
+        error(
+            f"Modulo '{nombre}' no encontrado. "
+            f"Disponibles: {', '.join(sorted(nombres)[:20])}"
+        )
+        raise typer.Exit(2)
+
+
 def ejecutar_operacion_modulo(
     modulo: str,
     flag_odoo: str,
@@ -81,9 +136,9 @@ def ejecutar_operacion_modulo(
         verbo_gerundio: Verbo en gerundio para mensajes (ej. 'Instalando').
         verbo_pasado: Verbo en pasado para mensajes (ej. 'instalado').
     """
-    from odev.main import obtener_nombre_proyecto
     from odev.core.config import load_env
     from odev.core.console import info, success
+    from odev.main import obtener_nombre_proyecto
 
     contexto = requerir_proyecto(obtener_nombre_proyecto())
     rutas = obtener_rutas(contexto)

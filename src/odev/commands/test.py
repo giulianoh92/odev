@@ -25,9 +25,15 @@ from typing import Optional
 
 import typer
 
-from odev.commands._helpers import obtener_docker, obtener_rutas, requerir_proyecto
+from odev.commands._helpers import (
+    obtener_docker,
+    obtener_rutas,
+    requerir_proyecto,
+    validar_modulo_existe,
+)
 from odev.core.config import load_env
-from odev.core.console import info
+from odev.core.console import error, info
+from odev.core.ports import puerto_disponible
 from odev.core.test_parser import TestResult, parse_odoo_test_output
 
 
@@ -185,17 +191,30 @@ def _run_test(
     from odev.main import obtener_nombre_proyecto
 
     contexto = requerir_proyecto(obtener_nombre_proyecto())
+
+    # Pre-flight: validar que el modulo exista en addons-path (o sea builtin)
+    validar_modulo_existe(module, contexto)
+
     rutas = obtener_rutas(contexto)
 
     valores_env = load_env(rutas.env_file)
     nombre_bd = valores_env.get("DB_NAME", "odoo_db")
+
+    # Pre-flight: verificar que el puerto este disponible
+    web_port = valores_env.get("WEB_PORT", "8069")
+    if not puerto_disponible(int(web_port)):
+        error(
+            f"Puerto {web_port} ocupado. "
+            f"Detene el proceso en conflicto o ajusta WEB_PORT en .env"
+        )
+        raise typer.Exit(3)
 
     comando = [
         "odoo",
         "--test-enable",
         "--stop-after-init",
         "-d", nombre_bd,
-        "--http-port=8070",
+        f"--http-port={web_port}",
         f"--log-level={log_level}",
     ]
 
@@ -229,6 +248,13 @@ def _run_test(
     popen = dc.exec_cmd_stream("web", comando)
     lines, returncode = _stream_and_collect(popen, save_log_path=save_log)
     result = parse_odoo_test_output(lines)
+
+    # Defensa en profundidad: si Odoo sale con 0 pero el parseo fallo
+    # y el stream contiene "Address already in use" → forzar exit 3
+    if returncode == 0 and result.parse_failed:
+        if any("Address already in use" in ln for ln in lines):
+            error(f"Puerto {web_port} ocupado durante la ejecucion de Odoo")
+            returncode = 3
 
     if json_out:
         # D1: --json + --failures son composables.
