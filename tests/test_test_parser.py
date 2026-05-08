@@ -1,6 +1,6 @@
 """Tests para odev.core.test_parser — parser de salida de tests Odoo.
 
-Verifica el parseo de distintos formatos de salida de tests Odoo (v14-v18):
+Verifica el parseo de distintos formatos de salida de tests Odoo (v14-v18 y v19):
 corridas exitosas, fallos, errores, salida mixta, salida malformada y entrada vacia.
 """
 
@@ -78,16 +78,67 @@ Process crashed before tests could run
 
 FIXTURE_F_EMPTY = ""
 
-# Fixture G: Odoo v19 format — xfail until real v19 fixture confirmed
-FIXTURE_G_V19 = """\
-2024-01-15 10:00:00,001 1234 ERROR odoo.addons.sale.tests.test_sale_order FAIL: TestSaleOrder.test_create
-Traceback (most recent call last):
-  File "/odoo/addons/sale/tests/test_sale_order.py", line 42, in test_create
-    self.fail("not implemented yet")
-AssertionError: not implemented yet
-Ran 3 tests in 1.500s
+# ---------------------------------------------------------------------------
+# Fixture G: Odoo v19 — formato real (sin linea "Ran N tests")
+# ---------------------------------------------------------------------------
 
-FAILED (failures=1, errors=0)
+FIXTURE_G_V19_CLEAN = """\
+2025-01-10 09:00:00,001 1234 INFO odoo.modules.loading Loading module my_module (1/1)
+2025-01-10 09:00:01,000 1234 INFO odoo.addons.my_module.tests.test_basic TestBasicFlow.test_create: Starting test
+2025-01-10 09:00:01,100 1234 INFO odoo.addons.my_module.tests.test_basic TestBasicFlow.test_create: Finished
+2025-01-10 09:00:01,200 1234 INFO odoo.addons.my_module.tests.test_basic TestBasicFlow.test_write: Starting test
+2025-01-10 09:00:01,300 1234 INFO odoo.addons.my_module.tests.test_basic TestBasicFlow.test_write: Finished
+2025-01-10 09:00:01,400 1234 INFO odoo.tests.stats odoo.tests.stats: my_module: 12 tests 0.42s 18 queries
+0 failed, 0 error(s) of 12 tests when loading database 'testdb'
+"""
+
+FIXTURE_G_V19_ERRORS = """\
+2025-01-10 09:00:00,001 1234 INFO odoo.modules.loading Loading module mymod (1/1)
+2025-01-10 09:00:01,000 1234 ERROR odoo.addons.mymod.tests.test_file ERROR: setUpClass (odoo.addons.mymod.tests.test_file.TestFoo)
+Traceback (most recent call last):
+  File "/odoo/addons/mymod/tests/test_file.py", line 15, in setUpClass
+    cls.env["mymod.model"].create({})
+  File "/odoo/addons/mymod/models/mymod_model.py", line 22, in create
+    raise ValueError("config missing")
+ValueError: config missing
+2025-01-10 09:00:02,000 1234 INFO odoo.tests.stats odoo.tests.stats: mymod: 47 tests 1.23s 55 queries
+3 failed, 1 error(s) of 47 tests when loading database 'mydb'
+"""
+
+# ---------------------------------------------------------------------------
+# Fixture H: setUpClass aislado para validar RE_FAIL_SETUP
+# ---------------------------------------------------------------------------
+
+FIXTURE_H_SETUPCLASS = """\
+2025-01-10 09:00:01,000 1234 ERROR odoo.addons.mymod.tests.test_quincena ERROR: setUpClass (odoo.addons.mymod.tests.test_quincena.TestSaleOrderQuincenaFK)
+Traceback (most recent call last):
+  File "/odoo/addons/mymod/tests/test_quincena.py", line 10, in setUpClass
+    cls.partner = cls.env["res.partner"].create({"name": "test"})
+  File "/odoo/addons/mymod/models/sale.py", line 55, in create
+    raise KeyError("quincena_fk missing")
+KeyError: quincena_fk missing
+  File "/odoo/addons/mymod/models/sale.py", line 56, in create
+    pass
+2025-01-10 09:00:02,000 1234 INFO odoo.server Modules loaded.
+"""
+
+# ---------------------------------------------------------------------------
+# Fixture I: bare traceback sin cabecera FAIL/ERROR — LOADING_ERROR
+# ---------------------------------------------------------------------------
+
+FIXTURE_LOADING_ERROR = """\
+2025-01-10 09:00:00,001 1234 INFO odoo.modules.loading Loading module broken_mod (1/1)
+Traceback (most recent call last):
+  File "/odoo/odoo/modules/loading.py", line 432, in load_module_graph
+    load_openerp_module(package.name)
+  File "/odoo/odoo/modules/module.py", line 505, in load_openerp_module
+    __import__("odoo.addons." + module_name)
+  File "/odoo/addons/broken_mod/__init__.py", line 3, in <module>
+    from . import models
+  File "/odoo/addons/broken_mod/models/__init__.py", line 2, in <module>
+    from . import broken
+ImportError: cannot import name 'broken'
+2025-01-10 09:00:01,000 1234 INFO odoo.server Modules loaded.
 """
 
 
@@ -289,19 +340,143 @@ class TestReturnCodeHint:
 
 
 # ---------------------------------------------------------------------------
-# Test — Fixture G: Odoo v19 format (xfail — no confirmed v19 fixture yet)
+# Tests — Fixture G v19: Odoo 19 clean run
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    reason="D3: formato v19 FAILED (failures=N, errors=M) pendiente confirmacion con fixture real",
-    strict=False,
-)
-def test_fixture_g_v19_format():
-    """Fixture G (xfail D3): parsea formato v19 'FAILED (failures=1, errors=0)'."""
-    result = parse_odoo_test_output(FIXTURE_G_V19.splitlines(keepends=True))
-    # Si llega aca: el regex cubre v19, marcar como xpass (D3 resuelto)
-    assert result.parse_failed is False
-    assert result.failed == 1
-    assert result.errors == 0
-    assert result.total == 3
+class TestFixtureGV19Clean:
+    """Fixture G_V19_CLEAN: corrida limpia en Odoo 19 (sin linea 'Ran N tests')."""
+
+    def test_parse_no_fallo(self):
+        """parse_failed=False cuando se encuentra la linea de resumen v19."""
+        result = parse_odoo_test_output(FIXTURE_G_V19_CLEAN.splitlines(keepends=True))
+        assert result.parse_failed is False
+
+    def test_total_correcto(self):
+        """total=12 extraido de 'of 12 tests when loading database'."""
+        result = parse_odoo_test_output(FIXTURE_G_V19_CLEAN.splitlines(keepends=True))
+        assert result.total == 12
+
+    def test_failed_cero(self):
+        """failed=0 en corrida limpia."""
+        result = parse_odoo_test_output(FIXTURE_G_V19_CLEAN.splitlines(keepends=True))
+        assert result.failed == 0
+
+    def test_errors_cero(self):
+        """errors=0 en corrida limpia."""
+        result = parse_odoo_test_output(FIXTURE_G_V19_CLEAN.splitlines(keepends=True))
+        assert result.errors == 0
+
+    def test_passed_calculado(self):
+        """passed = total - failed - errors = 12."""
+        result = parse_odoo_test_output(FIXTURE_G_V19_CLEAN.splitlines(keepends=True))
+        assert result.passed == 12
+
+    def test_fallback_counters_used_true(self):
+        """fallback_counters_used=True cuando se usa el segundo paso."""
+        result = parse_odoo_test_output(FIXTURE_G_V19_CLEAN.splitlines(keepends=True))
+        assert result.fallback_counters_used is True
+
+    def test_raw_summary_line_poblada(self):
+        """raw_summary_line contiene la linea de resumen v19."""
+        result = parse_odoo_test_output(FIXTURE_G_V19_CLEAN.splitlines(keepends=True))
+        assert result.raw_summary_line is not None
+        assert "0 failed" in result.raw_summary_line
+
+
+# ---------------------------------------------------------------------------
+# Tests — Fixture G v19 errors: Odoo 19 con setUpClass errors
+# ---------------------------------------------------------------------------
+
+
+class TestFixtureGV19Errors:
+    """Fixture G_V19_ERRORS: Odoo 19 con error de setUpClass."""
+
+    def test_parse_no_fallo(self):
+        """parse_failed=False — resumen v19 encontrado."""
+        result = parse_odoo_test_output(FIXTURE_G_V19_ERRORS.splitlines(keepends=True))
+        assert result.parse_failed is False
+
+    def test_total_correcto(self):
+        """total=47 extraido del resumen v19."""
+        result = parse_odoo_test_output(FIXTURE_G_V19_ERRORS.splitlines(keepends=True))
+        assert result.total == 47
+
+    def test_failures_contiene_setup_class(self):
+        """failures[] contiene al menos una entrada con kind='ERROR' y method='setUpClass'."""
+        result = parse_odoo_test_output(FIXTURE_G_V19_ERRORS.splitlines(keepends=True))
+        assert len(result.failures) >= 1
+        setup_failures = [f for f in result.failures if f.method == "setUpClass"]
+        assert len(setup_failures) >= 1
+
+    def test_setup_class_kind_error(self):
+        """La entrada de setUpClass tiene kind='ERROR'."""
+        result = parse_odoo_test_output(FIXTURE_G_V19_ERRORS.splitlines(keepends=True))
+        setup_failures = [f for f in result.failures if f.method == "setUpClass"]
+        assert setup_failures[0].kind == "ERROR"
+
+    def test_setup_class_traceback_no_vacio(self):
+        """La entrada de setUpClass tiene traceback no vacio."""
+        result = parse_odoo_test_output(FIXTURE_G_V19_ERRORS.splitlines(keepends=True))
+        setup_failures = [f for f in result.failures if f.method == "setUpClass"]
+        assert len(setup_failures[0].traceback) > 0
+
+
+# ---------------------------------------------------------------------------
+# Tests — Fixture H: setUpClass aislado (RE_FAIL_SETUP)
+# ---------------------------------------------------------------------------
+
+
+class TestFixtureHSetupClass:
+    """Fixture H_SETUPCLASS: extraccion de clase desde setUpClass."""
+
+    def test_test_class_extraido(self):
+        """test_class='TestSaleOrderQuincenaFK' extraido del path dotted."""
+        result = parse_odoo_test_output(FIXTURE_H_SETUPCLASS.splitlines(keepends=True))
+        assert len(result.failures) >= 1
+        assert result.failures[0].test_class == "TestSaleOrderQuincenaFK"
+
+    def test_method_es_setupclass(self):
+        """method='setUpClass' para este tipo de cabecera."""
+        result = parse_odoo_test_output(FIXTURE_H_SETUPCLASS.splitlines(keepends=True))
+        assert result.failures[0].method == "setUpClass"
+
+    def test_traceback_no_vacio(self):
+        """traceback no vacio para entrada setUpClass."""
+        result = parse_odoo_test_output(FIXTURE_H_SETUPCLASS.splitlines(keepends=True))
+        assert len(result.failures[0].traceback) > 0
+
+
+# ---------------------------------------------------------------------------
+# Tests — Fixture I: bare traceback — LOADING_ERROR
+# ---------------------------------------------------------------------------
+
+
+class TestFixtureLoadingError:
+    """Fixture LOADING_ERROR: bare traceback sin cabecera FAIL/ERROR."""
+
+    def test_una_entrada_en_failures(self):
+        """failures[] contiene exactamente una entrada."""
+        result = parse_odoo_test_output(FIXTURE_LOADING_ERROR.splitlines(keepends=True))
+        assert len(result.failures) == 1
+
+    def test_kind_loading_error(self):
+        """kind='LOADING_ERROR' para bare traceback."""
+        result = parse_odoo_test_output(FIXTURE_LOADING_ERROR.splitlines(keepends=True))
+        assert result.failures[0].kind == "LOADING_ERROR"
+
+    def test_test_class_none(self):
+        """test_class=None para LOADING_ERROR (no hay clase asociada)."""
+        result = parse_odoo_test_output(FIXTURE_LOADING_ERROR.splitlines(keepends=True))
+        assert result.failures[0].test_class is None
+
+    def test_method_none(self):
+        """method=None para LOADING_ERROR."""
+        result = parse_odoo_test_output(FIXTURE_LOADING_ERROR.splitlines(keepends=True))
+        assert result.failures[0].method is None
+
+    def test_traceback_no_vacio(self):
+        """traceback contiene el contenido del error de carga."""
+        result = parse_odoo_test_output(FIXTURE_LOADING_ERROR.splitlines(keepends=True))
+        assert len(result.failures[0].traceback) > 0
+        assert "ImportError" in result.failures[0].traceback
