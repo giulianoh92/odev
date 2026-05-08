@@ -337,3 +337,74 @@ class TestDockerComposeInitNone:
             mock_run.return_value = MagicMock(returncode=0)
             with pytest.raises(RuntimeError, match="No se pudo detectar"):
                 DockerCompose()
+
+
+class TestExecCmdStream:
+    """Tests para DockerCompose.exec_cmd_stream() — streaming via Popen."""
+
+    @pytest.fixture
+    def dc(self, tmp_path):
+        """Crea una instancia de DockerCompose con mocks."""
+        with (
+            patch("shutil.which", return_value="/usr/bin/docker"),
+            patch("subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = MagicMock(returncode=0)
+            instancia = DockerCompose(project_root=tmp_path)
+        return instancia
+
+    def test_construye_comando_con_exec_servicio(self, dc, tmp_path):
+        """exec_cmd_stream incluye 'exec <service>' y el comando en el cmd list."""
+        mock_popen = MagicMock()
+        mock_popen.stdout = MagicMock()
+        mock_popen.returncode = 0
+
+        with patch("subprocess.Popen", return_value=mock_popen) as mock_popen_cls:
+            result = dc.exec_cmd_stream("web", ["odoo", "--test-enable"])
+
+        call_args = mock_popen_cls.call_args
+        cmd = call_args[0][0]
+        assert "exec" in cmd
+        assert "web" in cmd
+        assert "odoo" in cmd
+        assert "--test-enable" in cmd
+        assert result is mock_popen
+
+    def test_retorna_popen_con_stdout_pipe(self, dc, tmp_path):
+        """exec_cmd_stream retorna un Popen con stdout=PIPE y stderr=STDOUT."""
+        mock_popen = MagicMock()
+
+        with patch("subprocess.Popen", return_value=mock_popen) as mock_popen_cls:
+            dc.exec_cmd_stream("web", ["ls"])
+
+        call_kwargs = mock_popen_cls.call_args[1]
+        assert call_kwargs["stdout"] == subprocess.PIPE
+        assert call_kwargs["stderr"] == subprocess.STDOUT
+
+    def test_incluye_project_name_cuando_esta_configurado(self, dc, tmp_path):
+        """exec_cmd_stream incluye '-p <project_name>' cuando _project_name está configurado."""
+        dc._project_name = "mi-proyecto"
+        mock_popen = MagicMock()
+
+        with patch("subprocess.Popen", return_value=mock_popen) as mock_popen_cls:
+            dc.exec_cmd_stream("web", ["ls"])
+
+        cmd = mock_popen_cls.call_args[0][0]
+        assert "-p" in cmd
+        idx = cmd.index("-p")
+        assert cmd[idx + 1] == "mi-proyecto"
+
+    def test_rechaza_servicio_invalido(self, dc):
+        """exec_cmd_stream rechaza nombres de servicio con caracteres peligrosos."""
+        with pytest.raises(ValueError, match="invalido"):
+            dc.exec_cmd_stream("web; rm -rf /", ["ls"])
+
+    def test_usa_cwd_correcto(self, dc, tmp_path):
+        """exec_cmd_stream ejecuta Popen con cwd=project_root."""
+        mock_popen = MagicMock()
+
+        with patch("subprocess.Popen", return_value=mock_popen) as mock_popen_cls:
+            dc.exec_cmd_stream("web", ["ls"])
+
+        call_kwargs = mock_popen_cls.call_args[1]
+        assert call_kwargs["cwd"] == tmp_path

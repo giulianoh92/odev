@@ -324,6 +324,42 @@ class DockerCompose:
             return self._exec(args, interactive=True)
         return self._run(args, capture=True, input_data=stdin_data)
 
+    def exec_cmd_stream(
+        self,
+        service: str,
+        command: list[str],
+    ) -> subprocess.Popen:
+        """Ejecuta un comando dentro del contenedor capturando stdout/stderr en pipe.
+
+        Retorna un Popen vivo con stdout=PIPE, stderr=STDOUT. El caller es
+        responsable de drenar stdout, llamar wait()/terminate() y leer returncode.
+
+        Argumentos:
+            service: Nombre del servicio donde ejecutar el comando.
+            command: Comando y sus argumentos a ejecutar.
+
+        Retorna:
+            Proceso Popen activo con stdout=PIPE, stderr=STDOUT.
+
+        Lanza:
+            ValueError: Si el nombre de servicio contiene caracteres invalidos.
+        """
+        if not self._PATRON_SERVICIO.match(service):
+            raise ValueError(
+                f"Nombre de servicio invalido: '{service}'. "
+                "Solo se permiten letras, numeros, guiones y guiones bajos."
+            )
+        cmd = [*self._cmd]
+        if self._project_name:
+            cmd.extend(["-p", self._project_name])
+        cmd.extend(["exec", service, *command])
+        return subprocess.Popen(
+            cmd,
+            cwd=self._project_root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+
     def get_container_name(self, service: str) -> str | None:
         """Busca dinamicamente el nombre del contenedor para un servicio.
 
