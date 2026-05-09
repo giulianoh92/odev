@@ -207,14 +207,12 @@ def _run_test(
     valores_env = load_env(rutas.env_file)
     nombre_bd = valores_env.get("DB_NAME", "odoo_db")
 
-    # Pre-flight: verificar que el puerto este disponible
+    # `web_port` se usa como --http-port DENTRO del container (via `dc.exec_cmd`).
+    # No chequeamos `puerto_disponible` en el host: con `web` corriendo, el puerto
+    # del host esta bindeado al docker-proxy (forward 8071->8069), pero el puerto
+    # interno suele estar libre. La defensa real esta en `parse_odoo_test_output`
+    # mas abajo: si el log contiene "Address already in use", forzamos exit 3.
     web_port = valores_env.get("WEB_PORT", "8069")
-    if not puerto_disponible(int(web_port)):
-        error(
-            f"Puerto {web_port} ocupado. "
-            f"Detene el proceso en conflicto o ajusta WEB_PORT en .env"
-        )
-        raise typer.Exit(3)
 
     comando = [
         "odoo",

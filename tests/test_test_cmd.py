@@ -666,34 +666,13 @@ class TestModulePreFlight:
 
 
 class TestPortPreFlight:
-    """Pre-flight de puerto: respeta WEB_PORT, sale con exit 3 si ocupado."""
+    """WEB_PORT del .env se propaga como --http-port DENTRO del container.
 
-    def test_puerto_ocupado_exit_3(self, tmp_path: Path, monkeypatch) -> None:
-        """puerto_disponible=False → typer.Exit(3), exec_cmd_stream no llamado."""
-        import typer
-
-        from odev.commands.test import _run_test
-
-        ctx = _make_contexto(tmp_path)
-        mock_dc = MagicMock()
-
-        with (
-            patch("odev.commands.test.requerir_proyecto", return_value=ctx),
-            patch("odev.commands.test.obtener_rutas") as mock_rutas,
-            patch("odev.commands.test.obtener_docker", return_value=mock_dc),
-            patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
-            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
-            patch("odev.commands.test.validar_modulo_existe", return_value=None),
-            patch("odev.commands.test.puerto_disponible", return_value=False),
-        ):
-            mock_rutas.return_value.env_file = tmp_path / ".env"
-            with pytest.raises((SystemExit, typer.Exit)) as exc_info:
-                _run_test(**_default_run_kwargs())
-
-        exc = exc_info.value
-        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
-        assert code == 3
-        mock_dc.exec_cmd_stream.assert_not_called()
+    Nota: el chequeo `puerto_disponible(host_port)` fue removido — con `web`
+    corriendo el host port siempre esta bindeado al docker-proxy y el check daba
+    falso positivo. La defensa real (line ~265 de commands/test.py) inspecciona
+    el log de Odoo en busca de "Address already in use" y fuerza exit 3.
+    """
 
     def test_puerto_libre_usa_web_port(self, tmp_path: Path, monkeypatch) -> None:
         """WEB_PORT=9070 libre → comando incluye --http-port=9070."""
