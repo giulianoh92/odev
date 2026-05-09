@@ -38,9 +38,27 @@ docker-compose.yml   # Servicios Docker
 
 ## Comandos Utiles
 ```bash
-odev up              # Levantar entorno
-odev scaffold <mod>  # Crear modulo nuevo
-odev update <mod>    # Actualizar modulo
-odev test <mod>      # Ejecutar tests
-odev context         # Generar PROJECT_CONTEXT.md
+odev up                       # Levantar entorno
+odev status / logs [svc]      # Estado / logs
+odev scaffold <mod>           # Crear modulo nuevo
+odev addon-install <m1,m2>    # Instalar modulo(s) — CSV soportado
+odev update <m1,m2>           # Actualizar modulo(s) — CSV soportado
+odev test <m1,m2> --json      # Tests con output AI-friendly (--summary, --failures, --json, --save-log)
+odev context                  # Generar PROJECT_CONTEXT.md
 ```
+
+## Comandos no-interactivos (agentes AI)
+Para agentes que no mantienen sesiones shell:
+```bash
+odev shell <svc> -c "<cmd>"   # bash -c en contenedor (ej: odev shell web -c "ls /mnt/extra-addons")
+odev sql "<query>"            # psql -c en contenedor db (--csv para output sin bordes)
+odev py "<expresion>"         # evalua expresion Python en odoo shell via stdin
+                              # Caveat: banner Odoo aparece en stdout, usar `odev py "<expr>" | tail -n 1`
+                              # Caveat: side-effects ORM (.create/.write) se commitean
+```
+
+## Multi-modulo (CSV)
+`update`, `addon-install`, `test` aceptan CSV en un solo token Odoo:
+- `odev update sale,stock,crm` → 1 invocacion Odoo (no 3 secuenciales)
+- `all` solo va solo, mezclado con otros = exit 2
+- `--no-validate` salta validacion contra addons-path
