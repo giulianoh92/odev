@@ -123,8 +123,7 @@ def _call_run_test(tmp_path: Path, mock_dc: MagicMock, **overrides):
 
     Parches incluidos por defecto (no-op):
       - validar_modulo_existe: retorna None (bypass pre-flight de modulo)
-      - puerto_disponible: retorna True (puerto libre por defecto)
-    Los tests especificos de esas rutas deben pasarlos como 'overrides'
+    Los tests especificos de otras rutas deben pasar overrides
     usando patch.object o desactivando los mocks en su propio contexto.
     """
     from odev.commands.test import _run_test
@@ -139,7 +138,6 @@ def _call_run_test(tmp_path: Path, mock_dc: MagicMock, **overrides):
         patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
         patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
         patch("odev.commands.test.validar_modulo_existe", return_value=None),
-        patch("odev.commands.test.puerto_disponible", return_value=True),
     ):
         mock_rutas.return_value.env_file = tmp_path / ".env"
         try:
@@ -442,7 +440,6 @@ class TestExitCodePropagation:
             patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
             patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
             patch("odev.commands.test.validar_modulo_existe", return_value=None),
-            patch("odev.commands.test.puerto_disponible", return_value=True),
         ):
             mock_rutas.return_value.env_file = tmp_path / ".env"
             with pytest.raises((SystemExit, typer.Exit)) as exc_info:
@@ -474,7 +471,6 @@ class TestExitCodePropagation:
             patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
             patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
             patch("odev.commands.test.validar_modulo_existe", return_value=None),
-            patch("odev.commands.test.puerto_disponible", return_value=True),
         ):
             mock_rutas.return_value.env_file = tmp_path / ".env"
             try:
@@ -562,7 +558,6 @@ class TestModulePreFlight:
             patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
             patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
             patch("odev.commands._helpers.detectar_layout", return_value=fake_layout),
-            patch("odev.commands.test.puerto_disponible", return_value=True),
         ):
             mock_rutas.return_value.env_file = tmp_path / ".env"
             with pytest.raises((SystemExit, typer.Exit)) as exc_info:
@@ -591,7 +586,6 @@ class TestModulePreFlight:
             patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
             patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
             patch("odev.commands._helpers.detectar_layout") as mock_detect,
-            patch("odev.commands.test.puerto_disponible", return_value=True),
         ):
             mock_rutas.return_value.env_file = tmp_path / ".env"
             try:
@@ -647,7 +641,6 @@ class TestModulePreFlight:
             patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
             patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
             patch("odev.commands._helpers.detectar_layout", return_value=fake_layout),
-            patch("odev.commands.test.puerto_disponible", return_value=True),
         ):
             mock_rutas.return_value.env_file = tmp_path / ".env"
             try:
@@ -661,55 +654,22 @@ class TestModulePreFlight:
 
 
 # ---------------------------------------------------------------------------
-# T-port — Port pre-flight (WEB_PORT env + puerto_disponible)
+# T-port — HTTP service disabled during tests
 # ---------------------------------------------------------------------------
 
 
-class TestPortPreFlight:
-    """WEB_PORT del .env se propaga como --http-port DENTRO del container.
+class TestHttpDisabled:
+    """El comando de tests pasa --no-http para evitar bindear puertos.
 
-    Nota: el chequeo `puerto_disponible(host_port)` fue removido — con `web`
-    corriendo el host port siempre esta bindeado al docker-proxy y el check daba
-    falso positivo. La defensa real (line ~265 de commands/test.py) inspecciona
-    el log de Odoo en busca de "Address already in use" y fuerza exit 3.
+    Anteriormente se propagaba `WEB_PORT` como `--http-port`, pero cuando el
+    proyecto mapea WEB_PORT directo al 8069 interno (caso default), el odoo
+    principal del container ya lo ocupa y la corrida fallaba con
+    "Address already in use". Con `--no-http` el proceso de test no bindea
+    nada y los TransactionCase/HttpCase corren igual.
     """
 
-    def test_puerto_libre_usa_web_port(self, tmp_path: Path, monkeypatch) -> None:
-        """WEB_PORT=9070 libre → comando incluye --http-port=9070."""
-        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
-        from odev.commands.test import _run_test
-
-        ctx = _make_contexto(tmp_path)
-        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
-        mock_dc = MagicMock()
-        mock_dc.exec_cmd_stream.return_value = fake_popen
-
-        with (
-            patch("odev.commands.test.requerir_proyecto", return_value=ctx),
-            patch("odev.commands.test.obtener_rutas") as mock_rutas,
-            patch("odev.commands.test.obtener_docker", return_value=mock_dc),
-            patch(
-                "odev.commands.test.load_env",
-                return_value={"DB_NAME": "test_db", "WEB_PORT": "9070"},
-            ),
-            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
-            patch("odev.commands.test.validar_modulo_existe", return_value=None),
-            patch("odev.commands.test.puerto_disponible", return_value=True),
-        ):
-            mock_rutas.return_value.env_file = tmp_path / ".env"
-            try:
-                _run_test(**_default_run_kwargs())
-            except (SystemExit, Exception) as e:
-                import typer
-                if isinstance(e, typer.Exit):
-                    pass
-
-        args = mock_dc.exec_cmd_stream.call_args[0]
-        cmd_list = args[1]
-        assert "--http-port=9070" in cmd_list
-
-    def test_puerto_default_8069(self, tmp_path: Path, monkeypatch) -> None:
-        """Sin WEB_PORT en env → comando usa --http-port=8069."""
+    def test_comando_incluye_no_http(self, tmp_path: Path, monkeypatch) -> None:
+        """El comando ejecutado dentro del container incluye --no-http."""
         monkeypatch.setattr("sys.stdout.isatty", lambda: False)
         from odev.commands.test import _run_test
 
@@ -725,7 +685,6 @@ class TestPortPreFlight:
             patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
             patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
             patch("odev.commands.test.validar_modulo_existe", return_value=None),
-            patch("odev.commands.test.puerto_disponible", return_value=True),
         ):
             mock_rutas.return_value.env_file = tmp_path / ".env"
             try:
@@ -737,7 +696,10 @@ class TestPortPreFlight:
 
         args = mock_dc.exec_cmd_stream.call_args[0]
         cmd_list = args[1]
-        assert "--http-port=8069" in cmd_list
+        assert "--no-http" in cmd_list
+        # `--http-port=...` ya no se inyecta — evita colisiones con el odoo
+        # principal del container que ya bindea 8069.
+        assert not any(arg.startswith("--http-port=") for arg in cmd_list)
 
 
 # ---------------------------------------------------------------------------
@@ -769,7 +731,6 @@ class TestPortConflictStream:
             patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
             patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
             patch("odev.commands.test.validar_modulo_existe", return_value=None),
-            patch("odev.commands.test.puerto_disponible", return_value=True),
         ):
             mock_rutas.return_value.env_file = tmp_path / ".env"
             with pytest.raises((SystemExit, typer.Exit)) as exc_info:
@@ -802,7 +763,6 @@ class TestPortConflictStream:
             patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
             patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
             patch("odev.commands.test.validar_modulo_existe", return_value=None),
-            patch("odev.commands.test.puerto_disponible", return_value=True),
         ):
             mock_rutas.return_value.env_file = tmp_path / ".env"
             exc = None
@@ -983,7 +943,6 @@ class TestCSVModules:
             patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
             patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
             patch("odev.commands.test.validar_modulos", return_value=None),
-            patch("odev.commands.test.puerto_disponible", return_value=True),
         ):
             mock_rutas.return_value.env_file = tmp_path / ".env"
             try:
@@ -1093,7 +1052,6 @@ class TestCSVModules:
             patch("odev.commands.test.obtener_docker", return_value=mock_dc),
             patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
             patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
-            patch("odev.commands.test.puerto_disponible", return_value=True),
         ):
             mock_rutas.return_value.env_file = tmp_path / ".env"
             with pytest.raises((SystemExit, ty.Exit)) as exc_info:
@@ -1130,7 +1088,6 @@ class TestCSVModules:
             patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
             patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
             patch("odev.commands._helpers.listar_modulos_disponibles", return_value={"sale"}),
-            patch("odev.commands.test.puerto_disponible", return_value=True),
         ):
             mock_rutas.return_value.env_file = tmp_path / ".env"
             exc = None

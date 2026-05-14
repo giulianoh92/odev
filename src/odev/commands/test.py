@@ -35,7 +35,6 @@ from odev.commands._helpers import (
 )
 from odev.core.config import load_env
 from odev.core.console import error, info
-from odev.core.ports import puerto_disponible
 from odev.core.test_parser import TestResult, parse_odoo_test_output
 
 
@@ -207,19 +206,19 @@ def _run_test(
     valores_env = load_env(rutas.env_file)
     nombre_bd = valores_env.get("DB_NAME", "odoo_db")
 
-    # `web_port` se usa como --http-port DENTRO del container (via `dc.exec_cmd`).
-    # No chequeamos `puerto_disponible` en el host: con `web` corriendo, el puerto
-    # del host esta bindeado al docker-proxy (forward 8071->8069), pero el puerto
-    # interno suele estar libre. La defensa real esta en `parse_odoo_test_output`
-    # mas abajo: si el log contiene "Address already in use", forzamos exit 3.
-    web_port = valores_env.get("WEB_PORT", "8069")
-
+    # `--no-http` evita que el proceso de test bindee un puerto interno.
+    # Antes pasabamos `--http-port=$WEB_PORT`, pero cuando el proyecto
+    # mapea WEB_PORT directo al 8069 interno (caso default), el odoo
+    # principal del container ya lo ocupa y la corrida fallaba con
+    # "Address already in use". Los tests TransactionCase/HttpCase de
+    # Odoo no requieren un servidor HTTP externo — Odoo levanta uno
+    # interno si hace falta.
     comando = [
         "odoo",
         "--test-enable",
         "--stop-after-init",
         "-d", nombre_bd,
-        f"--http-port={web_port}",
+        "--no-http",
         f"--log-level={log_level}",
     ]
 
@@ -259,10 +258,12 @@ def _run_test(
     result = parse_odoo_test_output(lines)
 
     # Defensa en profundidad: si Odoo saly con 0 pero el parseo fallo
-    # y el stream contiene "Address already in use" → forzar exit 3
+    # y el stream contiene "Address already in use" → forzar exit 3.
+    # Con --no-http esto ya no deberia ocurrir, pero se mantiene por
+    # si el modulo bajo test arranca su propio servidor.
     if returncode == 0 and result.parse_failed:
         if any("Address already in use" in ln for ln in lines):
-            error(f"Puerto {web_port} ocupado durante la ejecucion de Odoo")
+            error("Puerto ocupado durante la ejecucion de Odoo (revisar test)")
             returncode = 3
 
     if json_out:
