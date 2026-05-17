@@ -156,7 +156,7 @@ class LogViewer(Static):
             visor_logs.write("[red]docker compose no encontrado[/]")
             return
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         while self._process and self._process.poll() is None:
             linea = await loop.run_in_executor(None, self._process.stdout.readline)
             if linea:
