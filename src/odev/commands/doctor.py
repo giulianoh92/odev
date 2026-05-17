@@ -36,18 +36,22 @@ def doctor() -> None:
     console.print()
 
     # Ejecutar todas las verificaciones en orden
+    # Orden: Docker → Compose → Python → proyecto → .env → GC registro →
+    #         puertos → compose_file → odoo_conf → addons → version
+    # El GC del registro (y backfill) debe correr ANTES que la verificacion
+    # de puertos para que los orphans sean limpiados primero (REQ-UX-5).
     verificaciones = [
         _verificar_docker,
         _verificar_docker_compose,
         _verificar_python,
         _verificar_proyecto,
         _verificar_env,
+        _ejecutar_registry_gc_y_backfill,
+        _verificar_puertos,
         _verificar_docker_compose_file,
         _verificar_odoo_conf,
         _verificar_addons,
-        _verificar_puertos,
         _verificar_version_compatible,
-        _ejecutar_registry_gc_y_backfill,
     ]
 
     total_fallos = 0

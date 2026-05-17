@@ -103,7 +103,8 @@ def up(
     puerto_pgweb = valores_env.get("PGWEB_PORT", "8081")
     success("Entorno iniciado correctamente.")
     info(f"  Odoo:  http://localhost:{puerto_web}")
-    info(f"  pgweb: http://localhost:{puerto_pgweb}")
+    if contexto.config and contexto.config.pgweb_habilitado:
+        info(f"  pgweb: http://localhost:{puerto_pgweb}")
 
 
 # ── Preflight helper ──────────────────────────────────────────────────────────
@@ -161,6 +162,8 @@ def _preflight_puertos(contexto, rutas: ProjectPaths) -> None:
                     f"puerto {status.puerto} ({status.nombre}) "
                     f"usado por proyecto {status.propietario}"
                 )
+                info(f"  Hint: odev --project {status.propietario} down")
             else:
                 error(f"puerto {status.puerto} ({status.nombre}) en uso por proceso ajeno")
+        info("  Ejecuta 'odev doctor' para liberar entradas huerfanas.")
         raise typer.Exit(3)

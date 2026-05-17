@@ -18,6 +18,26 @@ from odev.core.docker import DockerCompose
 from odev.core.paths import ProjectPaths
 
 
+def _formatear_puertos(publishers: list) -> str:
+    """Formatea la lista de Publishers de docker compose ps en string legible.
+
+    Argumentos:
+        publishers: Lista de dicts con claves PublishedPort, TargetPort, Protocol.
+                    Puede ser None o lista vacia si el servicio no expone puertos.
+
+    Retorna:
+        String con puertos mapeados (ej. "8069, 5432") o "-" si no hay mapeos.
+    """
+    if not publishers:
+        return "-"
+    partes = []
+    for pub in publishers:
+        publicado = pub.get("PublishedPort", 0)
+        if publicado:
+            partes.append(str(publicado))
+    return ", ".join(partes) if partes else "-"
+
+
 class StatusPanel(Static):
     """Panel de estado de servicios que consulta docker compose ps periodicamente.
 
@@ -57,12 +77,12 @@ class StatusPanel(Static):
     def on_mount(self) -> None:
         """Inicializa la tabla con columnas y configura el refresco periodico.
 
-        Agrega las columnas 'Servicio', 'Estado' y 'Salud', realiza una
-        consulta inicial y programa un intervalo de 3 segundos para
+        Agrega las columnas 'Servicio', 'Estado', 'Salud' y 'Puertos', realiza
+        una consulta inicial y programa un intervalo de 3 segundos para
         actualizaciones automaticas.
         """
         self._tabla = self.query_one("#status-table", DataTable)
-        self._tabla.add_columns("Servicio", "Estado", "Salud")
+        self._tabla.add_columns("Servicio", "Estado", "Salud", "Puertos")
         self._nombres_servicios: list[str] = []
         self.refresh_status()
         self.set_interval(3.0, self.refresh_status)
@@ -112,12 +132,13 @@ class StatusPanel(Static):
             return
 
         if not servicios:
-            self._tabla.add_row("-", "sin servicios", "-")
+            self._tabla.add_row("-", "sin servicios", "-", "-")
             return
 
         for svc in servicios:
             nombre = svc.get("Service", svc.get("Name", "?"))
             estado = svc.get("State", "?")
             salud = svc.get("Health", svc.get("Status", ""))
-            self._tabla.add_row(nombre, estado, str(salud))
+            puertos = _formatear_puertos(svc.get("Publishers", []))
+            self._tabla.add_row(nombre, estado, str(salud), puertos)
             self._nombres_servicios.append(nombre)

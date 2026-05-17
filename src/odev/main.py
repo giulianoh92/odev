@@ -139,7 +139,7 @@ app.command(name="doctor")(doctor.doctor)
 app.command(name="self-update")(self_update.self_update)
 
 # --- Registro de subgrupos ---
-app.add_typer(db.app, name="db")
+app.add_typer(db.app, name="db", rich_help_panel="Subgrupos")
 
 # --- Comandos nuevos (a implementar en Batch 5) ---
 try:
@@ -159,14 +159,14 @@ except ImportError:
 try:
     from odev.commands.projects import app as projects_app
 
-    app.add_typer(projects_app, name="projects")
+    app.add_typer(projects_app, name="projects", rich_help_panel="Subgrupos")
 except ImportError:
     pass
 
 try:
     from odev.commands.enterprise import app as enterprise_app
 
-    app.add_typer(enterprise_app, name="enterprise")
+    app.add_typer(enterprise_app, name="enterprise", rich_help_panel="Subgrupos")
 except ImportError:
     pass
 
