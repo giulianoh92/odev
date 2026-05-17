@@ -13,6 +13,10 @@ from pathlib import Path
 
 import typer
 
+# Error codes for load-backup validation failures
+LOAD_BACKUP_UNSAFE_MEMBER = "LOAD_BACKUP_UNSAFE_MEMBER"
+LOAD_BACKUP_INVALID_DB_NAME = "LOAD_BACKUP_INVALID_DB_NAME"
+
 from odev.commands._helpers import obtener_docker, obtener_rutas, requerir_proyecto
 from odev.core.config import load_env
 from odev.core.console import error, info, success, warning
@@ -21,6 +25,38 @@ from odev.core.neutralize import (
     neutralizar_base_datos,
     resetear_credenciales_admin,
 )
+
+
+def _validar_miembros_zip(zf: zipfile.ZipFile, destino: Path) -> None:
+    """Valida que todos los miembros del ZIP esten dentro del directorio destino.
+
+    Itera todos los miembros del archivo ZIP y verifica que su ruta resuelta
+    sea un subdirectorio (o el mismo directorio) del destino. Rechaza cualquier
+    intento de path traversal (../../, rutas absolutas, etc.).
+
+    Argumentos:
+        zf: El objeto ZipFile abierto a validar.
+        destino: El directorio de extraccion destino (Path absoluto).
+
+    Raises:
+        typer.BadParameter: Si algun miembro tiene una ruta que escapa al destino.
+            El mensaje incluye el codigo LOAD_BACKUP_UNSAFE_MEMBER.
+    """
+    destino_resuelto = destino.resolve()
+    for miembro in zf.infolist():
+        nombre = miembro.filename
+        # Early-exit: rutas absolutas o con componentes '..' son siempre inseguras
+        if nombre.startswith("/") or ".." in Path(nombre).parts:
+            raise typer.BadParameter(
+                f"{LOAD_BACKUP_UNSAFE_MEMBER}: '{nombre}' apunta fuera del directorio de extraccion."
+            )
+        ruta_final = (destino / nombre).resolve()
+        try:
+            ruta_final.relative_to(destino_resuelto)
+        except ValueError:
+            raise typer.BadParameter(
+                f"{LOAD_BACKUP_UNSAFE_MEMBER}: '{nombre}' apunta fuera del directorio de extraccion."
+            )
 
 
 def load_backup(
@@ -56,9 +92,15 @@ def load_backup(
     usuario_bd = valores_env.get("DB_USER", "odoo")
     nombre_bd = valores_env.get("DB_NAME", "odoo_db")
 
-    # Validar nombre de BD para prevenir inyeccion SQL
-    if not re.match(r"^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$", nombre_bd):
-        error(f"Nombre de base de datos invalido: '{nombre_bd}'")
+    # Validar nombre de BD con regex estricto (REQ-LB-2 / S2).
+    # Acepta solo identificadores PostgreSQL simples: [a-zA-Z_][a-zA-Z0-9_]*
+    # Rechaza puntos, guiones, digitos al inicio y caracteres especiales.
+    # TODO 1.0: migrate to psycopg2.sql.Identifier for full parameterization
+    if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", nombre_bd):
+        error(
+            f"{LOAD_BACKUP_INVALID_DB_NAME}: Nombre de base de datos invalido: '{nombre_bd}'. "
+            "Solo se permiten letras, digitos y guion bajo, comenzando con letra o guion bajo."
+        )
         raise typer.Exit(1)
 
     dc = obtener_docker(contexto)
@@ -108,6 +150,7 @@ def load_backup(
         ruta_tmp = Path(tmp)
         info("Extrayendo backup...")
         with zipfile.ZipFile(backup) as zf:
+            _validar_miembros_zip(zf, ruta_tmp)
             zf.extractall(ruta_tmp)
 
         archivo_dump = ruta_tmp / nombre_dump
