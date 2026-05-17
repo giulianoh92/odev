@@ -20,7 +20,7 @@ import sys
 from odev import __version__
 from odev.core.compat import ProjectMode, detect_mode
 from odev.core.console import console
-from odev.core.ports import puerto_disponible
+from odev.core.ports import PORT_KEYS, puerto_disponible
 
 
 def doctor() -> None:
@@ -174,8 +174,7 @@ def _verificar_python() -> bool:
         return True
     else:
         _imprimir_fail(
-            f"Python {version_python} (se requiere 3.10+). "
-            "Actualiza tu version de Python."
+            f"Python {version_python} (se requiere 3.10+). Actualiza tu version de Python."
         )
         return False
 
@@ -232,9 +231,7 @@ def _verificar_env() -> bool | None:
         _imprimir_ok(".env existe")
         return True
     else:
-        _imprimir_fail(
-            ".env no existe. Ejecuta 'odev init' para generar la configuracion."
-        )
+        _imprimir_fail(".env no existe. Ejecuta 'odev init' para generar la configuracion.")
         return False
 
 
@@ -246,9 +243,7 @@ def _verificar_docker_compose_file() -> bool | None:
     """
     modo, raiz = detect_mode()
     if modo == ProjectMode.NONE or raiz is None:
-        _imprimir_info(
-            "docker-compose.yml: no se puede verificar sin un proyecto detectado."
-        )
+        _imprimir_info("docker-compose.yml: no se puede verificar sin un proyecto detectado.")
         return None
 
     ruta_compose = raiz / "docker-compose.yml"
@@ -257,8 +252,7 @@ def _verificar_docker_compose_file() -> bool | None:
         return True
     else:
         _imprimir_fail(
-            "docker-compose.yml no existe. "
-            "Ejecuta 'odev init' para generar la configuracion."
+            "docker-compose.yml no existe. Ejecuta 'odev init' para generar la configuracion."
         )
         return False
 
@@ -271,9 +265,7 @@ def _verificar_odoo_conf() -> bool | None:
     """
     modo, raiz = detect_mode()
     if modo == ProjectMode.NONE or raiz is None:
-        _imprimir_info(
-            "config/odoo.conf: no se puede verificar sin un proyecto detectado."
-        )
+        _imprimir_info("config/odoo.conf: no se puede verificar sin un proyecto detectado.")
         return None
 
     ruta_conf = raiz / "config" / "odoo.conf"
@@ -281,9 +273,7 @@ def _verificar_odoo_conf() -> bool | None:
         _imprimir_ok("config/odoo.conf existe")
         return True
     else:
-        _imprimir_warn(
-            "config/odoo.conf no existe (se regenerara automaticamente con 'odev up')."
-        )
+        _imprimir_warn("config/odoo.conf no existe (se regenerara automaticamente con 'odev up').")
         return None
 
 
@@ -298,9 +288,7 @@ def _verificar_addons() -> bool | None:
     """
     modo, raiz = detect_mode()
     if modo == ProjectMode.NONE or raiz is None:
-        _imprimir_info(
-            "addons/: no se puede verificar sin un proyecto detectado."
-        )
+        _imprimir_info("addons/: no se puede verificar sin un proyecto detectado.")
         return None
 
     # Intentar usar el resolver para obtener todos los addons_dirs
@@ -319,7 +307,8 @@ def _verificar_addons() -> bool | None:
     for directorio_addons in directorios_addons:
         if not directorio_addons.exists():
             _imprimir_info(
-                f"{directorio_addons} no existe. Se creara al ejecutar 'odev scaffold' o 'odev init'."
+                f"{directorio_addons} no existe. "
+                "Se creara al ejecutar 'odev scaffold' o 'odev init'."
             )
             continue
 
@@ -346,9 +335,7 @@ def _verificar_puertos() -> bool:
     """
     modo, raiz = detect_mode()
     if modo == ProjectMode.NONE or raiz is None:
-        _imprimir_info(
-            "Puertos: no se puede verificar sin un proyecto detectado."
-        )
+        _imprimir_info("Puertos: no se puede verificar sin un proyecto detectado.")
         return True
 
     # Intentar leer puertos del .env
@@ -384,21 +371,14 @@ def _verificar_puertos() -> bool:
         if puerto_disponible(puerto):
             _imprimir_ok(f"Puerto {puerto} ({nombre_servicio}) disponible")
         else:
-            _imprimir_fail(
-                f"Puerto {puerto} ({nombre_servicio}) ya esta en uso por otro proceso."
-            )
+            _imprimir_fail(f"Puerto {puerto} ({nombre_servicio}) ya esta en uso por otro proceso.")
             todos_disponibles = False
 
     return todos_disponibles
 
 
-_CLAVES_PUERTOS_BACKFILL = (
-    "WEB_PORT",
-    "DB_PORT",
-    "PGWEB_PORT",
-    "DEBUGPY_PORT",
-    "MAILHOG_PORT",
-)
+# Q10: use PORT_KEYS from core/ports.py as single source of truth
+_CLAVES_PUERTOS_BACKFILL = PORT_KEYS
 
 
 def _verificar_registry_puertos(registry=None) -> dict:
@@ -419,6 +399,7 @@ def _verificar_registry_puertos(registry=None) -> dict:
     """
     if registry is None:
         from odev.core.registry import Registry
+
         registry = Registry()
 
     from odev.core.config import load_env
@@ -447,8 +428,7 @@ def _verificar_registry_puertos(registry=None) -> dict:
             valor = valores_env.get(clave)
             if valor is None:
                 _imprimir_warn(
-                    f"Proyecto '{entry.nombre}': "
-                    f"{clave} falta en .env — no se inventara el valor"
+                    f"Proyecto '{entry.nombre}': {clave} falta en .env — no se inventara el valor"
                 )
                 continue
             try:
@@ -529,10 +509,7 @@ def _verificar_version_compatible() -> bool | None:
         version_requerida = Version(version_minima)
 
         if version_cli >= version_requerida:
-            _imprimir_ok(
-                f"odev version {__version__} "
-                f"(minimo requerido: {version_minima})"
-            )
+            _imprimir_ok(f"odev version {__version__} (minimo requerido: {version_minima})")
             return True
         else:
             _imprimir_warn(
@@ -542,8 +519,5 @@ def _verificar_version_compatible() -> bool | None:
             )
             return False
     except (FileNotFoundError, Exception) as exc:
-        _imprimir_warn(
-            f"odev version {__version__} "
-            f"(no se pudo verificar compatibilidad: {exc})"
-        )
+        _imprimir_warn(f"odev version {__version__} (no se pudo verificar compatibilidad: {exc})")
         return None

@@ -15,6 +15,7 @@ from odev.commands._helpers import obtener_docker, obtener_rutas, requerir_proye
 from odev.core.config import construir_addon_mounts, generate_odoo_conf, load_env
 from odev.core.console import error, info, success, warning
 from odev.core.paths import ProjectPaths
+from odev.core.ports import PORT_KEYS
 from odev.core.preflight import verificar_puertos_pre_up
 from odev.core.registry import Registry
 
@@ -47,11 +48,13 @@ def up(
     auto-regenera odoo.conf si es necesario, y ejecuta docker compose up.
     """
     from odev.main import obtener_nombre_proyecto
+
     contexto = requerir_proyecto(obtener_nombre_proyecto())
     rutas = obtener_rutas(contexto)
 
     if not rutas.env_file.exists():
         from odev.core.console import error
+
         error("No se encontro el archivo .env. Ejecuta 'odev init' primero.")
         raise typer.Exit(1)
 
@@ -62,9 +65,7 @@ def up(
         warning("odev.yaml changed since last generation. Regenerating configs...")
         resultado = regenerar_configuracion(contexto)
         if resultado.archivos_regenerados:
-            info(
-                f"Regenerated: {', '.join(a.name for a in resultado.archivos_regenerados)}"
-            )
+            info(f"Regenerated: {', '.join(a.name for a in resultado.archivos_regenerados)}")
     else:
         # --- Fallback to .env-only mtime check for odoo.conf ---
         valores_env = load_env(rutas.env_file)
@@ -74,16 +75,15 @@ def up(
                 contexto.config.rutas_addons,
                 contexto.directorio_config,
             )
-        enterprise_enabled = bool(
-            contexto.config and contexto.config.enterprise_habilitado
-        )
+        enterprise_enabled = bool(contexto.config and contexto.config.enterprise_habilitado)
         archivo_odoo_conf = rutas.config_dir / "odoo.conf"
         if (
             not archivo_odoo_conf.exists()
             or rutas.env_file.stat().st_mtime > archivo_odoo_conf.stat().st_mtime
         ):
             generate_odoo_conf(
-                valores_env, rutas.config_dir,
+                valores_env,
+                rutas.config_dir,
                 addon_mounts=addon_mounts,
                 enterprise_enabled=enterprise_enabled,
             )
@@ -109,7 +109,8 @@ def up(
 # ── Preflight helper ──────────────────────────────────────────────────────────
 
 
-_CLAVES_PREFLIGHT = ("WEB_PORT", "DB_PORT", "PGWEB_PORT", "DEBUGPY_PORT", "MAILHOG_PORT")
+# Q10: use PORT_KEYS from core/ports.py as single source of truth
+_CLAVES_PREFLIGHT = PORT_KEYS
 
 
 def _preflight_puertos(contexto, rutas: ProjectPaths) -> None:
@@ -161,8 +162,5 @@ def _preflight_puertos(contexto, rutas: ProjectPaths) -> None:
                     f"usado por proyecto {status.propietario}"
                 )
             else:
-                error(
-                    f"puerto {status.puerto} ({status.nombre}) "
-                    f"en uso por proceso ajeno"
-                )
+                error(f"puerto {status.puerto} ({status.nombre}) en uso por proceso ajeno")
         raise typer.Exit(3)

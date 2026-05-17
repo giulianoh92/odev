@@ -24,6 +24,9 @@ CONJUNTOS_PUERTOS: dict[str, int] = {
     "MAILHOG_PORT": 8025,
 }
 
+# Q10: single source of truth for all port key names
+PORT_KEYS: tuple[str, ...] = tuple(CONJUNTOS_PUERTOS.keys())
+
 
 class PortAllocationError(RuntimeError):
     """Se lanza cuando no se pueden encontrar puertos libres tras el budget de offsets."""
