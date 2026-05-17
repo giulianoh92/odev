@@ -5,18 +5,17 @@ external (registro global), legacy (docker-compose.yml + cli/),
 prioridad entre estrategias, y manejo de errores.
 """
 
-import pytest
-import yaml
 from pathlib import Path
 
-from odev.core.resolver import (
-    resolver_proyecto,
-    ModoProyecto,
-    ProjectContext,
-    ProyectoNoEncontradoError,
-    ProyectoAmbiguoError,
-)
+import pytest
+import yaml
+
 from odev.core.registry import Registry, RegistryEntry
+from odev.core.resolver import (
+    ModoProyecto,
+    ProyectoNoEncontradoError,
+    resolver_proyecto,
+)
 
 
 @pytest.fixture

@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
 
 from odev.core.project import ProjectConfig
 from odev.core.regen import (
@@ -86,7 +83,6 @@ class TestNecesitaRegeneracion:
 
     def test_retorna_true_cuando_yaml_mas_nuevo(self, directorio_proyecto: Path) -> None:
         """Retorna True si .odev.yaml es mas nuevo que docker-compose.yml."""
-        import os
         import time
 
         ctx = _crear_contexto(directorio_proyecto)
@@ -103,7 +99,6 @@ class TestNecesitaRegeneracion:
 
     def test_retorna_false_cuando_actualizado(self, directorio_proyecto: Path) -> None:
         """Retorna False si los archivos generados son mas nuevos que .odev.yaml."""
-        import time
 
         ctx = _crear_contexto(directorio_proyecto)
 

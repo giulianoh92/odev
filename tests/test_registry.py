@@ -7,9 +7,10 @@ puertos_ocupados y compatibilidad con entradas legacy sin campo ports.
 Usa monkeypatch para redirigir las rutas globales a directorios temporales.
 """
 
+from pathlib import Path
+
 import pytest
 import yaml
-from pathlib import Path
 
 from odev.core.registry import Registry, RegistryEntry
 

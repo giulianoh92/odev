@@ -5,8 +5,6 @@ cree .odev.yaml, actualice .gitignore, y maneje los casos de proyecto
 ya migrado o directorio vacio.
 """
 
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 import typer

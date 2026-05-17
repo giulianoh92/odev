@@ -4,7 +4,6 @@ Verifica que todos los templates del proyecto se renderizan
 correctamente con un conjunto de valores representativos.
 """
 
-from pathlib import Path
 
 import pytest
 from jinja2 import Environment, FileSystemLoader

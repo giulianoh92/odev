@@ -59,7 +59,7 @@ class TestUpPreflightPass:
 
         REQ-UP-1 Scenario 1: all ports free -> docker compose invoked.
         """
-        from odev.core.preflight import PreflightResult, PortStatus
+        from odev.core.preflight import PortStatus, PreflightResult
 
         preflight_ok = PreflightResult(statuses=[
             PortStatus("WEB_PORT", 8069, "free", None),
@@ -100,7 +100,7 @@ class TestUpPreflightFail:
         REQ-UP-1 Scenario 2: foreign process on port -> exit 3, no docker call.
         REQ-UP-2: puerto foraneo identificado.
         """
-        from odev.core.preflight import PreflightResult, PortStatus
+        from odev.core.preflight import PortStatus, PreflightResult
 
         preflight_fail = PreflightResult(statuses=[
             PortStatus("WEB_PORT", 8069, "foreign_unknown", None),
@@ -138,7 +138,7 @@ class TestUpPreflightFail:
 
         REQ-UP-2: mensaje identifica el propietario del puerto si es conocido.
         """
-        from odev.core.preflight import PreflightResult, PortStatus
+        from odev.core.preflight import PortStatus, PreflightResult
 
         preflight_fail = PreflightResult(statuses=[
             PortStatus("WEB_PORT", 8069, "foreign_known", "otro-proyecto"),

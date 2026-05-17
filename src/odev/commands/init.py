@@ -25,7 +25,7 @@ from odev.commands._wizards import (
     valores_configuracion_por_defecto,
 )
 from odev.core.config import construir_addon_mounts
-from odev.core.console import error, info, success, warning
+from odev.core.console import info, success, warning
 from odev.core.ports import allocate_ports
 
 # -- Constantes ----------------------------------------------------------------

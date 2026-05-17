@@ -5,7 +5,7 @@ operaciones (down, up, neutralizacion) y que la funcion de espera
 funcione correctamente.
 """
 
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import typer

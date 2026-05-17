@@ -17,8 +17,6 @@ import shutil
 import subprocess
 import sys
 
-import typer
-
 from odev import __version__
 from odev.core.compat import ProjectMode, detect_mode
 from odev.core.console import console

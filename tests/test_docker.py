@@ -5,8 +5,7 @@ de comandos y la ejecucion con subprocess mockeado.
 """
 
 import subprocess
-from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 

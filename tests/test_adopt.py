@@ -107,7 +107,6 @@ class TestAdoptForceRegistryCleanup:
         self, registry_dir: Path, tmp_path: Path
     ) -> None:
         """Con --force, el directorio de config bajo ~/.odev/projects/ se elimina."""
-        import shutil
 
         config_dir = registry_dir / "projects" / "test-project"
         config_dir.mkdir(parents=True)
@@ -124,7 +123,6 @@ class TestAdoptForceRegistryCleanup:
         self, registry_dir: Path, tmp_path: Path
     ) -> None:
         """Con --force, el directorio de trabajo NUNCA se elimina."""
-        import shutil
 
         work_dir = tmp_path / "my-odoo-project"
         work_dir.mkdir()

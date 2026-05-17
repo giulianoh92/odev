@@ -5,10 +5,9 @@ estructuras de directorios: modulo unico, multi-addon, Odoo.sh con
 submodulos, codigo fuente de Odoo y layouts desconocidos.
 """
 
-import pytest
 from pathlib import Path
 
-from odev.core.detect import detectar_layout, TipoRepo
+from odev.core.detect import TipoRepo, detectar_layout
 
 
 class TestDetectarLayout:

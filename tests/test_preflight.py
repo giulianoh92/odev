@@ -6,7 +6,6 @@ Verifica REQ-UP-1 y REQ-UP-2: clasificacion de puertos libres, propios
 
 from __future__ import annotations
 
-import socket
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -18,7 +17,7 @@ from odev.core.preflight import (
     classify_bound_port,
     verificar_puertos_pre_up,
 )
-from odev.core.registry import Registry, RegistryEntry
+from odev.core.registry import Registry
 
 
 @pytest.fixture

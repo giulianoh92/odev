@@ -4,7 +4,6 @@ Verifica la carga de .env, escritura de .env desde templates Jinja2,
 y la generacion de odoo.conf.
 """
 
-import pytest
 
 from odev.core.config import generate_odoo_conf, load_env, write_env
 

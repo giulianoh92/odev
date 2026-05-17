@@ -10,8 +10,6 @@ import inspect
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 
 class TestWidgetNoLongpoll:
     """Verifica que el widget no hace referencia a LONGPOLL_PORT ni PORT_LONGPOLL."""

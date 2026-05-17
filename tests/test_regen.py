@@ -9,7 +9,6 @@ import yaml
 
 from odev.core.project import ProjectConfig
 from odev.core.regen import (
-    RegenResult,
     construir_contexto_templates,
     necesita_regeneracion,
     regenerar_configuracion,

@@ -247,7 +247,6 @@ class TestDoctorBackfill:
 
         REQ-PA-3: backfill de 5 claves de puertos desde .env.
         """
-        import odev.core.registry as reg_mod
 
         # Crear proyecto legacy (sin campo ports)
         work_dir = tmp_path / "mi-proyecto"
