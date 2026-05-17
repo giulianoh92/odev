@@ -31,4 +31,4 @@ Mientras la version siga en `0.y.z`, la API CLI se considera **inestable**. Brea
 
 ## Fuente de verdad
 
-`pyproject.toml#version` es la unica fuente de verdad de la version instalable. `README.md` puede contener ejemplos ilustrativos (`0.1.0` en output simulado) — esos son ejemplos, no version actual.
+`pyproject.toml#version` es la unica fuente de verdad de la version instalable. `src/odev/__init__.py` expone `__version__` leyendo dinamicamente con `importlib.metadata.version("odev")` — nunca duplicar el string. `README.md` puede contener ejemplos ilustrativos (`0.1.0` en output simulado) — esos son ejemplos, no version actual.

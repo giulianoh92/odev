@@ -6,6 +6,12 @@ El formato esta basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 y este proyecto adhiere a [Versionado Semantico](https://semver.org/spec/v2.0.0.html).
 Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
 
+## [0.3.1] - 2026-05-17
+
+### Corregido
+
+- `__version__` ahora se resuelve dinamicamente via `importlib.metadata.version("odev")` en lugar de string hardcoded. Elimina drift entre `pyproject.toml` y `src/odev/__init__.py`. Hace cumplir politica VERSIONING.md (pyproject como unica fuente de verdad).
+
 ## [0.3.0] - 2026-05-17
 
 ### Agregado
