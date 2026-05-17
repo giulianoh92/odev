@@ -37,6 +37,13 @@ from odev.core.config import load_env
 from odev.core.console import error, info
 from odev.core.test_parser import TestResult, parse_odoo_test_output
 
+# Puerto HTTP interno que bindea el proceso de test dentro del container.
+# Debe diferir del 8069 que ocupa el odoo principal. Odoo 19 ignora
+# `--no-http` y sigue bindeando el puerto HTTP — sin este redirect el
+# proceso de test crashea con "Address already in use". No tocar sin
+# actualizar tests/test_test_cmd.py::TestHttpDisabled.
+_TEST_HTTP_PORT = 8073
+
 
 def _stream_and_collect(
     popen: subprocess.Popen,
@@ -206,19 +213,18 @@ def _run_test(
     valores_env = load_env(rutas.env_file)
     nombre_bd = valores_env.get("DB_NAME", "odoo_db")
 
-    # `--no-http` evita que el proceso de test bindee un puerto interno.
-    # Antes pasabamos `--http-port=$WEB_PORT`, pero cuando el proyecto
-    # mapea WEB_PORT directo al 8069 interno (caso default), el odoo
-    # principal del container ya lo ocupa y la corrida fallaba con
-    # "Address already in use". Los tests TransactionCase/HttpCase de
-    # Odoo no requieren un servidor HTTP externo — Odoo levanta uno
-    # interno si hace falta.
+    # Odoo 19 ignora `--no-http` y sigue bindeando el puerto HTTP default
+    # (8069 interno), lo que colisiona con el odoo principal del container
+    # → "Address already in use". `--http-port=8073` redirige el bind del
+    # proceso de test a un puerto interno libre. Se mantiene `--no-http`
+    # para Odoo <=18 donde si era suficiente. Ver _TEST_HTTP_PORT module-level.
     comando = [
         "odoo",
         "--test-enable",
         "--stop-after-init",
         "-d", nombre_bd,
         "--no-http",
+        f"--http-port={_TEST_HTTP_PORT}",
         f"--log-level={log_level}",
     ]
 
