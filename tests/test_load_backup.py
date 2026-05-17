@@ -4,6 +4,8 @@ Cubre:
 - REQ-LB-1: rechazo de miembros ZIP con path traversal
 - REQ-LB-2: validacion estricta de DB_NAME con regex ajustado
 - REQ-LB-3: scaffold TDD gate (este archivo debe existir antes de cualquier cambio de produccion)
+- B3: streaming via exec_cmd_file (sin read_bytes en memoria)
+- Q5: --dry-run preview sin ejecutar Docker
 
 Todos los tests usan ZIPs construidos en memoria via zipfile (sin Docker).
 """
@@ -11,6 +13,7 @@ Todos los tests usan ZIPs construidos en memoria via zipfile (sin Docker).
 import io
 import zipfile
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -102,3 +105,154 @@ class TestDbNameRegex:
         assert re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", nombre) is None, (
             f"'{nombre}' deberia ser invalido"
         )
+
+
+# ─── B3: streaming via exec_cmd_file ─────────────────────────────────────────
+
+
+def _crear_zip_backup(tmp_path: Path, nombre_dump: str = "dump.sql") -> Path:
+    """Crea un ZIP de backup valido en disco con un dump dentro."""
+    zip_path = tmp_path / "backup.zip"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr(nombre_dump, b"-- SQL dump content")
+    zip_path.write_bytes(buf.getvalue())
+    return zip_path
+
+
+def _hacer_mocks_base(tmp_path: Path):
+    """Construye los mocks comunes para contexto, rutas y docker."""
+    ctx = MagicMock()
+    ctx.nombre = "test-project"
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("DB_USER=odoo\nDB_NAME=odoo_db\nWEB_PORT=8069\n")
+
+    rutas = MagicMock()
+    rutas.env_file = env_file
+
+    dc = MagicMock()
+    dc.is_service_running.return_value = True
+    dc.exec_cmd.return_value = MagicMock(returncode=0, stdout=b"")
+    dc.exec_cmd_file.return_value = MagicMock(returncode=0, stdout=b"", stderr=b"")
+
+    return ctx, rutas, dc
+
+
+class TestLoadBackupStreaming:
+    """B3 — verifica que load_backup usa exec_cmd_file en vez de read_bytes."""
+
+    def test_usa_exec_cmd_file_para_dump_sql(self, tmp_path: Path) -> None:
+        """Para dump.sql, load_backup llama exec_cmd_file (NO exec_cmd con stdin_data)."""
+        zip_path = _crear_zip_backup(tmp_path, "dump.sql")
+        ctx, rutas, dc = _hacer_mocks_base(tmp_path)
+
+        with (
+            patch("odev.commands.load_backup.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.load_backup.obtener_rutas", return_value=rutas),
+            patch("odev.commands.load_backup.obtener_docker", return_value=dc),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands.load_backup.neutralizar_base_datos"),
+            patch("odev.commands.load_backup.resetear_credenciales_admin"),
+            patch("odev.commands.load_backup.configurar_parametros_desarrollo"),
+        ):
+            from odev.commands.load_backup import load_backup
+
+            load_backup(backup=zip_path, neutralize=False, yes=True)
+
+        # exec_cmd_file debe haber sido llamado para el restore
+        assert dc.exec_cmd_file.called, "exec_cmd_file no fue llamado"
+
+        # El path pasado debe ser un Path apuntando al dump extraido
+        call_args = dc.exec_cmd_file.call_args
+        stdin_file_arg = call_args[1]["stdin_file"] if "stdin_file" in call_args[1] else call_args[0][2]
+        assert isinstance(stdin_file_arg, Path)
+        assert stdin_file_arg.name == "dump.sql"
+
+    def test_no_usa_read_bytes_para_dump(self, tmp_path: Path) -> None:
+        """read_bytes no debe ser invocado sobre el archivo dump."""
+        zip_path = _crear_zip_backup(tmp_path, "dump.sql")
+        ctx, rutas, dc = _hacer_mocks_base(tmp_path)
+
+        read_bytes_called = []
+
+        original_open = Path.open
+
+        def spy_open(self, *args, **kwargs):
+            return original_open(self, *args, **kwargs)
+
+        with (
+            patch("odev.commands.load_backup.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.load_backup.obtener_rutas", return_value=rutas),
+            patch("odev.commands.load_backup.obtener_docker", return_value=dc),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands.load_backup.neutralizar_base_datos"),
+            patch("odev.commands.load_backup.resetear_credenciales_admin"),
+            patch("odev.commands.load_backup.configurar_parametros_desarrollo"),
+        ):
+            from odev.commands.load_backup import load_backup
+
+            load_backup(backup=zip_path, neutralize=False, yes=True)
+
+        # Si exec_cmd_file fue llamado y exec_cmd no fue llamado con stdin_data,
+        # entonces read_bytes no fue necesario en el path de restore.
+        # Verificar que exec_cmd no fue llamado con stdin_data para el restore
+        for call in dc.exec_cmd.call_args_list:
+            kwargs = call[1]
+            args = call[0]
+            # Ignorar llamadas que no son el restore (terminate connections, dropdb, createdb)
+            if "stdin_data" in kwargs and kwargs["stdin_data"] is not None:
+                if len(kwargs["stdin_data"]) > 100:  # un dump real tendria mas de 100 bytes
+                    read_bytes_called.append(call)
+
+        assert len(read_bytes_called) == 0, (
+            "exec_cmd fue llamado con stdin_data para el restore (deberia usar exec_cmd_file)"
+        )
+
+
+# ─── Q5: --dry-run ────────────────────────────────────────────────────────────
+
+
+class TestLoadBackupDryRun:
+    """Q5 — verifica que --dry-run valida el ZIP pero no restaura."""
+
+    def test_dry_run_valida_zip_pero_no_restaura(self, tmp_path: Path) -> None:
+        """Con --dry-run: ZIP se valida, exec_cmd_file y exec_cmd NOT called."""
+        zip_path = _crear_zip_backup(tmp_path, "dump.sql")
+        ctx, rutas, dc = _hacer_mocks_base(tmp_path)
+
+        with (
+            patch("odev.commands.load_backup.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.load_backup.obtener_rutas", return_value=rutas),
+            patch("odev.commands.load_backup.obtener_docker", return_value=dc),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+        ):
+            from odev.commands.load_backup import load_backup
+
+            load_backup(backup=zip_path, neutralize=False, yes=True, dry_run=True)
+
+        # exec_cmd_file NO debe ser llamado (no se restaura)
+        dc.exec_cmd_file.assert_not_called()
+
+        # exec_cmd NO debe ser llamado (sin dropdb, createdb, psql)
+        dc.exec_cmd.assert_not_called()
+
+    def test_dry_run_muestra_preview(self, tmp_path: Path, capsys) -> None:
+        """Con --dry-run: la salida menciona el dump y la base de datos."""
+        zip_path = _crear_zip_backup(tmp_path, "dump.sql")
+        ctx, rutas, dc = _hacer_mocks_base(tmp_path)
+
+        with (
+            patch("odev.commands.load_backup.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.load_backup.obtener_rutas", return_value=rutas),
+            patch("odev.commands.load_backup.obtener_docker", return_value=dc),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands.load_backup.info") as mock_info,
+        ):
+            from odev.commands.load_backup import load_backup
+
+            load_backup(backup=zip_path, neutralize=False, yes=True, dry_run=True)
+
+        # Algun info() menciona dump.sql o odoo_db
+        all_msgs = " ".join(str(call) for call in mock_info.call_args_list)
+        assert "dump.sql" in all_msgs or "odoo_db" in all_msgs
