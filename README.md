@@ -402,17 +402,63 @@ Variables principales:
 
 ## Soporte Multi-Proyecto
 
-odev detecta automaticamente puertos disponibles al crear un nuevo proyecto. Si el puerto 8069 ya esta en uso (por otro proyecto odev, por ejemplo), `odev init` va a sugerir el siguiente set de puertos disponible:
+odev asigna atomicamente puertos disponibles al crear un nuevo proyecto. Si el puerto 8069 ya esta en uso (por otro proyecto odev, por ejemplo), `odev init` asigna el siguiente set de puertos disponible:
 
 ```
-Proyecto A: Odoo en 8069, pgweb en 8081, DB en 5432
-Proyecto B: Odoo en 8070, pgweb en 8082, DB en 5433
-Proyecto C: Odoo en 8071, pgweb en 8083, DB en 5434
+Proyecto A: Odoo en 8069, pgweb en 8081, DB en 5432, debugpy en 5678, Mailhog en 8025
+Proyecto B: Odoo en 8070, pgweb en 8082, DB en 5433, debugpy en 5679, Mailhog en 8026
+Proyecto C: Odoo en 8071, pgweb en 8083, DB en 5434, debugpy en 5680, Mailhog en 8027
 ```
 
 Cada proyecto tiene su propio stack de Docker Compose con contenedores y volumenes aislados. Solo ejecuta `odev up` en el directorio de cada proyecto.
 
 Para ver y gestionar todos los proyectos registrados, usa `odev projects`. Ver la seccion [odev projects](#odev-projects) para mas detalles.
+
+## Asignacion de Puertos
+
+### Como funciona (desde 0.4.0)
+
+`odev init` y `odev adopt` usan asignacion atomica de puertos via el registro global (`~/.odev/registry.yaml`). Esto previene colisiones TOCTOU cuando varios wizards corren en paralelo.
+
+Cada proyecto registrado tiene un conjunto de 5 puertos:
+
+| Variable | Puerto base | Servicio |
+|----------|-------------|---------|
+| `WEB_PORT` | 8069 | Odoo (HTTP) |
+| `PGWEB_PORT` | 8081 | pgweb (browser de BD) |
+| `DB_PORT` | 5432 | PostgreSQL |
+| `DEBUGPY_PORT` | 5678 | debugpy (remote debug) |
+| `MAILHOG_PORT` | 8025 | Mailhog (captura de correo) |
+
+Si los puertos base estan ocupados, odev incrementa el offset para todos los puertos del set en 1 hasta encontrar un set completamente libre.
+
+### Verificacion pre-vuelo (`odev up`)
+
+Antes de iniciar el stack, `odev up` verifica cada puerto del `.env`:
+
+- **Libre** — sin accion, `docker compose up` continua.
+- **Propio corriendo** — WARN y continua (compose reutiliza el contenedor existente).
+- **Foraneo** — FAIL con mensaje identificando el proyecto propietario; exit code 3.
+
+```bash
+# Ejemplo de fallo:
+$ odev up
+[FAIL] puerto 8069 (WEB_PORT) usado por proyecto otro-proyecto
+# exit code 3
+```
+
+### Mantenimiento con `odev doctor`
+
+`odev doctor` realiza dos tareas de mantenimiento del registro de puertos:
+
+1. **GC de entradas obsoletas**: elimina del registro los proyectos cuyo directorio ya no existe, liberando sus puertos para nuevas asignaciones.
+2. **Backfill de entradas legacy**: para proyectos creados con odev < 0.4.0 (sin campo `ports` en el registro), lee el `.env` y rellena el campo automaticamente.
+
+```bash
+odev doctor
+# [INFO] Registro: 1 entrada(s) con backfill de puertos: mi-proyecto-legacy
+# [INFO] Registro: 2 entrada(s) obsoleta(s) eliminada(s): proyecto-borrado, proyecto-viejo
+```
 
 ## Gestion de Base de Datos
 

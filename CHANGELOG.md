@@ -6,6 +6,42 @@ El formato esta basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 y este proyecto adhiere a [Versionado Semantico](https://semver.org/spec/v2.0.0.html).
 Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
 
+## [0.4.0] - 2026-05-17
+
+### Agregado
+
+- Asignacion atomica de puertos via registro global (`allocate_ports`) — elimina la race condition TOCTOU en wizards concurrentes (`odev init` / `odev adopt`)
+- `RegistryEntry.ports` — campo opcional `dict[str, int]` en el registro para reclamar y trackear puertos por proyecto
+- Metodos `asignar_puertos()`, `liberar_puertos()`, `puertos_ocupados()` en `Registry` para gestion coordinada de puertos
+- `PortAllocationError` — excepcion especifica cuando se agotan los 100 offsets disponibles
+- Nuevo modulo `core/preflight.py` con `verificar_puertos_pre_up()` — verifica puertos antes de `docker compose up`
+- Clasificacion de puertos en `odev up`: libre / propio-corriendo (WARN) / foraneo (FAIL exit 3)
+- `_verificar_registry_puertos()` en `doctor` — backfill de entradas legacy desde `.env` y GC de entradas obsoletas
+- `MAILHOG_PORT` agregado a la verificacion de puertos en `odev doctor`
+- Seccion "Asignacion de Puertos" en README con tabla de variables, descripcion de preflight y uso de `odev doctor`
+- Lock de thread (`threading.Lock`) en el registro para serializar escrituras concurrentes intra-proceso
+
+### Cambiado
+
+- `odev init` y `odev adopt` usan `allocate_ports()` en lugar de `sugerir_puertos()` para evitar colisiones
+- `commands/doctor.py` importa `puerto_disponible` desde `odev.core.ports` (elimina duplicado local `_puerto_disponible`)
+- TUI `ProjectInfoPanel`: fila de Mailhog reemplaza a la fila de longpolling (dead concept en Odoo 16+)
+
+### Corregido
+
+- Colision de puertos TOCTOU cuando multiples wizards de `init`/`adopt` corren simultaneamente
+- `odev up` ahora falla antes de invocar docker compose si hay un puerto ocupado por un proceso ajeno (exit 3)
+- `odev doctor` ahora verifica `MAILHOG_PORT` ademas de los 4 puertos previos
+
+### Eliminado
+
+- `_puerto_disponible` local en `commands/doctor.py` (duplicado del de `core/ports.py`)
+- `LONGPOLL_PORT` / `PORT_LONGPOLL` del widget TUI (fallback estatico incorrecto; Odoo 16+ no usa puerto separado)
+
+### Deprecado
+
+- `sugerir_puertos()` en `core/ports.py` — emite `DeprecationWarning` desde 0.4.0; usar `allocate_ports(project_name, registry)` en su lugar; se eliminara en 0.5.0
+
 ## [0.3.1] - 2026-05-17
 
 ### Corregido
