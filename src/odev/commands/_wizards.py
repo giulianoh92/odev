@@ -190,8 +190,7 @@ def renderizar_templates(
     for nombre_template, ruta_relativa_destino in mapa_templates:
         ruta_destino = directorio / ruta_relativa_destino
         es_regenerable = (
-            archivos_regenerables is not None
-            and ruta_relativa_destino in archivos_regenerables
+            archivos_regenerables is not None and ruta_relativa_destino in archivos_regenerables
         )
 
         if ruta_destino.exists() and not es_regenerable:
@@ -207,6 +206,13 @@ def renderizar_templates(
         template = entorno_jinja.get_template(nombre_template)
         contenido = template.render(**valores)
         ruta_destino.write_text(contenido)
+
+        # S1: apply restrictive permissions to .env files (owner read/write only)
+        if ruta_destino.name == ".env":
+            try:
+                ruta_destino.chmod(0o600)
+            except OSError:
+                pass  # Windows: chmod is best-effort, no-op on most builds
 
         if es_regenerable and ruta_destino.exists():
             success(f"{ruta_relativa_destino} (regenerado)")
