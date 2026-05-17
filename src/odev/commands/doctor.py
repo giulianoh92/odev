@@ -6,11 +6,14 @@ mostrando resultados con indicadores de color:
 - [WARN] amarillo -> advertencia, no bloqueante
 - [FAIL] rojo   -> problema que impide el funcionamiento
 - [INFO] azul   -> informacion adicional
+
+En 0.4.0 se agrego: verificacion de MAILHOG_PORT, eliminacion del
+_puerto_disponible local (ahora viene de odev.core.ports), y
+_verificar_registry_puertos() para backfill y GC del registro.
 """
 
 import platform
 import shutil
-import socket
 import subprocess
 import sys
 
@@ -19,6 +22,7 @@ import typer
 from odev import __version__
 from odev.core.compat import ProjectMode, detect_mode
 from odev.core.console import console
+from odev.core.ports import puerto_disponible
 
 
 def doctor() -> None:
@@ -45,6 +49,7 @@ def doctor() -> None:
         _verificar_addons,
         _verificar_puertos,
         _verificar_version_compatible,
+        _ejecutar_registry_gc_y_backfill,
     ]
 
     total_fallos = 0
@@ -364,6 +369,7 @@ def _verificar_puertos() -> bool:
         "DB_PORT": "PostgreSQL",
         "PGWEB_PORT": "pgweb",
         "DEBUGPY_PORT": "debugpy",
+        "MAILHOG_PORT": "Mailhog",
     }
 
     todos_disponibles = True
@@ -377,7 +383,7 @@ def _verificar_puertos() -> bool:
         except (ValueError, TypeError):
             continue
 
-        if _puerto_disponible(puerto):
+        if puerto_disponible(puerto):
             _imprimir_ok(f"Puerto {puerto} ({nombre_servicio}) disponible")
         else:
             _imprimir_fail(
@@ -388,21 +394,107 @@ def _verificar_puertos() -> bool:
     return todos_disponibles
 
 
-def _puerto_disponible(puerto: int) -> bool:
-    """Verifica si un puerto TCP esta disponible para escuchar.
+_CLAVES_PUERTOS_BACKFILL = (
+    "WEB_PORT",
+    "DB_PORT",
+    "PGWEB_PORT",
+    "DEBUGPY_PORT",
+    "MAILHOG_PORT",
+)
 
-    Args:
-        puerto: Numero de puerto a verificar.
+
+def _verificar_registry_puertos(registry=None) -> dict:
+    """Realiza GC y backfill del campo ports en el registro global.
+
+    GC: Delega en registry.limpiar_obsoletos() que ya elimina entradas cuyo
+    directorio_trabajo no existe — como efecto secundario, sus puertos quedan libres.
+
+    Backfill: Para cada entrada con ports=None y directorio_trabajo existente,
+    lee las 5 claves de puertos del .env y las escribe en el registro.
+    Claves ausentes del .env se omiten; se emite warning para cada una faltante.
+
+    Argumentos:
+        registry: Instancia de Registry a usar. Si None, crea una nueva.
+
+    Retorna:
+        Diccionario con 'backfilleados' (lista de nombres) y 'eliminados' (lista de nombres).
+    """
+    if registry is None:
+        from odev.core.registry import Registry
+        registry = Registry()
+
+    from odev.core.config import load_env
+
+    # GC: eliminar entradas obsoletas (directorio no existe)
+    eliminados = registry.limpiar_obsoletos()
+
+    # Backfill: rellenar ports=None en entradas con directorio existente
+    backfilleados: list[str] = []
+    for entry in registry.listar():
+        if entry.ports is not None:
+            continue  # ya tiene puertos asignados
+
+        ruta_env = entry.directorio_trabajo / ".env"
+        if not ruta_env.exists():
+            _imprimir_warn(
+                f"Proyecto '{entry.nombre}': no se puede hacer backfill "
+                f"(.env no encontrado en {entry.directorio_trabajo})"
+            )
+            continue
+
+        valores_env = load_env(ruta_env)
+        puertos_backfill: dict[str, int] = {}
+
+        for clave in _CLAVES_PUERTOS_BACKFILL:
+            valor = valores_env.get(clave)
+            if valor is None:
+                _imprimir_warn(
+                    f"Proyecto '{entry.nombre}': "
+                    f"{clave} falta en .env — no se inventara el valor"
+                )
+                continue
+            try:
+                puertos_backfill[clave] = int(valor)
+            except (ValueError, TypeError):
+                _imprimir_warn(
+                    f"Proyecto '{entry.nombre}': "
+                    f"{clave}={valor!r} no es un entero valido — se omite"
+                )
+
+        if puertos_backfill:
+            registry.asignar_puertos(entry.nombre, puertos_backfill)
+            backfilleados.append(entry.nombre)
+
+    return {"backfilleados": backfilleados, "eliminados": eliminados}
+
+
+def _ejecutar_registry_gc_y_backfill() -> bool | None:
+    """Ejecuta GC y backfill del registro de puertos como paso de doctor.
 
     Returns:
-        True si el puerto esta libre, False si esta en uso.
+        None (siempre informativo).
     """
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        try:
-            sock.bind(("127.0.0.1", puerto))
-            return True
-        except OSError:
-            return False
+    try:
+        resultado = _verificar_registry_puertos()
+        eliminados = resultado["eliminados"]
+        backfilleados = resultado["backfilleados"]
+
+        if eliminados:
+            _imprimir_info(
+                f"Registro: {len(eliminados)} entrada(s) obsoleta(s) eliminada(s): "
+                + ", ".join(eliminados)
+            )
+        if backfilleados:
+            _imprimir_info(
+                f"Registro: {len(backfilleados)} entrada(s) con backfill de puertos: "
+                + ", ".join(backfilleados)
+            )
+        if not eliminados and not backfilleados:
+            _imprimir_ok("Registro de puertos actualizado y consistente")
+    except Exception as exc:
+        _imprimir_warn(f"No se pudo verificar el registro de puertos: {exc}")
+
+    return None
 
 
 def _verificar_version_compatible() -> bool | None:

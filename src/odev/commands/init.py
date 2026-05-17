@@ -26,7 +26,7 @@ from odev.commands._wizards import (
 )
 from odev.core.config import construir_addon_mounts
 from odev.core.console import error, info, success, warning
-from odev.core.ports import sugerir_puertos
+from odev.core.ports import allocate_ports
 
 # -- Constantes ----------------------------------------------------------------
 
@@ -186,8 +186,10 @@ def _wizard_interactivo(
         if version_odoo is None:
             raise typer.Exit()
 
-    # 3. Obtener puertos sugeridos
-    puertos_sugeridos = sugerir_puertos()
+    # 3. Obtener puertos asignados atomicamente
+    from odev.core.registry import Registry
+
+    puertos_sugeridos = allocate_ports(nombre_proyecto, Registry())
 
     # 4. Preguntas de configuracion base (compartidas con adopt)
     config_base = preguntar_configuracion_base(puertos_sugeridos)
@@ -252,7 +254,9 @@ def _valores_por_defecto(
     Returns:
         Diccionario con valores por defecto para renderizar templates.
     """
-    puertos_sugeridos = sugerir_puertos()
+    from odev.core.registry import Registry
+
+    puertos_sugeridos = allocate_ports(nombre_proyecto, Registry())
     config_base = valores_configuracion_por_defecto(puertos_sugeridos)
 
     return _construir_valores(

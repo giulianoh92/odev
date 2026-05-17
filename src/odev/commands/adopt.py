@@ -28,7 +28,7 @@ from odev.commands._wizards import (
 from odev.core.config import construir_addon_mounts, generate_odoo_conf
 from odev.core.console import console, error, info, success, warning
 from odev.core.detect import RepoLayout, TipoRepo, detectar_layout
-from odev.core.ports import sugerir_puertos
+from odev.core.ports import allocate_ports
 from odev.core.registry import PROJECTS_DIR, Registry, RegistryEntry
 
 # -- Constantes ----------------------------------------------------------------
@@ -162,7 +162,7 @@ def adopt(
                 raise typer.Exit()
 
     # 8. Recopilar configuracion adicional -------------------------------------
-    puertos = sugerir_puertos()
+    puertos = allocate_ports(name, registro)
 
     if not no_interactive:
         valores_extra = preguntar_configuracion_base(puertos)

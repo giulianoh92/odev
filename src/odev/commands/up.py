@@ -13,8 +13,10 @@ import typer
 
 from odev.commands._helpers import obtener_docker, obtener_rutas, requerir_proyecto
 from odev.core.config import construir_addon_mounts, generate_odoo_conf, load_env
-from odev.core.console import info, success, warning
+from odev.core.console import error, info, success, warning
 from odev.core.paths import ProjectPaths
+from odev.core.preflight import verificar_puertos_pre_up
+from odev.core.registry import Registry
 
 
 def _asegurar_directorio_logs(rutas: ProjectPaths) -> None:
@@ -89,6 +91,9 @@ def up(
 
     _asegurar_directorio_logs(rutas)
 
+    # --- Pre-flight de puertos ---
+    _preflight_puertos(contexto, rutas)
+
     info("Iniciando entorno...")
     dc = obtener_docker(contexto)
     dc.up(build=build, watch=watch)
@@ -99,3 +104,65 @@ def up(
     success("Entorno iniciado correctamente.")
     info(f"  Odoo:  http://localhost:{puerto_web}")
     info(f"  pgweb: http://localhost:{puerto_pgweb}")
+
+
+# ── Preflight helper ──────────────────────────────────────────────────────────
+
+
+_CLAVES_PREFLIGHT = ("WEB_PORT", "DB_PORT", "PGWEB_PORT", "DEBUGPY_PORT", "MAILHOG_PORT")
+
+
+def _preflight_puertos(contexto, rutas: ProjectPaths) -> None:
+    """Verifica la disponibilidad de los puertos antes de iniciar docker compose.
+
+    Lee el .env del proyecto, extrae los puertos conocidos, y clasifica cada
+    uno como libre, propio o foraneo. Si hay al menos un puerto foraneo,
+    imprime la tabla de conflictos y sale con codigo 3.
+
+    Argumentos:
+        contexto: Contexto del proyecto resuelto (tiene atributo nombre).
+        rutas: Rutas del proyecto (se usa env_file).
+
+    Lanza:
+        typer.Exit(3): Si alguno de los puertos esta ocupado por un proceso ajeno.
+    """
+    valores_env = load_env(rutas.env_file)
+
+    puertos: dict[str, int] = {}
+    for clave in _CLAVES_PREFLIGHT:
+        valor = valores_env.get(clave)
+        if valor is None:
+            continue
+        try:
+            puertos[clave] = int(valor)
+        except (ValueError, TypeError):
+            continue
+
+    if not puertos:
+        return
+
+    dc = obtener_docker(contexto)
+    registry = Registry()
+    resultado = verificar_puertos_pre_up(contexto, dc, registry, puertos)
+
+    # Emitir warns para contenedores propios corriendo
+    for status in resultado.warnings:
+        warning(
+            f"WARN: puerto {status.puerto} ({status.nombre}) ya usado "
+            f"por este proyecto — docker compose reutilizara"
+        )
+
+    # Fallar si hay puertos foraneos
+    if resultado.has_fail:
+        for status in resultado.fails:
+            if status.propietario:
+                error(
+                    f"puerto {status.puerto} ({status.nombre}) "
+                    f"usado por proyecto {status.propietario}"
+                )
+            else:
+                error(
+                    f"puerto {status.puerto} ({status.nombre}) "
+                    f"en uso por proceso ajeno"
+                )
+        raise typer.Exit(3)
