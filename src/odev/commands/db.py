@@ -19,7 +19,10 @@ from odev.core.console import console, error, info, success, warning
 from odev.core.paths import ProjectPaths, get_sql_templates_dir
 from odev.core.resolver import ProjectContext
 
-app = typer.Typer(no_args_is_help=True, help="Operaciones de base de datos (snapshots, anonimizacion).")
+app = typer.Typer(
+    no_args_is_help=True,
+    help="Operaciones de base de datos (snapshots, anonimizacion).",
+)
 
 
 def _obtener_info_bd() -> tuple[str, str, ProjectPaths, ProjectContext]:
@@ -36,7 +39,12 @@ def _obtener_info_bd() -> tuple[str, str, ProjectPaths, ProjectContext]:
     rutas = obtener_rutas(contexto)
 
     valores_env = load_env(rutas.env_file)
-    return valores_env.get("DB_USER", "odoo"), valores_env.get("DB_NAME", "odoo_db"), rutas, contexto
+    return (
+        valores_env.get("DB_USER", "odoo"),
+        valores_env.get("DB_NAME", "odoo_db"),
+        rutas,
+        contexto,
+    )
 
 
 @app.command()

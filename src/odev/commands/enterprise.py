@@ -123,7 +123,9 @@ def enterprise_import(
     n_modulos = _contar_modulos(source_resolved)
 
     if n_modulos == 0:
-        warning(f"No se encontraron modulos Odoo en {source_resolved}. Continuando de todas formas.")
+        warning(
+            f"No se encontraron modulos Odoo en {source_resolved}. Continuando de todas formas."
+        )
 
     if copy:
         info(f"Copiando addons enterprise a {destino}...")

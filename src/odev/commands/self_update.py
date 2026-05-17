@@ -50,7 +50,9 @@ def self_update() -> None:
     if resultado.returncode != 0:
         error("Error al actualizar. Salida del comando:")
         info(salida_completa.strip())
-        info("Intenta manualmente: pip install --upgrade git+https://github.com/giulianoh92/odev.git")
+        info(
+            "Intenta manualmente: pip install --upgrade git+https://github.com/giulianoh92/odev.git"
+        )
         raise typer.Exit(1)
 
     # Determinar si realmente se actualizo o ya estaba al dia
