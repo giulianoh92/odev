@@ -1,0 +1,6 @@
+2026-05-17 09:00:00,100 99999 INFO ? odoo: Odoo Server 19.0
+2026-05-17 09:00:00,101 99999 INFO ? odoo.modules.loading: loading modules for db: test_db
+2026-05-17 09:00:01,200 99999 INFO ? odoo.modules.loading: Loading module base (1/1)
+2026-05-17 09:00:01,300 99999 INFO ? odoo.modules.loading: Modules loaded.
+Python 3.13.0
+result_value

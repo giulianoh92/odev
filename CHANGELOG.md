@@ -15,6 +15,14 @@ Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
 ### Agregado
 
 - D1: `DockerCompose.exec_capture(service, command)` — nuevo metodo que retorna `(stdout: bytes, stderr: bytes, returncode: int)` sin TTY, sin lanzar excepcion en codigo no cero. Base para todos los flujos de captura de agentes en 0.5.0.
+- D4: `odev status --json` / `-j` — emite array JSON `[{"service": str, "status": str, "ports": [int]}, ...]`. Stack down retorna `[]`. Sin proyecto retorna `{"error": "..."}` en stderr con exit 1.
+- D5: `odev context --json --quiet` — emite objeto JSON con `project_name`, `odoo_version`, `addons_paths`, `modules_installed`, `db`. `--quiet` suprime decoraciones Rich. `--json` solo siempre suprime Markdown.
+- D6: `odev sql --json` / `-j` — emite array JSON de filas como lista de dicts `[{"col": "val", ...}]`. Valores como strings (protocolo texto psql — usar CAST en SQL para tipos). Cero filas retorna `[]`. Error psql en stderr JSON + exit 1. Mutuamente excluyente con `--csv` (exit 2).
+- D9: `odev modules --json` — nuevo comando. Lista modulos instalados desde `ir_module_module` (`state IN ('installed', 'to upgrade', 'to install')`). Schema: `[{"name": str, "state": str, "version": str}]`. Dependencias entre modulos diferidas a 0.6.0.
+
+### Cambiado
+
+- D7: `odev py` ahora elimina automaticamente el banner del shell Odoo del stdout. Solo el resultado de la expresion aparece en stdout (equivalente al anterior `| tail -n 1`). Usar `--keep-banner` para conservar la salida raw (debug). Compatible con Odoo 16/17/18/19.
 
 ### Corregido
 

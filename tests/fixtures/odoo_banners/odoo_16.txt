@@ -1,0 +1,8 @@
+2024-01-15 10:23:45,123 12345 INFO ? odoo: Odoo Server 16.0-20240115
+2024-01-15 10:23:45,124 12345 INFO ? odoo.modules.loading: loading modules for db: mydb
+2024-01-15 10:23:46,200 12345 INFO ? odoo.modules.loading: Loading module account (1/5)
+2024-01-15 10:23:47,300 12345 INFO ? odoo.modules.loading: Loading module sale (2/5)
+2024-01-15 10:23:48,400 12345 INFO ? odoo.modules.loading: Modules loaded.
+2024-01-15 10:23:48,500 12345 INFO ? odoo.addons.base.models.ir_module: Loading ir.actions.act_window (sale)
+Python 3.10.12 (main, Nov 20 2023, 15:14:05)
+42

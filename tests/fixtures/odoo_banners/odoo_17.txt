@@ -1,0 +1,8 @@
+2024-06-01 08:00:00,001 54321 INFO ? odoo: Odoo Server 17.0
+2024-06-01 08:00:00,002 54321 INFO ? odoo.modules.loading: loading modules for db: prod_db
+2024-06-01 08:00:01,100 54321 INFO ? odoo.modules.loading: Loading module base (1/3)
+2024-06-01 08:00:01,200 54321 INFO ? odoo.modules.loading: Loading module web (2/3)
+2024-06-01 08:00:01,300 54321 INFO ? odoo.modules.loading: Loading module mail (3/3)
+2024-06-01 08:00:01,400 54321 INFO ? odoo.modules.loading: Modules loaded.
+Python 3.11.7 (main, Dec 2023)
+hello

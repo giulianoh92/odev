@@ -3,12 +3,26 @@
 Escanea el directorio addons/ del proyecto, analiza los manifiestos
 y la estructura de cada modulo usando ast (sin ejecutar codigo),
 y genera un archivo de contexto Markdown detallado.
+
+JSON schema (--json):
+  {
+    "project_name": str,
+    "odoo_version": str,
+    "addons_paths": [str],
+    "modules_installed": [str],
+    "db": {"name": str, "host": str, "port": int}
+  }
 """
 
+from __future__ import annotations
+
 import ast
+import json
+import sys
 from datetime import datetime
 from pathlib import Path
 
+import typer
 from jinja2 import Environment, FileSystemLoader
 
 from odev.commands._helpers import obtener_rutas, requerir_proyecto
@@ -17,12 +31,27 @@ from odev.core.console import success, warning
 from odev.core.paths import get_templates_dir
 
 
-def context() -> None:
+def context(
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Emite JSON a stdout en lugar de generar PROJECT_CONTEXT.md.",
+    ),
+    quiet: bool = typer.Option(
+        False,
+        "--quiet",
+        "-q",
+        help="Suprime decoraciones Rich, spinners y progress. Util con --json.",
+    ),
+) -> None:
     """Genera PROJECT_CONTEXT.md a partir del analisis de los modulos en addons/.
 
     Escanea los modulos Odoo del proyecto, extrae informacion de sus
     manifiestos y estructura de codigo, y renderiza un documento de
     contexto completo para referencia.
+
+    Con --json, emite un objeto JSON con informacion del proyecto sin crear archivo.
+    Con --quiet, suprime decoraciones Rich.
     """
     from odev.main import obtener_nombre_proyecto
 
@@ -30,11 +59,41 @@ def context() -> None:
     rutas = obtener_rutas(contexto)
 
     valores_env = load_env(rutas.env_file)
+
+    if json_output:
+        # JSON mode: emite objeto estructurado sin generar archivo
+        addons_paths = [str(d) for d in rutas.addons_dirs]
+        modulos_nombres: list[str] = []
+        for directorio_addons in rutas.addons_dirs:
+            for info in _escanear_modulos(directorio_addons):
+                nombre_tecnico = info.get("technical_name", info.get("name", ""))
+                if nombre_tecnico:
+                    modulos_nombres.append(nombre_tecnico)
+
+        try:
+            db_port = int(valores_env.get("DB_PORT", "5432"))
+        except (ValueError, TypeError):
+            db_port = 5432
+
+        resultado = {
+            "project_name": contexto.nombre,
+            "odoo_version": valores_env.get("ODOO_VERSION", "N/A"),
+            "addons_paths": addons_paths,
+            "modules_installed": modulos_nombres,
+            "db": {
+                "name": valores_env.get("DB_NAME", "N/A"),
+                "host": valores_env.get("DB_HOST", "db"),
+                "port": db_port,
+            },
+        }
+        sys.stdout.write(json.dumps(resultado) + "\n")
+        raise typer.Exit(0)
+
     modulos = []
     for directorio_addons in rutas.addons_dirs:
         modulos.extend(_escanear_modulos(directorio_addons))
 
-    if not modulos:
+    if not modulos and not quiet:
         warning("No se encontraron modulos en addons/. PROJECT_CONTEXT.md sera minimo.")
 
     # Buscar template de contexto en el directorio de templates del paquete
@@ -54,7 +113,8 @@ def context() -> None:
 
     destino = rutas.root / "PROJECT_CONTEXT.md"
     destino.write_text(salida)
-    success(f"Generado {destino.name} con {len(modulos)} modulo(s).")
+    if not quiet:
+        success(f"Generado {destino.name} con {len(modulos)} modulo(s).")
 
 
 def _escanear_modulos(directorio_addons: Path) -> list[dict]:

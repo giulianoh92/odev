@@ -1,0 +1,7 @@
+2025-01-10 14:30:00,500 11111 INFO ? odoo: Odoo Server 18.0
+2025-01-10 14:30:00,501 11111 INFO ? odoo.modules.loading: loading modules for db: dev
+2025-01-10 14:30:01,600 11111 INFO ? odoo.modules.loading: Loading module base (1/2)
+2025-01-10 14:30:02,700 11111 INFO ? odoo.modules.loading: Loading module web (2/2)
+2025-01-10 14:30:02,800 11111 INFO ? odoo.modules.loading: Modules loaded.
+Python 3.12.0
+world
