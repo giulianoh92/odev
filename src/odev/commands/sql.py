@@ -2,23 +2,19 @@
 
 from __future__ import annotations
 
-import subprocess
-import sys
-
 import typer
 
-from odev.commands._helpers import obtener_docker, obtener_rutas, requerir_proyecto
+from odev.commands._helpers import (
+    ejecutar_passthrough,
+    obtener_docker,
+    obtener_rutas,
+    requerir_proyecto,
+)
 from odev.core.config import load_env
 from odev.core.console import error
 
 
 def _run_sql(query: str, csv: bool) -> None:
-    """Implementacion principal — testeable sin Typer runner.
-
-    Argumentos:
-        query: Sentencia SQL a ejecutar via psql -c.
-        csv:   Si True, agrega flags psql para salida sin alineacion.
-    """
     from odev.main import obtener_nombre_proyecto
 
     if not query.strip():
@@ -38,15 +34,7 @@ def _run_sql(query: str, csv: bool) -> None:
         args.extend(["-A", "-t", "-F", ","])
 
     dc = obtener_docker(contexto)
-    try:
-        result = dc.exec_cmd("db", args, interactive=False)
-    except subprocess.CalledProcessError as e:
-        sys.stderr.buffer.write(e.stderr or b"")
-        raise typer.Exit(e.returncode) from e
-
-    sys.stdout.buffer.write(result.stdout or b"")
-    sys.stderr.buffer.write(result.stderr or b"")
-    raise typer.Exit(result.returncode)
+    ejecutar_passthrough(dc, "db", args)
 
 
 def sql(

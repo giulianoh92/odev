@@ -2,22 +2,19 @@
 
 from __future__ import annotations
 
-import subprocess
-import sys
-
 import typer
 
-from odev.commands._helpers import obtener_docker, obtener_rutas, requerir_proyecto
+from odev.commands._helpers import (
+    ejecutar_passthrough,
+    obtener_docker,
+    obtener_rutas,
+    requerir_proyecto,
+)
 from odev.core.config import load_env
 from odev.core.console import error
 
 
 def _run_py(expression: str) -> None:
-    """Implementacion principal — testeable sin Typer runner.
-
-    Argumentos:
-        expression: Expresion Python a evaluar via odoo shell.
-    """
     from odev.main import obtener_nombre_proyecto
 
     if not expression.strip():
@@ -38,15 +35,7 @@ def _run_py(expression: str) -> None:
     ]
 
     dc = obtener_docker(contexto)
-    try:
-        result = dc.exec_cmd("web", args, interactive=False, stdin_data=script)
-    except subprocess.CalledProcessError as e:
-        sys.stderr.buffer.write(e.stderr or b"")
-        raise typer.Exit(e.returncode) from e
-
-    sys.stdout.buffer.write(result.stdout or b"")
-    sys.stderr.buffer.write(result.stderr or b"")
-    raise typer.Exit(result.returncode)
+    ejecutar_passthrough(dc, "web", args, stdin_data=script)
 
 
 def py(

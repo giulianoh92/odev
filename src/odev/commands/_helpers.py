@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import subprocess
 import sys
+from typing import NoReturn
 
 import typer
 
@@ -188,6 +190,40 @@ def obtener_rutas(contexto: ProjectContext) -> ProjectPaths:
         project_root=contexto.directorio_config,
         addon_paths=contexto.config.rutas_addons if contexto.config else None,
     )
+
+
+def ejecutar_passthrough(
+    dc: DockerCompose,
+    service: str,
+    args: list[str],
+    *,
+    stdin_data: bytes | None = None,
+) -> NoReturn:
+    """Ejecuta un comando no-interactivo en el contenedor y propaga IO + exit.
+
+    Wrapper de `dc.exec_cmd(interactive=False)` para los comandos
+    agent-friendly (`shell -c`, `sql`, `py`). En CalledProcessError escribe
+    `e.stderr` en stderr y termina con `e.returncode`. En exito escribe
+    stdout/stderr crudos y termina con el returncode del subproceso.
+    Siempre termina con `typer.Exit`.
+
+    Argumentos:
+        dc:         Instancia DockerCompose ya resuelta.
+        service:    Servicio destino (ej: 'web', 'db').
+        args:       Argv del comando dentro del contenedor.
+        stdin_data: Datos opcionales para stdin (None = sin pipe).
+    """
+    kwargs: dict = {"interactive": False}
+    if stdin_data is not None:
+        kwargs["stdin_data"] = stdin_data
+    try:
+        result = dc.exec_cmd(service, args, **kwargs)
+    except subprocess.CalledProcessError as e:
+        sys.stderr.buffer.write(e.stderr or b"")
+        raise typer.Exit(e.returncode) from e
+    sys.stdout.buffer.write(result.stdout or b"")
+    sys.stderr.buffer.write(result.stderr or b"")
+    raise typer.Exit(result.returncode)
 
 
 def validar_modulo_existe(nombre: str, contexto: ProjectContext) -> None:
