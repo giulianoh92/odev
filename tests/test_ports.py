@@ -1,11 +1,16 @@
 """Tests para odev.core.ports — gestion de puertos para multi-proyecto.
 
 Verifica la deteccion de puertos disponibles y la sugerencia de
-conjuntos de puertos libres para proyectos simultaneos.
+conjuntos de puertos libres para proyectos simultaneos. Tambien cubre
+allocate_ports (0.4.0): asignacion atomica con verificacion de registro
+y PortAllocationError cuando se agotan los offsets.
 """
 
 import socket
-from unittest.mock import patch
+import time
+import warnings
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -97,3 +102,98 @@ class TestSugerirPuertos:
 
         for clave, valor in resultado.items():
             assert isinstance(valor, int), f"{clave} no es entero: {type(valor)}"
+
+
+# ── T05 RED: Tests de allocate_ports y PortAllocationError ──
+
+
+@pytest.fixture
+def registry_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Fixture que redirecciona el registro a tmp_path para tests de allocate_ports."""
+    import odev.core.registry as reg_mod
+
+    monkeypatch.setattr(reg_mod, "ODEV_HOME", tmp_path)
+    monkeypatch.setattr(reg_mod, "REGISTRY_PATH", tmp_path / "registry.yaml")
+    monkeypatch.setattr(reg_mod, "PROJECTS_DIR", tmp_path / "projects")
+    (tmp_path / "projects").mkdir()
+    from odev.core.registry import Registry
+
+    return Registry()
+
+
+class TestAllocatePorts:
+    """Grupo de tests para la funcion allocate_ports()."""
+
+    def test_allocate_ports_skips_registry_claimed_offset(
+        self, registry_tmp
+    ) -> None:
+        """allocate_ports omite offsets cuyos puertos ya estan reclamados en el registro.
+
+        REQ-PA-2 Scenario 1: socket libre pero offset registrado se salta.
+        """
+        from odev.core.ports import allocate_ports
+
+        # Pre-reclamar offset 0 (puertos base)
+        registry_tmp.asignar_puertos("proyecto-existente", CONJUNTOS_PUERTOS.copy())
+
+        # Mockear todos los sockets como libres para aislar la logica de registro
+        with patch("odev.core.ports.puerto_disponible", return_value=True):
+            resultado = allocate_ports("nuevo-proyecto", registry_tmp)
+
+        # El resultado no debe coincidir con los puertos base (offset 0)
+        assert resultado["WEB_PORT"] != CONJUNTOS_PUERTOS["WEB_PORT"]
+
+    def test_allocate_ports_persists_claim_in_registry(
+        self, registry_tmp
+    ) -> None:
+        """allocate_ports escribe la asignacion en el registro antes de retornar.
+
+        REQ-PA-1: La reclamacion es atomica — el registro contiene la entrada
+        antes de que el wizard continue.
+        """
+        from odev.core.ports import allocate_ports
+
+        with patch("odev.core.ports.puerto_disponible", return_value=True):
+            resultado = allocate_ports("mi-proyecto", registry_tmp)
+
+        entry = registry_tmp.obtener("mi-proyecto")
+        assert entry is not None
+        assert entry.ports == resultado
+
+    def test_allocate_ports_raises_after_100_offsets(
+        self, registry_tmp
+    ) -> None:
+        """allocate_ports lanza PortAllocationError cuando se agotan los 100 offsets."""
+        from odev.core.ports import PortAllocationError, allocate_ports
+
+        # Todos los sockets ocupados
+        with patch("odev.core.ports.puerto_disponible", return_value=False):
+            with pytest.raises(PortAllocationError):
+                allocate_ports("sin-puertos", registry_tmp)
+
+    def test_allocate_ports_lock_under_50ms(self, registry_tmp) -> None:
+        """La operacion completa de allocate_ports dura menos de 50ms.
+
+        NF-1: El lock no se sostiene durante el wizard.
+        """
+        from odev.core.ports import allocate_ports
+
+        with patch("odev.core.ports.puerto_disponible", return_value=True):
+            inicio = time.perf_counter()
+            allocate_ports("rapido", registry_tmp)
+            duracion_ms = (time.perf_counter() - inicio) * 1000
+
+        assert duracion_ms < 50, f"allocate_ports tardo {duracion_ms:.1f}ms (limite: 50ms)"
+
+    def test_sugerir_puertos_emits_deprecation_warning(self) -> None:
+        """sugerir_puertos emite DeprecationWarning al ser llamada.
+
+        backward-compat: se conserva la funcion pero avisa que esta deprecada.
+        """
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            with patch("odev.core.ports.puerto_disponible", return_value=True):
+                sugerir_puertos()
+
+        deprecation_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
+        assert len(deprecation_warnings) >= 1, "Se esperaba al menos un DeprecationWarning"

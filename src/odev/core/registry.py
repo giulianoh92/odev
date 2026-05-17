@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import fcntl
 import logging
+import threading
 from dataclasses import asdict, dataclass, fields
 from datetime import date
 from pathlib import Path
@@ -17,6 +18,11 @@ from pathlib import Path
 import yaml
 
 logger = logging.getLogger(__name__)
+
+# Lock de proceso para serializar escrituras concurrentes entre threads.
+# fcntl.flock coordina entre procesos; este threading.Lock coordina entre threads
+# del mismo proceso (fcntl no es seguro entre threads que comparten el mismo fd).
+_REGISTRY_THREAD_LOCK = threading.Lock()
 
 # --- Rutas del registro global ---
 
@@ -37,6 +43,7 @@ class RegistryEntry:
         modo: Modo de operacion, "inline" o "external".
         version_odoo: Version de Odoo del proyecto (ej. "18.0").
         fecha_creacion: Fecha de creacion en formato ISO (ej. "2026-03-20").
+        ports: Puertos asignados al proyecto (None para entradas legacy pre-0.4.0).
     """
 
     nombre: str
@@ -45,6 +52,7 @@ class RegistryEntry:
     modo: str
     version_odoo: str
     fecha_creacion: str
+    ports: dict[str, int] | None = None
 
 
 class Registry:
@@ -115,11 +123,12 @@ class Registry:
 
         return resultado
 
-    def _escribir(self, entries: dict[str, RegistryEntry]) -> None:
-        """Escribe el registry.yaml con bloqueo de archivo.
+    def _escribir_fcntl(self, entries: dict[str, RegistryEntry]) -> None:
+        """Escribe el registry.yaml adquiriendo solo fcntl.flock (sin thread lock).
 
-        Adquiere un bloqueo exclusivo ANTES de truncar el archivo para
-        prevenir race conditions con otros procesos.
+        Metodo interno que se usa cuando el thread lock ya esta adquirido
+        por el llamador (ej: allocate_ports). Adquiere solo fcntl.flock
+        para coordinacion multi-proceso.
 
         Argumentos:
             entries: Diccionario nombre -> RegistryEntry a persistir.
@@ -138,8 +147,6 @@ class Registry:
 
         contenido = {"projects": proyectos}
 
-        # Abrir sin truncar, adquirir lock, luego truncar y escribir
-        # Esto previene race conditions donde otro proceso lee un archivo vacio
         modo = "r+" if REGISTRY_PATH.exists() else "w"
         with open(REGISTRY_PATH, modo, encoding="utf-8") as archivo:
             fcntl.flock(archivo, fcntl.LOCK_EX)
@@ -155,6 +162,19 @@ class Registry:
                 )
             finally:
                 fcntl.flock(archivo, fcntl.LOCK_UN)
+
+    def _escribir(self, entries: dict[str, RegistryEntry]) -> None:
+        """Escribe el registry.yaml con bloqueo de archivo y de thread.
+
+        Adquiere primero el threading.Lock (para serializar threads del mismo
+        proceso) y luego fcntl.flock(LOCK_EX) (para serializar procesos distintos)
+        antes de truncar y escribir el archivo.
+
+        Argumentos:
+            entries: Diccionario nombre -> RegistryEntry a persistir.
+        """
+        with _REGISTRY_THREAD_LOCK:
+            self._escribir_fcntl(entries)
 
     def registrar(self, entry: RegistryEntry) -> None:
         """Agrega o actualiza un proyecto en el registro.
@@ -236,6 +256,93 @@ class Registry:
                 continue
 
         return coincidencias
+
+    def _asignar_puertos_bajo_lock(self, nombre: str, ports: dict[str, int]) -> None:
+        """Reclama puertos asumiendo que _REGISTRY_THREAD_LOCK ya fue adquirido.
+
+        Metodo interno para uso exclusivo de allocate_ports(). No adquiere
+        el thread lock para evitar deadlock. Usa _escribir_fcntl directamente.
+
+        Argumentos:
+            nombre: Nombre del proyecto al que asignar los puertos.
+            ports: Diccionario {nombre_variable: numero_puerto} a reclamar.
+        """
+        entries = self._leer()
+        if nombre in entries:
+            entries[nombre].ports = ports
+        else:
+            entries[nombre] = RegistryEntry(
+                nombre=nombre,
+                directorio_trabajo=Path("/__claiming__"),
+                directorio_config=Path("/__claiming__"),
+                modo="claiming",
+                version_odoo="",
+                fecha_creacion=date.today().isoformat(),
+                ports=ports,
+            )
+        self._escribir_fcntl(entries)
+        logger.debug(
+            "Puertos %s asignados al proyecto '%s' (bajo lock).",
+            list(ports.keys()),
+            nombre,
+        )
+
+    def asignar_puertos(self, nombre: str, ports: dict[str, int]) -> None:
+        """Reclama un conjunto de puertos para un proyecto en el registro.
+
+        Si el proyecto ya existe, actualiza su campo ports. Si no existe,
+        crea una entrada skeleton que el wizard completara luego via registrar().
+        La escritura es atomica gracias a fcntl.flock en _escribir().
+
+        Argumentos:
+            nombre: Nombre del proyecto al que asignar los puertos.
+            ports: Diccionario {nombre_variable: numero_puerto} a reclamar.
+        """
+        entries = self._leer()
+        if nombre in entries:
+            entries[nombre].ports = ports
+        else:
+            # Entrada skeleton: el wizard la completara con registrar()
+            entries[nombre] = RegistryEntry(
+                nombre=nombre,
+                directorio_trabajo=Path("/__claiming__"),
+                directorio_config=Path("/__claiming__"),
+                modo="claiming",
+                version_odoo="",
+                fecha_creacion=date.today().isoformat(),
+                ports=ports,
+            )
+        self._escribir(entries)
+        logger.debug("Puertos %s asignados al proyecto '%s'.", list(ports.keys()), nombre)
+
+    def liberar_puertos(self, nombre: str) -> None:
+        """Libera los puertos reclamados por un proyecto, seteando ports=None.
+
+        Argumentos:
+            nombre: Nombre del proyecto cuyos puertos se liberan.
+        """
+        entries = self._leer()
+        if nombre not in entries:
+            return
+        if entries[nombre].ports is not None:
+            entries[nombre].ports = None
+            self._escribir(entries)
+            logger.debug("Puertos liberados para el proyecto '%s'.", nombre)
+
+    def puertos_ocupados(self) -> set[int]:
+        """Retorna el conjunto de todos los puertos reclamados en el registro.
+
+        Considera todas las entradas con campo ports no nulo.
+
+        Retorna:
+            Conjunto de enteros con todos los numeros de puerto reclamados.
+        """
+        entries = self._leer()
+        ocupados: set[int] = set()
+        for entry in entries.values():
+            if entry.ports:
+                ocupados.update(entry.ports.values())
+        return ocupados
 
     def limpiar_obsoletos(self) -> list[str]:
         """Elimina entradas cuyo directorio_trabajo ya no existe.

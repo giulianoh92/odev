@@ -2,10 +2,13 @@
 
 Valida las operaciones CRUD del Registry: registrar, obtener, listar,
 eliminar, buscar por directorio y limpieza de entradas obsoletas.
+Tambien cubre el campo ports (0.4.0): asignar_puertos, liberar_puertos,
+puertos_ocupados y compatibilidad con entradas legacy sin campo ports.
 Usa monkeypatch para redirigir las rutas globales a directorios temporales.
 """
 
 import pytest
+import yaml
 from pathlib import Path
 
 from odev.core.registry import Registry, RegistryEntry
@@ -241,3 +244,198 @@ class TestRegistry:
         assert result is not None
         assert result.version_odoo == "18.0"
         assert len(reg.listar()) == 1
+
+
+# ── T01 RED: Tests de compatibilidad con entradas legacy (sin campo ports) ──
+
+
+class TestLegacyEntryCompatibility:
+    """Verifica que entradas legacy (pre-0.4.0) sin campo ports se carguen sin errores."""
+
+    def test_legacy_entry_without_ports_field_loads_with_ports_none(
+        self, registry_dir: Path
+    ) -> None:
+        """Una entrada legacy sin campo ports se carga con ports=None.
+
+        Simula un registry.yaml escrito por una version pre-0.4.0 y verifica
+        que _leer() asigne None al campo ports sin lanzar excepcion.
+        """
+        # Escribir YAML legacy directamente (sin campo ports)
+        registry_path = registry_dir / "registry.yaml"
+        datos_legacy = {
+            "projects": {
+                "legacy-project": {
+                    "directorio_trabajo": "/tmp/legacy",
+                    "directorio_config": str(registry_dir / "projects" / "legacy-project"),
+                    "modo": "inline",
+                    "version_odoo": "18.0",
+                    "fecha_creacion": "2026-01-01",
+                    # sin campo 'ports'
+                }
+            }
+        }
+        registry_path.write_text(yaml.dump(datos_legacy))
+
+        reg = Registry()
+        entry = reg.obtener("legacy-project")
+
+        assert entry is not None
+        assert entry.ports is None
+
+    def test_legacy_yaml_round_trip_no_crash(self, registry_dir: Path) -> None:
+        """Leer y re-escribir un registry legacy no lanza excepciones y conserva datos.
+
+        Verifica NF-3: entradas sin campo ports no crashean en ninguna operacion.
+        """
+        registry_path = registry_dir / "registry.yaml"
+        datos_legacy = {
+            "projects": {
+                "proyecto-a": {
+                    "directorio_trabajo": "/tmp/a",
+                    "directorio_config": str(registry_dir / "projects" / "a"),
+                    "modo": "external",
+                    "version_odoo": "19.0",
+                    "fecha_creacion": "2026-01-15",
+                },
+                "proyecto-b": {
+                    "directorio_trabajo": "/tmp/b",
+                    "directorio_config": str(registry_dir / "projects" / "b"),
+                    "modo": "inline",
+                    "version_odoo": "17.0",
+                    "fecha_creacion": "2026-02-20",
+                },
+            }
+        }
+        registry_path.write_text(yaml.dump(datos_legacy))
+
+        reg = Registry()
+        proyectos = reg.listar()
+
+        assert len(proyectos) == 2
+        for p in proyectos:
+            assert p.ports is None
+
+
+# ── T03 RED: Tests de asignar_puertos, liberar_puertos, puertos_ocupados ──
+
+
+class TestPortsMethods:
+    """Verifica los metodos de gestion de puertos en Registry."""
+
+    _PUERTOS_BASE = {
+        "WEB_PORT": 8069,
+        "PGWEB_PORT": 8081,
+        "DB_PORT": 5432,
+        "DEBUGPY_PORT": 5678,
+        "MAILHOG_PORT": 8025,
+    }
+
+    def test_asignar_puertos_creates_skeleton_entry(self, registry_dir: Path) -> None:
+        """asignar_puertos crea una entrada skeleton si el proyecto no existe aun."""
+        reg = Registry()
+
+        reg.asignar_puertos("nuevo-proyecto", self._PUERTOS_BASE)
+
+        entry = reg.obtener("nuevo-proyecto")
+        assert entry is not None
+        assert entry.ports == self._PUERTOS_BASE
+
+    def test_asignar_puertos_updates_existing_entry(self, registry_dir: Path) -> None:
+        """asignar_puertos actualiza ports en una entrada existente."""
+        reg = Registry()
+        entry = _crear_entry(
+            "existente",
+            Path("/tmp/existente"),
+            registry_dir / "projects" / "existente",
+        )
+        reg.registrar(entry)
+
+        nuevos_puertos = {
+            "WEB_PORT": 8070,
+            "PGWEB_PORT": 8082,
+            "DB_PORT": 5433,
+            "DEBUGPY_PORT": 5679,
+            "MAILHOG_PORT": 8026,
+        }
+        reg.asignar_puertos("existente", nuevos_puertos)
+
+        actualizado = reg.obtener("existente")
+        assert actualizado is not None
+        assert actualizado.ports == nuevos_puertos
+        # El resto de los campos no deben cambiar
+        assert actualizado.modo == "external"
+        assert actualizado.version_odoo == "18.0"
+
+    def test_liberar_puertos_sets_ports_to_none(self, registry_dir: Path) -> None:
+        """liberar_puertos pone el campo ports en None."""
+        reg = Registry()
+        entry = _crear_entry(
+            "con-puertos",
+            Path("/tmp/con-puertos"),
+            registry_dir / "projects" / "con-puertos",
+        )
+        reg.registrar(entry)
+        reg.asignar_puertos("con-puertos", self._PUERTOS_BASE)
+
+        reg.liberar_puertos("con-puertos")
+
+        actualizado = reg.obtener("con-puertos")
+        assert actualizado is not None
+        assert actualizado.ports is None
+
+    def test_puertos_ocupados_returns_union_across_entries(
+        self, registry_dir: Path
+    ) -> None:
+        """puertos_ocupados retorna el union de todos los puertos de todas las entradas."""
+        reg = Registry()
+
+        puertos_a = {
+            "WEB_PORT": 8069,
+            "PGWEB_PORT": 8081,
+            "DB_PORT": 5432,
+            "DEBUGPY_PORT": 5678,
+            "MAILHOG_PORT": 8025,
+        }
+        puertos_b = {
+            "WEB_PORT": 8070,
+            "PGWEB_PORT": 8082,
+            "DB_PORT": 5433,
+            "DEBUGPY_PORT": 5679,
+            "MAILHOG_PORT": 8026,
+        }
+
+        reg.asignar_puertos("proyecto-a", puertos_a)
+        reg.asignar_puertos("proyecto-b", puertos_b)
+
+        ocupados = reg.puertos_ocupados()
+
+        assert 8069 in ocupados
+        assert 8070 in ocupados
+        assert 8081 in ocupados
+        assert 8082 in ocupados
+        assert 5432 in ocupados
+        assert 5433 in ocupados
+
+    def test_puertos_ocupados_ignores_entries_without_ports(
+        self, registry_dir: Path
+    ) -> None:
+        """puertos_ocupados ignora entradas legacy sin campo ports."""
+        reg = Registry()
+        # Entrada legacy sin ports
+        entry = _crear_entry(
+            "sin-puertos",
+            Path("/tmp/sin-puertos"),
+            registry_dir / "projects" / "sin-puertos",
+        )
+        reg.registrar(entry)
+
+        ocupados = reg.puertos_ocupados()
+
+        assert len(ocupados) == 0
+
+    def test_liberar_puertos_no_op_for_nonexistent(self, registry_dir: Path) -> None:
+        """liberar_puertos no lanza excepcion si el proyecto no existe."""
+        reg = Registry()
+
+        # No debe lanzar excepcion
+        reg.liberar_puertos("no-existe")
