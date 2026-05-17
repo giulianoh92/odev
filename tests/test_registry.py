@@ -580,3 +580,48 @@ class TestFcntlImportGuard:
         recuperado = reg.obtener("windows-compat")
         assert recuperado is not None
         assert recuperado.nombre == "windows-compat"
+
+
+# ── T13.1 RED: YAML corrupt backup ───────────────────────────────────────────
+
+
+class TestYamlCorruptBackup:
+    """Verifica que _leer() crea un backup cuando el YAML es invalido (Q2 — REQ-RR-2).
+
+    T13.1 RED: estos tests fallan hasta que se agregue la logica de backup
+    en registry.py::_leer().
+    """
+
+    def test_leer_yaml_invalido_crea_backup(self, registry_dir: Path) -> None:
+        """_leer() crea .bak cuando el YAML es invalido y retorna {}.
+
+        Escribe contenido invalido en registry.yaml y verifica que:
+        - Se crea un archivo .bak adyacente
+        - El archivo .bak tiene el contenido original
+        - _leer() retorna {} sin lanzar excepcion
+        """
+        registry_path = registry_dir / "registry.yaml"
+        contenido_invalido = "key: {\n  unclosed: bracket\n  bad: [yaml"
+        registry_path.write_text(contenido_invalido)
+
+        reg = Registry()
+        resultado = reg._leer()
+
+        assert resultado == {}, "_leer() debe retornar {} ante YAML invalido"
+
+        backup = registry_dir / "registry.yaml.bak"
+        assert backup.exists(), "Debe crearse el archivo .bak adyacente"
+        assert backup.read_text() == contenido_invalido, (
+            "El .bak debe contener el contenido original corrompido"
+        )
+
+    def test_leer_yaml_valido_no_crea_backup(self, registry_dir: Path) -> None:
+        """_leer() NO crea .bak cuando el YAML es valido."""
+        registry_path = registry_dir / "registry.yaml"
+        registry_path.write_text("projects: {}\n")
+
+        reg = Registry()
+        reg._leer()
+
+        backup = registry_dir / "registry.yaml.bak"
+        assert not backup.exists(), "No debe crearse .bak si el YAML es valido"

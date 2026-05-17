@@ -9,6 +9,7 @@ para manejar acceso concurrente.
 from __future__ import annotations
 
 import logging
+import shutil
 import threading
 
 try:
@@ -93,7 +94,15 @@ class Registry:
             with open(REGISTRY_PATH, encoding="utf-8") as archivo:
                 datos = yaml.safe_load(archivo)
         except (yaml.YAMLError, OSError) as e:
-            logger.warning("Error al leer el registro %s: %s", REGISTRY_PATH, e)
+            logger.warning(
+                "REGISTRY_YAML_CORRUPT — Error al leer el registro %s: %s", REGISTRY_PATH, e
+            )
+            try:
+                backup = REGISTRY_PATH.with_suffix(".yaml.bak")
+                shutil.copy(REGISTRY_PATH, backup)
+                logger.warning("Backup del registro guardado en %s", backup)
+            except OSError as e_bak:
+                logger.debug("No se pudo crear backup del registro: %s", e_bak)
             return {}
 
         if not isinstance(datos, dict):
