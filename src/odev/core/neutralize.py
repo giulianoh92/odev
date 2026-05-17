@@ -137,7 +137,8 @@ def configurar_parametros_desarrollo(
     _validar_puerto(puerto_web)
     url_local = f"http://localhost:{puerto_web}"
     sql = (
-        "INSERT INTO ir_config_parameter (key, value, create_uid, create_date, write_uid, write_date) "
+        "INSERT INTO ir_config_parameter "
+        "(key, value, create_uid, create_date, write_uid, write_date) "
         "VALUES "
         f"('web.base.url', '{url_local}', 1, NOW(), 1, NOW()), "
         f"('report.url', '{url_local}', 1, NOW(), 1, NOW()), "

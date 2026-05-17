@@ -56,7 +56,8 @@ class DockerCompose:
         if project_root is None:
             raise RuntimeError(
                 "No se pudo detectar el directorio del proyecto. "
-                "Ejecuta 'odev init' para crear un proyecto o 'odev adopt' para adoptar uno existente."
+                "Ejecuta 'odev init' para crear un proyecto o "
+                "'odev adopt' para adoptar uno existente."
             )
         self._project_root = project_root
         self._project_name: str | None = None
@@ -163,7 +164,9 @@ class DockerCompose:
             return subprocess.run(cmd, cwd=self._project_root)
         return subprocess.run(cmd, cwd=self._project_root, check=True)
 
-    def up(self, build: bool = False, watch: bool = False, services: list[str] | None = None) -> None:
+    def up(
+        self, build: bool = False, watch: bool = False, services: list[str] | None = None
+    ) -> None:
         """Levanta los servicios de docker compose en modo detached.
 
         Argumentos:
