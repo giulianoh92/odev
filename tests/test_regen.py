@@ -236,9 +236,8 @@ class TestRegenerarConfiguracion:
             config=config,
         )
 
-        resultado = regenerar_configuracion(ctx, include_env=True)
+        regenerar_configuracion(ctx, include_env=True)
 
-        env_paths = [p for p in resultado.archivos_regenerados if p.name == ".env"]
         # .env may or may not appear in regenerados depending on content diff
         # but the function should not crash
         contenido = (proyecto_con_config / ".env").read_text()

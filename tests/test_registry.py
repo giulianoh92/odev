@@ -541,7 +541,6 @@ class TestFcntlImportGuard:
         que el modulo define HAS_FCNTL = False (atributo exportado).
         """
         import sys
-        import importlib
         from unittest.mock import patch
 
         with patch.dict(sys.modules, {"fcntl": None}):
@@ -558,7 +557,6 @@ class TestFcntlImportGuard:
         Verifica que la operacion completa sin invocar flock cuando
         HAS_FCNTL es False (fallback para Windows).
         """
-        import sys
         from unittest.mock import patch
 
         import odev.core.registry as reg_mod

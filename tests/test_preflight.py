@@ -226,7 +226,7 @@ class TestClassifyBoundPort:
             }
         ]
         dc = _mock_dc(contenedores)
-        contexto = _mock_contexto("mi-proyecto")
+        _mock_contexto("mi-proyecto")
 
         estado, propietario = classify_bound_port(
             8069, "mi-proyecto", dc, registry_tmp
@@ -238,7 +238,7 @@ class TestClassifyBoundPort:
     def test_classify_foreign_unknown(self, registry_tmp: Registry) -> None:
         """Puerto sin contenedores ni registro se clasifica como foreign_unknown."""
         dc = _mock_dc([])
-        contexto = _mock_contexto("mi-proyecto")
+        _mock_contexto("mi-proyecto")
 
         estado, propietario = classify_bound_port(
             8069, "mi-proyecto", dc, registry_tmp

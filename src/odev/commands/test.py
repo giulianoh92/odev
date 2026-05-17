@@ -45,6 +45,50 @@ from odev.core.test_parser import TestResult, parse_odoo_test_output
 _TEST_HTTP_PORT = 8073
 
 
+def _parse_test_target(raw: str) -> tuple[str, str | None]:
+    """Split 'module:Class.method' into ('module', 'Class.method').
+
+    Bare 'module' returns ('module', None). No colon: backward compat path.
+
+    Reglas de uso (D8):
+      - Un solo token con ':' → ('module', 'Class.method') o ('module', 'Class').
+      - Sin ':' → ('module', None) — ruta backward-compat.
+      - CSV + colon → RECHAZADO con typer.Exit(2); mensaje a stderr.
+        Ejemplo invalido: 'mod1,mod2:TestFoo.test_bar'
+      - 'all:Class' → RECHAZADO con typer.Exit(2); el pseudo-modulo 'all'
+        no soporta filtrado por clase.
+
+    Argumentos:
+        raw: Token de modulo tal como lo entrega Typer.
+
+    Retorna:
+        Tupla (module_name, tag_suffix_or_None).
+
+    Raises:
+        typer.Exit(2): si la combinacion es invalida.
+    """
+    if ":" not in raw:
+        return raw, None
+
+    # Hay ':', validar que no sea CSV+colon
+    module, _, tag = raw.partition(":")
+    if "," in module:
+        sys.stderr.write(
+            "Shorthand ':Class.method' requiere un solo modulo destino; "
+            "se recibio CSV. Usa --tags directamente para filtrar en multiples modulos.\n"
+        )
+        raise typer.Exit(2)
+
+    if module == "all":
+        sys.stderr.write(
+            "El pseudo-modulo 'all' no soporta filtrado ':Class.method'. "
+            "Usa --tags para filtrar por clase en todos los modulos.\n"
+        )
+        raise typer.Exit(2)
+
+    return module, tag
+
+
 def _stream_and_collect(
     popen: subprocess.Popen,
     save_log_path: Optional[Path] = None,
@@ -202,8 +246,13 @@ def _run_test(
 
     contexto = requerir_proyecto(obtener_nombre_proyecto())
 
+    # D8: detectar shorthand 'module:Class.method' antes de parsear CSV.
+    # _parse_test_target valida y rechaza combinaciones invalidas (CSV+colon).
+    module_name, shorthand_tag = _parse_test_target(module)
+
     # Pre-flight: parsear y validar modulo(s)
-    modulos = parsear_modulos_csv(module)
+    # Si habia shorthand, el module_name es el modulo limpio (sin ":...")
+    modulos = parsear_modulos_csv(module_name)
     validar_modulos(modulos, contexto, no_validate=no_validate)
 
     rutas = obtener_rutas(contexto)
@@ -227,11 +276,17 @@ def _run_test(
         f"--log-level={log_level}",
     ]
 
-    # Tags: construir --test-tags con prefijos /mod por modulo + user tags append
+    # Tags: construir --test-tags con prefijos /mod por modulo + user tags append.
+    # D8: si habia shorthand 'module:Class.method', el prefijo se construye como
+    # '/module:Class.method' en lugar de '/module' (filtrado fino).
     tag_parts: list[str] = []
     if modulos != ["all"]:
         comando.extend(["-u", ",".join(modulos)])
-        tag_parts.extend(f"/{m}" for m in modulos)
+        if shorthand_tag is not None:
+            # Shorthand: exactamente un modulo con tag de clase/metodo
+            tag_parts.append(f"/{modulos[0]}:{shorthand_tag}")
+        else:
+            tag_parts.extend(f"/{m}" for m in modulos)
     if tags is not None:
         tag_parts.append(tags)
     if tag_parts:

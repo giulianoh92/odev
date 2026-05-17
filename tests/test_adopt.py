@@ -7,8 +7,8 @@ mensaje de error incluya un hint sobre --force.
 """
 
 import inspect
-import sys
 import shutil
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -156,7 +156,6 @@ class TestAdoptWithoutForceHint:
 
     def test_registry_error_mentions_force(self) -> None:
         """El mensaje de error por proyecto existente en registro menciona --force."""
-        expected_hint = "--force para re-adoptar"
         import odev.commands.adopt as mod
 
         source = inspect.getsource(mod.adopt)

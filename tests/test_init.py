@@ -274,7 +274,6 @@ class TestEnvFilePermisos:
         T8.1 RED: el test falla hasta que se agregue chmod(0o600) en
         renderizar_templates().
         """
-        import stat as stat_mod
 
         valores = _construir_valores(
             nombre_proyecto="test-chmod",

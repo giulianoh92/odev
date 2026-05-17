@@ -353,3 +353,58 @@ class TestValidarModulos:
         assert "ghost_mod" in captured.err
         assert "base" not in captured.err
         assert "my_module" not in captured.err
+
+
+# ---------------------------------------------------------------------------
+# D11 — exit codes epilog smoke test (Spec C11-1 / C11-2)
+# ---------------------------------------------------------------------------
+
+
+class TestExitCodesEpilog:
+    """D11: cada comando publico expone 'Codigos de salida' en su --help.
+
+    Spec C11-1: help includes exit codes
+    Spec C11-2: uniformity across all public commands
+    Design D11: EPILOG_EXIT_CODES constant in _helpers.py
+    """
+
+    def test_epilog_exit_codes_constant_existe(self) -> None:
+        """EPILOG_EXIT_CODES exportado desde _helpers.py."""
+        from odev.commands._helpers import EPILOG_EXIT_CODES  # type: ignore[attr-defined]
+
+        assert EPILOG_EXIT_CODES is not None
+        assert "Codigos de salida" in EPILOG_EXIT_CODES
+        assert "0" in EPILOG_EXIT_CODES
+        assert "1" in EPILOG_EXIT_CODES
+        assert "2" in EPILOG_EXIT_CODES
+        assert "3" in EPILOG_EXIT_CODES
+
+    def test_comandos_publicos_tienen_epilog(self) -> None:
+        """Iterando el arbol Typer: cada comando registrado tiene 'Codigos de salida' en su help."""
+        from typer.testing import CliRunner
+
+        from odev.main import app
+
+        runner = CliRunner()
+
+        # Recopilar todos los comandos de primer nivel
+        commands = [cmd.name for cmd in app.registered_commands if cmd.name is not None]
+        # Tambien los subcomandos de db
+        from odev.commands import db
+        db_commands = [cmd.name for cmd in db.app.registered_commands if cmd.name is not None]
+
+        missing_epilog = []
+
+        for cmd_name in commands:
+            result = runner.invoke(app, [cmd_name, "--help"])
+            if "Codigos de salida" not in result.output:
+                missing_epilog.append(f"odev {cmd_name}")
+
+        for cmd_name in db_commands:
+            result = runner.invoke(app, ["db", cmd_name, "--help"])
+            if "Codigos de salida" not in result.output:
+                missing_epilog.append(f"odev db {cmd_name}")
+
+        assert missing_epilog == [], (
+            f"Comandos sin 'Codigos de salida' en --help: {missing_epilog}"
+        )

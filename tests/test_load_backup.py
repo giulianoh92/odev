@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from odev.commands.load_backup import _validar_miembros_zip, LOAD_BACKUP_UNSAFE_MEMBER
+from odev.commands.load_backup import _validar_miembros_zip
 
 
 def _crear_zip_con_miembros(miembros: list[str], contenido: bytes = b"data") -> io.BytesIO:

@@ -96,7 +96,7 @@ class TestActualizarGitignore:
         contenido = (tmp_path / ".gitignore").read_text()
         # Ninguna variante de addons debe estar presente
         for variante in ["addons/", "addons", "/addons/", "/addons"]:
-            lineas_resultado = [l.strip() for l in contenido.splitlines()]
+            lineas_resultado = [line.strip() for line in contenido.splitlines()]
             assert variante not in lineas_resultado, f"'{variante}' sigue en .gitignore"
 
     def test_agrega_entradas_faltantes(self, tmp_path):

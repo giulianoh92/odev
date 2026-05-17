@@ -13,7 +13,12 @@ from pathlib import Path
 import typer
 from rich.table import Table
 
-from odev.commands._helpers import obtener_docker, obtener_rutas, requerir_proyecto
+from odev.commands._helpers import (
+    EPILOG_EXIT_CODES,
+    obtener_docker,
+    obtener_rutas,
+    requerir_proyecto,
+)
 from odev.core.config import load_env
 from odev.core.console import console, error, info, success, warning
 from odev.core.paths import ProjectPaths, get_sql_templates_dir
@@ -48,7 +53,7 @@ def _obtener_info_bd() -> tuple[str, str, ProjectPaths, ProjectContext]:
     )
 
 
-@app.command()
+@app.command(epilog=EPILOG_EXIT_CODES)
 def snapshot(
     name: str = typer.Argument(..., help="Nombre para el snapshot."),
 ) -> None:
@@ -82,9 +87,15 @@ def snapshot(
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(epilog=EPILOG_EXIT_CODES)
 def restore(
     name: str = typer.Argument(..., help="Nombre o prefijo del snapshot a restaurar."),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Saltar la confirmacion interactiva. Util para uso en agentes/CI.",
+    ),
 ) -> None:
     """Restaura la base de datos desde un snapshot.
 
@@ -102,10 +113,11 @@ def restore(
     dc = obtener_docker(contexto)
 
     warning(f"Esto REEMPLAZARA la base de datos '{nombre_bd}' con el snapshot: {ruta_archivo.name}")
-    confirmacion = typer.confirm("Continuar?", default=False)
-    if not confirmacion:
-        info("Operacion cancelada.")
-        raise typer.Exit()
+    if not yes:
+        confirmacion = typer.confirm("Continuar?", default=False)
+        if not confirmacion:
+            info("Operacion cancelada.")
+            raise typer.Exit()
 
     info("Deteniendo servicio web...")
     dc.stop("web")
@@ -131,7 +143,7 @@ def restore(
     success(f"Base de datos restaurada desde: {ruta_archivo.name}")
 
 
-@app.command("list")
+@app.command("list", epilog=EPILOG_EXIT_CODES)
 def list_snapshots() -> None:
     """Lista los snapshots de base de datos disponibles.
 
@@ -168,7 +180,7 @@ def list_snapshots() -> None:
     console.print(tabla)
 
 
-@app.command()
+@app.command(epilog=EPILOG_EXIT_CODES)
 def anonymize() -> None:
     """Anonimiza datos personales en la base de datos.
 

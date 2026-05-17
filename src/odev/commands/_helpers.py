@@ -20,6 +20,18 @@ from odev.core.resolver import (
 )
 
 # ---------------------------------------------------------------------------
+# Epilog de codigos de salida — D11
+# ---------------------------------------------------------------------------
+
+EPILOG_EXIT_CODES = """\
+Codigos de salida:
+  0  exito
+  1  error de proyecto / runtime
+  2  error de uso (argumento invalido, modulo no existe)
+  3  error de entorno (puerto, DB, Docker no disponible)
+"""
+
+# ---------------------------------------------------------------------------
 # Modulos builtin de Odoo — bypass del pre-flight de validacion
 # ---------------------------------------------------------------------------
 

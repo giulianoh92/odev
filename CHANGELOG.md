@@ -18,7 +18,10 @@ Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
 - D4: `odev status --json` / `-j` — emite array JSON `[{"service": str, "status": str, "ports": [int]}, ...]`. Stack down retorna `[]`. Sin proyecto retorna `{"error": "..."}` en stderr con exit 1.
 - D5: `odev context --json --quiet` — emite objeto JSON con `project_name`, `odoo_version`, `addons_paths`, `modules_installed`, `db`. `--quiet` suprime decoraciones Rich. `--json` solo siempre suprime Markdown.
 - D6: `odev sql --json` / `-j` — emite array JSON de filas como lista de dicts `[{"col": "val", ...}]`. Valores como strings (protocolo texto psql — usar CAST en SQL para tipos). Cero filas retorna `[]`. Error psql en stderr JSON + exit 1. Mutuamente excluyente con `--csv` (exit 2).
+- D8: `odev test module:Class.method` — shorthand para filtrar tests por clase/metodo sin escribir `--tags` a mano. `odev test mymod:TestFoo.test_bar` se expande a `--test-tags /mymod:TestFoo.test_bar`. CSV+colon invalido (exit 2 con mensaje de uso).
 - D9: `odev modules --json` — nuevo comando. Lista modulos instalados desde `ir_module_module` (`state IN ('installed', 'to upgrade', 'to install')`). Schema: `[{"name": str, "state": str, "version": str}]`. Dependencias entre modulos diferidas a 0.6.0.
+- D10: `odev db restore --yes` / `-y` — flag para saltarse la confirmacion interactiva. Util para agentes IA y scripts CI. Sin el flag, el comportamiento de prompt existente no cambia.
+- D11: Codigos de salida en `--help` de todos los comandos publicos — cada comando expone una seccion epilog estandar con codigos 0/1/2/3 y sus significados. Constante `EPILOG_EXIT_CODES` en `commands/_helpers.py`.
 
 ### Cambiado
 

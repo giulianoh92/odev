@@ -1106,3 +1106,128 @@ class TestCSVModules:
             code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
             assert code != 2
         mock_dc.exec_cmd_stream.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# T-shorthand — D8: module:Class.method shorthand parser (Spec C8)
+# ---------------------------------------------------------------------------
+
+
+class TestTargetShorthand:
+    """D8: 'module:Class.method' shorthand expands to --test-tags /mod:Class.method.
+
+    Spec C8-1: shorthand expands to test-tags
+    Spec C8-2: bare module is backward compatible
+    Spec C8-3: class-only shorthand (no method)
+    Design D8: CSV+colon rejected with exit 2
+    """
+
+    def _call_with_shorthand(self, tmp_path: Path, module: str, monkeypatch):
+        """Helper: llama _run_test con el modulo indicado, captura el comando enviado a docker."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+
+        from odev.commands.test import _run_test
+
+        ctx = _make_contexto(tmp_path)
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        with (
+            patch("odev.commands.test.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.test.obtener_rutas") as mock_rutas,
+            patch("odev.commands.test.obtener_docker", return_value=mock_dc),
+            patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands.test.validar_modulos", return_value=None),
+        ):
+            mock_rutas.return_value.env_file = tmp_path / ".env"
+            try:
+                _run_test(
+                    module=module,
+                    log_level="test",
+                    summary=True,
+                    failures_only=False,
+                    json_out=False,
+                    tags=None,
+                    save_log=None,
+                    no_validate=True,
+                )
+            except (SystemExit, Exception) as e:
+                import typer as ty
+                if not isinstance(e, (SystemExit, ty.Exit)):
+                    raise
+        return mock_dc
+
+    def test_shorthand_class_method_expands_to_test_tags(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """C8-1: 'mymod:TestFoo.test_bar' → --test-tags /mymod:TestFoo.test_bar."""
+        mock_dc = self._call_with_shorthand(tmp_path, "mymod:TestFoo.test_bar", monkeypatch)
+
+        cmd = mock_dc.exec_cmd_stream.call_args[0][1]
+        assert "--test-tags" in cmd
+        idx = cmd.index("--test-tags")
+        assert "/mymod:TestFoo.test_bar" in cmd[idx + 1]
+
+    def test_shorthand_class_only_expands_to_test_tags(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """C8-3: 'mymod:TestFoo' (class, no method) → --test-tags /mymod:TestFoo."""
+        mock_dc = self._call_with_shorthand(tmp_path, "mymod:TestFoo", monkeypatch)
+
+        cmd = mock_dc.exec_cmd_stream.call_args[0][1]
+        assert "--test-tags" in cmd
+        idx = cmd.index("--test-tags")
+        assert "/mymod:TestFoo" in cmd[idx + 1]
+
+    def test_bare_module_backward_compat(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """C8-2: bare 'mymod' (no colon) → backward compat, --test-tags /mymod."""
+        mock_dc = self._call_with_shorthand(tmp_path, "mymod", monkeypatch)
+
+        cmd = mock_dc.exec_cmd_stream.call_args[0][1]
+        # No shorthand expansion — standard prefix behavior
+        assert "--test-tags" in cmd
+        idx = cmd.index("--test-tags")
+        # Must be plain /mymod (no colon suffix)
+        val = cmd[idx + 1]
+        assert val == "/mymod"
+
+    def test_csv_con_colon_rechazado_exit_2(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """D8: CSV+colon ('mod1,mod2:Class.method') → exit 2, no docker call."""
+        import typer as ty
+
+        from odev.commands.test import _run_test
+
+        ctx = _make_contexto(tmp_path)
+        mock_dc = MagicMock()
+
+        with (
+            patch("odev.commands.test.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.test.obtener_rutas") as mock_rutas,
+            patch("odev.commands.test.obtener_docker", return_value=mock_dc),
+            patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands.test.validar_modulos", return_value=None),
+        ):
+            mock_rutas.return_value.env_file = tmp_path / ".env"
+            with pytest.raises((SystemExit, ty.Exit)) as exc_info:
+                _run_test(
+                    module="mod1,mod2:TestFoo.test_bar",
+                    log_level="test",
+                    summary=True,
+                    failures_only=False,
+                    json_out=False,
+                    tags=None,
+                    save_log=None,
+                    no_validate=True,
+                )
+
+        exc = exc_info.value
+        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
+        assert code == 2
+        mock_dc.exec_cmd_stream.assert_not_called()

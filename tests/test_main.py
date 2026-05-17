@@ -7,11 +7,9 @@ como se espera.
 
 import logging
 
-import pytest
 from typer.testing import CliRunner
 
 from odev.main import app
-
 
 runner = CliRunner()
 

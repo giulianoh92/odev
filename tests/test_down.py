@@ -7,8 +7,6 @@ Cubre:
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 
 def _hacer_mocks_base(tmp_path: Path):
     """Construye los mocks comunes para contexto y docker."""

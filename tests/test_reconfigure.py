@@ -88,7 +88,6 @@ class TestNecesitaRegeneracion:
         ctx = _crear_contexto(directorio_proyecto)
 
         # Asegurar que compose tiene un mtime anterior
-        compose = directorio_proyecto / "docker-compose.yml"
         yaml_file = directorio_proyecto / ".odev.yaml"
 
         # Tocar .odev.yaml para que sea mas nuevo

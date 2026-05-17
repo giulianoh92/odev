@@ -35,6 +35,7 @@ from odev.commands import (
     up,
     update,
 )
+from odev.commands._helpers import EPILOG_EXIT_CODES
 from odev.commands.init import init as init_command
 
 app = typer.Typer(
@@ -104,41 +105,37 @@ def obtener_nombre_proyecto() -> str | None:
 
 
 # --- Registro de comandos ---
-app.command()(init_command)
-app.command(name="up")(up.up)
-app.command(name="down")(down.down)
-app.command(name="restart")(restart.restart)
-app.command(name="status")(status.status)
-app.command(name="logs")(logs.logs)
-app.command(name="shell")(shell.shell)
+app.command(epilog=EPILOG_EXIT_CODES)(init_command)
+app.command(name="up", epilog=EPILOG_EXIT_CODES)(up.up)
+app.command(name="down", epilog=EPILOG_EXIT_CODES)(down.down)
+app.command(name="restart", epilog=EPILOG_EXIT_CODES)(restart.restart)
+app.command(name="status", epilog=EPILOG_EXIT_CODES)(status.status)
+app.command(name="logs", epilog=EPILOG_EXIT_CODES)(logs.logs)
+app.command(name="shell", epilog=EPILOG_EXIT_CODES)(shell.shell)
 app.command(
     name="test",
     epilog=(
-        "Codigos de salida:\n"
-        "  0  Tests pasaron sin failures ni errores\n"
-        "  1  Hubo failures o errores en tests\n"
-        "  2  Error de uso (modulo no existe)\n"
-        "  3  Error de entorno (puerto ocupado, DB no disponible)\n\n"
-        "Formato de --tags (Odoo --test-tags):\n"
+        EPILOG_EXIT_CODES
+        + "\nFormato de --tags (Odoo --test-tags):\n"
         "  /modulo:Clase           filtrar por clase\n"
         "  /modulo:Clase.metodo   filtrar por metodo\n"
         "  :metodo                 metodo en cualquier clase\n"
         "  tag1,tag2              filtrar por @tagged()"
     ),
 )(test.test)
-app.command(name="sql")(sql.sql)
-app.command(name="py")(py.py)
-app.command(name="modules")(modules.modules)
-app.command(name="scaffold")(scaffold.scaffold)
-app.command(name="addon-install")(install.install)
-app.command(name="update")(update.update)
-app.command(name="reset-db")(reset_db.reset_db)
-app.command(name="load-backup")(load_backup.load_backup)
-app.command(name="context")(context.context)
-app.command(name="tui")(tui.tui)
-app.command(name="migrate")(migrate.migrate)
-app.command(name="doctor")(doctor.doctor)
-app.command(name="self-update")(self_update.self_update)
+app.command(name="sql", epilog=EPILOG_EXIT_CODES)(sql.sql)
+app.command(name="py", epilog=EPILOG_EXIT_CODES)(py.py)
+app.command(name="modules", epilog=EPILOG_EXIT_CODES)(modules.modules)
+app.command(name="scaffold", epilog=EPILOG_EXIT_CODES)(scaffold.scaffold)
+app.command(name="addon-install", epilog=EPILOG_EXIT_CODES)(install.install)
+app.command(name="update", epilog=EPILOG_EXIT_CODES)(update.update)
+app.command(name="reset-db", epilog=EPILOG_EXIT_CODES)(reset_db.reset_db)
+app.command(name="load-backup", epilog=EPILOG_EXIT_CODES)(load_backup.load_backup)
+app.command(name="context", epilog=EPILOG_EXIT_CODES)(context.context)
+app.command(name="tui", epilog=EPILOG_EXIT_CODES)(tui.tui)
+app.command(name="migrate", epilog=EPILOG_EXIT_CODES)(migrate.migrate)
+app.command(name="doctor", epilog=EPILOG_EXIT_CODES)(doctor.doctor)
+app.command(name="self-update", epilog=EPILOG_EXIT_CODES)(self_update.self_update)
 
 # --- Registro de subgrupos ---
 app.add_typer(db.app, name="db", rich_help_panel="Subgrupos")
@@ -147,14 +144,14 @@ app.add_typer(db.app, name="db", rich_help_panel="Subgrupos")
 try:
     from odev.commands.adopt import adopt
 
-    app.command(name="adopt")(adopt)
+    app.command(name="adopt", epilog=EPILOG_EXIT_CODES)(adopt)
 except ImportError:
     pass
 
 try:
     from odev.commands.reconfigure import reconfigure
 
-    app.command(name="reconfigure")(reconfigure)
+    app.command(name="reconfigure", epilog=EPILOG_EXIT_CODES)(reconfigure)
 except ImportError:
     pass
 
