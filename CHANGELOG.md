@@ -6,6 +6,40 @@ El formato esta basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 y este proyecto adhiere a [Versionado Semantico](https://semver.org/spec/v2.0.0.html).
 Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
 
+## [0.4.1] - 2026-05-17
+
+### Corregido
+
+- B1: Rechazo de miembros ZIP con path traversal (`../../` o absoluto) en `odev load-backup`; error `LOAD_BACKUP_UNSAFE_MEMBER` en exit 1
+- B2: Eliminado race condition TOCTOU en escritura del registro (`registry.yaml`) — siempre usa modo `"w"` bajo flock
+- B4/Q8: Reemplazado `asyncio.get_event_loop()` por `asyncio.get_running_loop()` en `LogViewer` (compat Python 3.12+)
+- B5: Narrowed `except Exception: pass` a `except (subprocess.SubprocessError, OSError)` en `reset_db._esperar_base_datos_lista`
+- B6: Guard de `ImportError` en `import fcntl` para compatibilidad Windows; degrada a lock de thread sin flock
+- Q2: `registry._leer()` crea `.bak` y emite warning `REGISTRY_YAML_CORRUPT` cuando el YAML es invalido, en lugar de perderse silenciosamente
+- Q4: URL de pgweb en `odev up` solo se imprime cuando `services.pgweb: true` en `odev.yaml`
+- Q6: `odev doctor` ejecuta el GC del registro (`_ejecutar_registry_gc_y_backfill`) **antes** de verificar puertos, limpiando orphans primero
+- Q7: `odev up` incluye hint `odev doctor` y `odev --project {owner} down` en el mensaje de error de preflight cuando hay conflicto de puertos
+
+### Seguridad
+
+- S1: `.env` creado por `odev init` / `odev adopt` recibe `chmod 0600` inmediatamente; impide lectura por otros usuarios del sistema
+- S2: Regex de validacion de `DB_NAME` en `load-backup` restringido a `^[a-zA-Z_][a-zA-Z0-9_]*$`; rechaza nombres con `.`, `-` o digito inicial
+- S3: `odev migrate` emite advertencia y aplica `chmod 0600` al `.env.example` generado; agrega header de aviso de secretos al archivo
+
+### Cambiado
+
+- Q1: Flag global `--debug` en `odev`; activa `logging.DEBUG` en todos los loggers antes de ejecutar cualquier subcomando
+- Q10: `PORT_KEYS` derivado de `CONJUNTOS_PUERTOS.keys()` en `core/ports.py` — fuente unica de verdad para claves de puerto; elimina listas duplicadas en `up.py` y `doctor.py`
+
+### Agregado
+
+- Q3: Subgrupos `db`, `projects` y `enterprise` aparecen bajo panel **Subgrupos** en `odev --help` via `rich_help_panel`
+- Q9: Columna **Puertos** en `StatusPanel` del TUI — muestra puertos publicados de cada servicio Docker leidos de `docker compose ps --format json`
+
+### Cambios incompatibles
+
+- S2: La regex estricta de `DB_NAME` rechaza proyectos existentes con `.` o `-` en el nombre de base de datos. Para migrar: renombrar la BD de Postgres o usar `odev load-backup` sobre una copia renombrada.
+
 ## [0.4.0] - 2026-05-17
 
 ### Agregado

@@ -61,6 +61,23 @@ El comando `adopt` detecta automaticamente el layout del repositorio (modulo uni
 - **Diagnostico del entorno** -- `odev doctor` verifica Docker, Compose, puertos, archivos de configuracion y compatibilidad de versiones
 - **Auto-actualizacion** -- `odev self-update` actualiza a la ultima version via pip
 
+## Opciones Globales
+
+Las siguientes opciones aplican a todos los comandos y deben pasarse **antes** del subcomando:
+
+| Opcion | Descripcion |
+|--------|-------------|
+| `--project` / `-p` | Nombre del proyecto cuando hay ambiguedad (multiples proyectos en el mismo directorio) |
+| `--version` / `-V` | Muestra la version instalada de odev |
+| `--debug` | Activa logging `DEBUG` global — imprime mensajes internos de todos los subsistemas en stderr |
+
+```bash
+# Activar debug para diagnosticar problemas
+odev --debug up
+odev --debug doctor
+odev --project mi-proyecto --debug status
+```
+
 ## Referencia de Comandos
 
 ### Referencia Rapida
