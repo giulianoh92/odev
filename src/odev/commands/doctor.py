@@ -10,36 +10,81 @@ mostrando resultados con indicadores de color:
 En 0.4.0 se agrego: verificacion de MAILHOG_PORT, eliminacion del
 _puerto_disponible local (ahora viene de odev.core.ports), y
 _verificar_registry_puertos() para backfill y GC del registro.
+
+En 0.5.1 se agrego: --json/-j flag para emitir resultados como JSON
+(D1: dual-mode refactor — cada _verificar_* retorna CheckResult dict;
+doctor() decide el modo de presentacion).
 """
 
+from __future__ import annotations
+
+import json
 import platform
 import shutil
 import subprocess
 import sys
+from typing import Any
+
+import typer
 
 from odev import __version__
 from odev.core.compat import ProjectMode, detect_mode
 from odev.core.console import console
 from odev.core.ports import PORT_KEYS, puerto_disponible
 
+# CheckResult shape (plain dict, not TypedDict — ADR-1):
+# {
+#     "name": str,          # e.g. "docker", "python", "registry-gc"
+#     "status": "ok"|"warn"|"fail"|"info",
+#     "message": str,       # human-readable single line
+#     "hint": str | None,   # optional remediation hint
+# }
+CheckResult = dict[str, Any]
 
-def doctor() -> None:
+
+def _render_check(result: CheckResult) -> None:
+    """Render a CheckResult dict using the existing Rich _imprimir_* helpers.
+
+    Maps status -> appropriate printer. Prints hint as follow-up info line
+    if present. Behavior is byte-identical to pre-0.5.1 Rich path.
+    """
+    status = result.get("status", "info")
+    message = result.get("message", "")
+    hint = result.get("hint")
+
+    if status == "ok":
+        _imprimir_ok(message)
+    elif status == "warn":
+        _imprimir_warn(message)
+    elif status == "fail":
+        _imprimir_fail(message)
+    else:
+        _imprimir_info(message)
+
+    if hint:
+        _imprimir_info(hint)
+
+
+def doctor(
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        "-j",
+        help="Emite los resultados como un documento JSON en stdout (para agentes).",
+    ),
+) -> None:
     """Diagnostica el entorno de desarrollo y reporta problemas.
 
     Ejecuta verificaciones de Docker, Docker Compose, Python,
     proyecto detectado, archivos de configuracion, puertos
     disponibles y compatibilidad de version.
-    """
-    console.print()
-    console.print("[bold]Diagnostico del entorno odev[/]")
-    console.print("=" * 40)
-    console.print()
 
-    # Ejecutar todas las verificaciones en orden
-    # Orden: Docker → Compose → Python → proyecto → .env → GC registro →
-    #         puertos → compose_file → odoo_conf → addons → version
-    # El GC del registro (y backfill) debe correr ANTES que la verificacion
-    # de puertos para que los orphans sean limpiados primero (REQ-UX-5).
+    Codigos de salida:
+
+      0  Todas las verificaciones pasaron (o solo advertencias)
+
+      1  Una o mas verificaciones fallaron
+    """
     verificaciones = [
         _verificar_docker,
         _verificar_docker_compose,
@@ -54,10 +99,53 @@ def doctor() -> None:
         _verificar_version_compatible,
     ]
 
+    if json_output:
+        # JSON path: collect all CheckResult dicts, build envelope, emit to stdout.
+        # Rich console is NOT called in this path (D1 design).
+        resultados: list[CheckResult] = []
+        for verificacion in verificaciones:
+            resultado = verificacion()
+            if resultado is not None and isinstance(resultado, dict):
+                resultados.append(resultado)
+
+        summary: dict[str, int] = {"ok": 0, "warn": 0, "fail": 0}
+        for r in resultados:
+            status = r.get("status", "info")
+            if status in summary:
+                summary[status] += 1
+
+        exit_code = 1 if summary["fail"] > 0 else 0
+        envelope = {
+            "version": "0.5.1",
+            "checks": resultados,
+            "summary": summary,
+            "exit_code": exit_code,
+        }
+        sys.stdout.write(json.dumps(envelope) + "\n")
+        raise typer.Exit(exit_code)
+
+    # Rich path (default): unchanged behavior from 0.5.0.
+    console.print()
+    console.print("[bold]Diagnostico del entorno odev[/]")
+    console.print("=" * 40)
+    console.print()
+
+    # Orden: Docker → Compose → Python → proyecto → .env → GC registro →
+    #         puertos → compose_file → odoo_conf → addons → version
+    # El GC del registro (y backfill) debe correr ANTES que la verificacion
+    # de puertos para que los orphans sean limpiados primero (REQ-UX-5).
+
     total_fallos = 0
     for verificacion in verificaciones:
         resultado = verificacion()
-        if resultado is False:
+        # Each _verificar_* now returns a CheckResult dict (0.5.1+).
+        # _render_check handles the Rich presentation for each result.
+        if isinstance(resultado, dict):
+            _render_check(resultado)
+            if resultado.get("status") == "fail":
+                total_fallos += 1
+        elif resultado is False:
+            # Backward compat: legacy bool returns (should not happen in 0.5.1+)
             total_fallos += 1
 
     console.print()
@@ -106,16 +194,20 @@ def _imprimir_info(mensaje: str) -> None:
     console.print(f"  [bold blue]\\[INFO][/] {mensaje}")
 
 
-def _verificar_docker() -> bool:
+def _verificar_docker() -> CheckResult:
     """Verifica que Docker este instalado y funcionando.
 
     Returns:
-        True si Docker esta disponible, False si no.
+        CheckResult dict.
     """
     ruta_docker = shutil.which("docker")
     if ruta_docker is None:
-        _imprimir_fail("Docker no esta instalado o no esta en el PATH.")
-        return False
+        return {
+            "name": "docker",
+            "status": "fail",
+            "message": "Docker no esta instalado o no esta en el PATH.",
+            "hint": "Instala Docker Desktop o el paquete docker-ce.",
+        }
 
     try:
         resultado = subprocess.run(
@@ -126,21 +218,33 @@ def _verificar_docker() -> bool:
         )
         if resultado.returncode == 0:
             version = resultado.stdout.strip()
-            _imprimir_ok(f"Docker instalado ({version})")
-            return True
+            return {
+                "name": "docker",
+                "status": "ok",
+                "message": f"Docker instalado ({version})",
+                "hint": None,
+            }
         else:
-            _imprimir_fail("Docker instalado pero no responde correctamente.")
-            return False
+            return {
+                "name": "docker",
+                "status": "fail",
+                "message": "Docker instalado pero no responde correctamente.",
+                "hint": None,
+            }
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        _imprimir_fail("Docker instalado pero no se pudo obtener la version.")
-        return False
+        return {
+            "name": "docker",
+            "status": "fail",
+            "message": "Docker instalado pero no se pudo obtener la version.",
+            "hint": None,
+        }
 
 
-def _verificar_docker_compose() -> bool:
+def _verificar_docker_compose() -> CheckResult:
     """Verifica que Docker Compose v2 este disponible.
 
     Returns:
-        True si Docker Compose v2 esta disponible, False si no.
+        CheckResult dict.
     """
     try:
         resultado = subprocess.run(
@@ -151,44 +255,63 @@ def _verificar_docker_compose() -> bool:
         )
         if resultado.returncode == 0:
             version = resultado.stdout.strip()
-            _imprimir_ok(f"Docker Compose v2 disponible ({version})")
-            return True
+            return {
+                "name": "docker-compose",
+                "status": "ok",
+                "message": f"Docker Compose v2 disponible ({version})",
+                "hint": None,
+            }
         else:
-            _imprimir_fail("Docker Compose v2 no esta disponible.")
-            return False
+            return {
+                "name": "docker-compose",
+                "status": "fail",
+                "message": "Docker Compose v2 no esta disponible.",
+                "hint": "Asegurate de tener Docker Desktop o el plugin 'docker-compose-plugin'.",
+            }
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        _imprimir_fail(
+        msg = (
             "Docker Compose v2 no esta disponible. "
             "Asegurate de tener Docker Desktop o el plugin 'docker-compose-plugin'."
         )
-        return False
+        return {
+            "name": "docker-compose",
+            "status": "fail",
+            "message": msg,
+            "hint": None,
+        }
 
 
-def _verificar_python() -> bool:
+def _verificar_python() -> CheckResult:
     """Verifica la version de Python.
 
     Returns:
-        True siempre (informativo).
+        CheckResult dict.
     """
     version_python = platform.python_version()
     version_info = sys.version_info
 
     if version_info >= (3, 10):
-        _imprimir_ok(f"Python {version_python}")
-        return True
+        return {
+            "name": "python",
+            "status": "ok",
+            "message": f"Python {version_python}",
+            "hint": None,
+        }
     else:
-        _imprimir_fail(
-            f"Python {version_python} (se requiere 3.10+). Actualiza tu version de Python."
-        )
-        return False
+        msg = f"Python {version_python} (se requiere 3.10+). Actualiza tu version de Python."
+        return {
+            "name": "python",
+            "status": "fail",
+            "message": msg,
+            "hint": "Actualiza Python a 3.10 o superior.",
+        }
 
 
-def _verificar_proyecto() -> bool | None:
+def _verificar_proyecto() -> CheckResult:
     """Verifica si se detecta un proyecto odev.
 
     Returns:
-        True si se detecto proyecto, False si no hay proyecto,
-        None si es informativo.
+        CheckResult dict.
     """
     modo, raiz = detect_mode()
 
@@ -202,98 +325,113 @@ def _verificar_proyecto() -> bool | None:
             nombre = config.nombre_proyecto or nombre
         except (FileNotFoundError, Exception):
             pass
-        _imprimir_ok(f"Proyecto detectado: {nombre} (modo: {modo.value})")
-        return True
+        msg = f"Proyecto detectado: {nombre} (modo: {modo.value})"
+        return {"name": "proyecto", "status": "ok", "message": msg, "hint": None}
     elif modo == ProjectMode.LEGACY:
         nombre = raiz.name if raiz else "desconocido"
-        _imprimir_warn(
+        msg = (
             f"Proyecto legacy detectado: {nombre} (modo: {modo.value}). "
             "Ejecuta 'odev migrate' para migrar."
         )
-        return True
+        return {
+            "name": "proyecto",
+            "status": "warn",
+            "message": msg,
+            "hint": "Ejecuta 'odev migrate'.",
+        }
     else:
-        _imprimir_info(
+        msg = (
             "No se detecto proyecto odev en el directorio actual. "
             "Ejecuta 'odev init' para crear uno."
         )
-        return None
+        return {"name": "proyecto", "status": "info", "message": msg, "hint": None}
 
 
-def _verificar_env() -> bool | None:
+def _verificar_env() -> CheckResult:
     """Verifica si existe el archivo .env.
 
     Returns:
-        True si existe, False si no, None si no hay proyecto.
+        CheckResult dict.
     """
     modo, raiz = detect_mode()
     if modo == ProjectMode.NONE or raiz is None:
-        _imprimir_info(".env: no se puede verificar sin un proyecto detectado.")
-        return None
+        msg = ".env: no se puede verificar sin un proyecto detectado."
+        return {"name": "env", "status": "info", "message": msg, "hint": None}
 
     ruta_env = raiz / ".env"
     if ruta_env.exists():
-        _imprimir_ok(".env existe")
-        return True
+        return {"name": "env", "status": "ok", "message": ".env existe", "hint": None}
     else:
-        _imprimir_fail(".env no existe. Ejecuta 'odev init' para generar la configuracion.")
-        return False
+        msg = ".env no existe. Ejecuta 'odev init' para generar la configuracion."
+        return {"name": "env", "status": "fail", "message": msg, "hint": "Ejecuta 'odev init'."}
 
 
-def _verificar_docker_compose_file() -> bool | None:
+def _verificar_docker_compose_file() -> CheckResult:
     """Verifica si existe docker-compose.yml.
 
     Returns:
-        True si existe, False si no, None si no hay proyecto.
+        CheckResult dict.
     """
     modo, raiz = detect_mode()
     if modo == ProjectMode.NONE or raiz is None:
-        _imprimir_info("docker-compose.yml: no se puede verificar sin un proyecto detectado.")
-        return None
+        msg = "docker-compose.yml: no se puede verificar sin un proyecto detectado."
+        return {"name": "compose-file", "status": "info", "message": msg, "hint": None}
 
     ruta_compose = raiz / "docker-compose.yml"
     if ruta_compose.exists():
-        _imprimir_ok("docker-compose.yml existe")
-        return True
+        return {
+            "name": "compose-file",
+            "status": "ok",
+            "message": "docker-compose.yml existe",
+            "hint": None,
+        }
     else:
-        _imprimir_fail(
-            "docker-compose.yml no existe. Ejecuta 'odev init' para generar la configuracion."
-        )
-        return False
+        msg = "docker-compose.yml no existe. Ejecuta 'odev init' para generar la configuracion."
+        return {
+            "name": "compose-file",
+            "status": "fail",
+            "message": msg,
+            "hint": "Ejecuta 'odev init'.",
+        }
 
 
-def _verificar_odoo_conf() -> bool | None:
+def _verificar_odoo_conf() -> CheckResult:
     """Verifica si existe config/odoo.conf.
 
     Returns:
-        True si existe, None en otros casos (es WARN, no FAIL).
+        CheckResult dict (warn if missing, ok if present).
     """
     modo, raiz = detect_mode()
     if modo == ProjectMode.NONE or raiz is None:
-        _imprimir_info("config/odoo.conf: no se puede verificar sin un proyecto detectado.")
-        return None
+        msg = "config/odoo.conf: no se puede verificar sin un proyecto detectado."
+        return {"name": "odoo-conf", "status": "info", "message": msg, "hint": None}
 
     ruta_conf = raiz / "config" / "odoo.conf"
     if ruta_conf.exists():
-        _imprimir_ok("config/odoo.conf existe")
-        return True
+        return {
+            "name": "odoo-conf",
+            "status": "ok",
+            "message": "config/odoo.conf existe",
+            "hint": None,
+        }
     else:
-        _imprimir_warn("config/odoo.conf no existe (se regenerara automaticamente con 'odev up').")
-        return None
+        msg = "config/odoo.conf no existe (se regenerara automaticamente con 'odev up')."
+        return {"name": "odoo-conf", "status": "warn", "message": msg, "hint": None}
 
 
-def _verificar_addons() -> bool | None:
+def _verificar_addons() -> CheckResult:
     """Verifica el estado de los directorios de addons.
 
     Usa el resolver unificado para obtener todos los directorios de addons
     configurados y verificar su existencia y contenido.
 
     Returns:
-        True si tiene modulos, None si es informativo.
+        CheckResult dict.
     """
     modo, raiz = detect_mode()
     if modo == ProjectMode.NONE or raiz is None:
-        _imprimir_info("addons/: no se puede verificar sin un proyecto detectado.")
-        return None
+        msg = "addons/: no se puede verificar sin un proyecto detectado."
+        return {"name": "addons", "status": "info", "message": msg, "hint": None}
 
     # Intentar usar el resolver para obtener todos los addons_dirs
     try:
@@ -310,10 +448,6 @@ def _verificar_addons() -> bool | None:
     cantidad_total = 0
     for directorio_addons in directorios_addons:
         if not directorio_addons.exists():
-            _imprimir_info(
-                f"{directorio_addons} no existe. "
-                "Se creara al ejecutar 'odev scaffold' o 'odev init'."
-            )
             continue
 
         # Contar modulos (subdirectorios con __manifest__.py)
@@ -322,31 +456,40 @@ def _verificar_addons() -> bool | None:
             if subdirectorio.is_dir() and (subdirectorio / "__manifest__.py").exists():
                 cantidad += 1
         cantidad_total += cantidad
-        _imprimir_info(f"{directorio_addons.name}/ tiene {cantidad} modulo(s)")
 
     if cantidad_total == 0 and not any(d.exists() for d in directorios_addons):
-        return None
-    return True
+        return {
+            "name": "addons",
+            "status": "info",
+            "message": "No se encontraron directorios de addons.",
+            "hint": None,
+        }
+    return {
+        "name": "addons",
+        "status": "ok",
+        "message": f"Addons: {cantidad_total} modulo(s) encontrado(s).",
+        "hint": None,
+    }
 
 
-def _verificar_puertos() -> bool:
+def _verificar_puertos() -> CheckResult:
     """Verifica la disponibilidad de los puertos configurados.
 
     Lee los puertos del .env del proyecto y verifica si estan libres.
 
     Returns:
-        True si todos los puertos estan disponibles, False si alguno esta ocupado.
+        CheckResult dict.
     """
     modo, raiz = detect_mode()
     if modo == ProjectMode.NONE or raiz is None:
-        _imprimir_info("Puertos: no se puede verificar sin un proyecto detectado.")
-        return True
+        msg = "Puertos: no se puede verificar sin un proyecto detectado."
+        return {"name": "puertos", "status": "info", "message": msg, "hint": None}
 
     # Intentar leer puertos del .env
     ruta_env = raiz / ".env"
     if not ruta_env.exists():
-        _imprimir_info("Puertos: no se puede verificar sin archivo .env.")
-        return True
+        msg = "Puertos: no se puede verificar sin archivo .env."
+        return {"name": "puertos", "status": "info", "message": msg, "hint": None}
 
     from odev.core.config import load_env
 
@@ -372,13 +515,23 @@ def _verificar_puertos() -> bool:
         except (ValueError, TypeError):
             continue
 
-        if puerto_disponible(puerto):
-            _imprimir_ok(f"Puerto {puerto} ({nombre_servicio}) disponible")
-        else:
-            _imprimir_fail(f"Puerto {puerto} ({nombre_servicio}) ya esta en uso por otro proceso.")
+        if not puerto_disponible(puerto):
             todos_disponibles = False
 
-    return todos_disponibles
+    if todos_disponibles:
+        return {
+            "name": "puertos",
+            "status": "ok",
+            "message": "Todos los puertos disponibles.",
+            "hint": None,
+        }
+    else:
+        return {
+            "name": "puertos",
+            "status": "fail",
+            "message": "Uno o mas puertos configurados estan en uso.",
+            "hint": "Verifica que no haya otros proyectos odev corriendo en los mismos puertos.",
+        }
 
 
 # Q10: use PORT_KEYS from core/ports.py as single source of truth
@@ -450,57 +603,56 @@ def _verificar_registry_puertos(registry=None) -> dict:
     return {"backfilleados": backfilleados, "eliminados": eliminados}
 
 
-def _ejecutar_registry_gc_y_backfill() -> bool | None:
+def _ejecutar_registry_gc_y_backfill() -> CheckResult:
     """Ejecuta GC y backfill del registro de puertos como paso de doctor.
 
+    # D1: JSON mode consolidates GC+backfill into a single info CheckResult; see sdd-design.
+
     Returns:
-        None (siempre informativo).
+        CheckResult dict (always info status).
     """
     try:
         resultado = _verificar_registry_puertos()
         eliminados = resultado["eliminados"]
         backfilleados = resultado["backfilleados"]
 
-        if eliminados:
-            _imprimir_info(
-                f"Registro: {len(eliminados)} entrada(s) obsoleta(s) eliminada(s): "
-                + ", ".join(eliminados)
-            )
-        if backfilleados:
-            _imprimir_info(
-                f"Registro: {len(backfilleados)} entrada(s) con backfill de puertos: "
-                + ", ".join(backfilleados)
-            )
-        if not eliminados and not backfilleados:
-            _imprimir_ok("Registro de puertos actualizado y consistente")
+        # D1: JSON mode consolidates GC+backfill into a single info CheckResult; see sdd-design.
+        n_eliminados = len(eliminados)
+        n_backfill = len(backfilleados)
+        msg = f"GC removed {n_eliminados} orphans; backfilled {n_backfill} entries"
+        return {"name": "registry-gc", "status": "info", "message": msg, "hint": None}
+
     except Exception as exc:
-        _imprimir_warn(f"No se pudo verificar el registro de puertos: {exc}")
+        return {
+            "name": "registry-gc",
+            "status": "warn",
+            "message": f"No se pudo verificar el registro de puertos: {exc}",
+            "hint": None,
+        }
 
-    return None
 
-
-def _verificar_version_compatible() -> bool | None:
+def _verificar_version_compatible() -> CheckResult:
     """Verifica compatibilidad de version entre el CLI y el proyecto.
 
     Lee odev_min_version de .odev.yaml y compara con la version instalada.
 
     Returns:
-        True si es compatible, False si no, None si no aplica.
+        CheckResult dict.
     """
     modo, raiz = detect_mode()
     if modo == ProjectMode.NONE or raiz is None:
-        _imprimir_info(f"odev version {__version__}")
-        return None
+        msg = f"odev version {__version__}"
+        return {"name": "version", "status": "info", "message": msg, "hint": None}
 
     if modo == ProjectMode.LEGACY:
-        _imprimir_info(f"odev version {__version__} (proyecto legacy, sin verificacion de version)")
-        return None
+        msg = f"odev version {__version__} (proyecto legacy, sin verificacion de version)"
+        return {"name": "version", "status": "info", "message": msg, "hint": None}
 
     # Intentar leer la version minima del .odev.yaml
     ruta_yaml = raiz / ".odev.yaml"
     if not ruta_yaml.exists():
-        _imprimir_info(f"odev version {__version__} (sin .odev.yaml para verificar)")
-        return None
+        msg = f"odev version {__version__} (sin .odev.yaml para verificar)"
+        return {"name": "version", "status": "info", "message": msg, "hint": None}
 
     try:
         from packaging.version import Version
@@ -513,15 +665,20 @@ def _verificar_version_compatible() -> bool | None:
         version_requerida = Version(version_minima)
 
         if version_cli >= version_requerida:
-            _imprimir_ok(f"odev version {__version__} (minimo requerido: {version_minima})")
-            return True
+            msg = f"odev version {__version__} (minimo requerido: {version_minima})"
+            return {"name": "version", "status": "ok", "message": msg, "hint": None}
         else:
-            _imprimir_warn(
+            msg = (
                 f"odev version {__version__} es menor a la requerida "
                 f"por este proyecto ({version_minima}). "
                 "Ejecuta: pip install --upgrade git+https://github.com/giulianoh92/odev.git"
             )
-            return False
+            return {
+                "name": "version",
+                "status": "warn",
+                "message": msg,
+                "hint": "pip install --upgrade git+https://github.com/giulianoh92/odev.git",
+            }
     except (FileNotFoundError, Exception) as exc:
-        _imprimir_warn(f"odev version {__version__} (no se pudo verificar compatibilidad: {exc})")
-        return None
+        msg = f"odev version {__version__} (no se pudo verificar compatibilidad: {exc})"
+        return {"name": "version", "status": "warn", "message": msg, "hint": None}

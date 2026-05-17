@@ -6,6 +6,16 @@ El formato esta basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 y este proyecto adhiere a [Versionado Semantico](https://semver.org/spec/v2.0.0.html).
 Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
 
+## [0.5.1] - 2026-05-17
+
+### Agregado
+
+- F2: `odev doctor --json` / `-j` — emite documento JSON unico con resultados de todos los checks. Schema: `{"version": "0.5.1", "checks": [{"name": str, "status": "ok"|"warn"|"fail"|"info", "message": str, "hint": str|null}], "summary": {"ok": int, "warn": int, "fail": int}, "exit_code": 0|1}`. Exit 0 si no hay fail, exit 1 si hay al menos uno.
+
+### Interno
+
+- Refactor: `_strip_banner` y `_BANNER_LINE_RE` extraidos de `commands/py.py` a nuevo modulo `commands/_odoo_shell.py` para reutilizacion en futuros comandos de shell Odoo. `py.py` re-importa desde la nueva ubicacion (sin cambio de comportamiento).
+
 ## [0.5.0] - 2026-05-17
 
 ### Cambios incompatibles

@@ -3,6 +3,7 @@
 Cubre:
   - REQ-3: odev py <expression> ejecuta odoo shell via stdin en el contenedor web
   - Scenarios 3-A, 3-B, 3-C, 3-D
+  - T1.1: smoke test _strip_banner importable from odev.commands._odoo_shell
 
 Llama _run_py() directamente para evitar problemas con OptionInfo defaults
 de Typer al invocar py() fuera del CLI runner.
@@ -204,3 +205,38 @@ class TestPyErrorPropagacion:
         assert exc is not None
         code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
         assert code == 1
+
+
+# ---------------------------------------------------------------------------
+# T1.1: Smoke test — _strip_banner importable from _odoo_shell
+# ---------------------------------------------------------------------------
+
+
+class TestOdooShellHelperSmoke:
+    """T1.1: _strip_banner and _BANNER_LINE_RE importable from _odoo_shell module."""
+
+    def test_strip_banner_importable_from_odoo_shell(self) -> None:
+        """_strip_banner must be importable from odev.commands._odoo_shell."""
+        from odev.commands._odoo_shell import _strip_banner  # noqa: PLC2701
+
+        assert callable(_strip_banner)
+
+    def test_banner_line_re_importable_from_odoo_shell(self) -> None:
+        """_BANNER_LINE_RE must be importable from odev.commands._odoo_shell."""
+        import re
+
+        from odev.commands._odoo_shell import _BANNER_LINE_RE  # noqa: PLC2701
+
+        assert isinstance(_BANNER_LINE_RE, re.Pattern)
+
+    def test_strip_banner_identical_output(self) -> None:
+        """_strip_banner from _odoo_shell produces identical output to original."""
+        from odev.commands._odoo_shell import _strip_banner  # noqa: PLC2701
+
+        raw = (
+            b"2024-01-01 12:00:00,000 INFO odoo.modules Loading module base (1/1)\n"
+            b"odoo: mydb>\n"
+            b"42\n"
+        )
+        result = _strip_banner(raw)
+        assert result == "42"
