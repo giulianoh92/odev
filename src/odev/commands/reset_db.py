@@ -57,7 +57,7 @@ def reset_db(
     nombre_bd = valores_env.get("DB_NAME", "odoo_db")
 
     if dry_run:
-        info(f"Modo --dry-run: no se ejecutara ninguna operacion.")
+        info("Modo --dry-run: no se ejecutara ninguna operacion.")
         info(f"  Se borraria la base de datos: {nombre_bd}")
         info("  Se recrearia y levantaria el entorno.")
         if neutralize:
