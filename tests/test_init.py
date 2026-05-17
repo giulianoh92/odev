@@ -276,6 +276,53 @@ class TestInitEntrypoint:
         assert modo & stat.S_IXOTH, "entrypoint.sh debe ser ejecutable por otros"
 
 
+# ── T8 RED: .env debe tener permisos 0600 despues de init ──
+
+
+class TestEnvFilePermisos:
+    """Verifica que el archivo .env creado por init tiene permisos 0600 (S1)."""
+
+    @pytest.mark.skipif(
+        __import__("sys").platform == "win32",
+        reason="chmod semantics differ on Windows",
+    )
+    def test_env_file_tiene_permisos_0600(self, tmp_path):
+        """El archivo .env creado por renderizar_templates tiene permisos 0600.
+
+        T8.1 RED: el test falla hasta que se agregue chmod(0o600) en
+        renderizar_templates().
+        """
+        import stat as stat_mod
+
+        valores = _construir_valores(
+            nombre_proyecto="test-chmod",
+            version_odoo="19.0",
+            puerto_web="8069",
+            puerto_pgweb="8081",
+            nombre_db="test_db",
+            usuario_db="odoo",
+            password_db="odoo",
+            idioma="en_US",
+            sin_demo="all",
+            habilitar_debugpy=False,
+            habilitar_enterprise=False,
+            habilitar_pgweb=True,
+            generar_ci=False,
+            inicializar_git=False,
+            puerto_db="5432",
+            puerto_debugpy="5678",
+        )
+
+        _renderizar_archivos_proyecto(tmp_path, valores)
+
+        ruta_env = tmp_path / ".env"
+        assert ruta_env.exists(), ".env debe existir despues de init"
+        modo = ruta_env.stat().st_mode & 0o777
+        assert modo == 0o600, (
+            f".env debe tener permisos 0600, tiene {oct(modo)}"
+        )
+
+
 class TestConstruirValores:
     """Grupo de tests para la funcion _construir_valores()."""
 

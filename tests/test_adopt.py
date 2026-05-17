@@ -7,6 +7,7 @@ mensaje de error incluya un hint sobre --force.
 """
 
 import inspect
+import sys
 import shutil
 from pathlib import Path
 from unittest.mock import patch
@@ -205,3 +206,63 @@ class TestAdoptUsesAllocatePorts:
 
         # El mock fue creado correctamente (el simbolo existe en el modulo)
         assert mock_alloc is not None
+
+
+# ── T9 RED: .env creado por adopt debe tener permisos 0600 ──
+
+
+class TestAdoptEnvFilePermisos:
+    """Verifica que el archivo .env creado por renderizar_templates tiene permisos 0600 (S1)."""
+
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="chmod semantics differ on Windows",
+    )
+    def test_env_file_tiene_permisos_0600(self, tmp_path):
+        """El archivo .env creado por renderizar_templates tiene permisos 0600.
+
+        T9.1 RED: el test falla hasta que se agregue chmod(0o600) en
+        renderizar_templates(). Como adopt usa renderizar_templates,
+        el fix centralizado en _wizards.py cubre este caso.
+        """
+        from odev.commands._wizards import renderizar_templates
+
+        # Usar el mismo mapa de templates que adopt.py para .env
+        mapa = [("env.j2", ".env")]
+        valores = {
+            "PROJECT_NAME": "test-adopt-chmod",
+            "ODOO_VERSION": "19.0",
+            "WEB_PORT": "8069",
+            "PGWEB_PORT": "8081",
+            "DB_PORT": "5432",
+            "DEBUGPY_PORT": "5678",
+            "MAILHOG_PORT": "8025",
+            "DB_NAME": "test_db",
+            "DB_USER": "odoo",
+            "DB_PASSWORD": "odoo",
+            "IDIOMA": "en_US",
+            "SIN_DEMO": "all",
+            "HABILITAR_DEBUGPY": False,
+            "HABILITAR_PGWEB": True,
+            "COMPOSE_PROJECT_NAME": "test-adopt-chmod",
+            "ODOO_IMAGE_TAG": "19",
+            "DB_IMAGE_TAG": "16",
+            "project_name": "test-adopt-chmod",
+            "odoo_version": "19.0",
+            "odoo_image_tag": "19",
+            "db_image_tag": "16",
+            "enterprise_enabled": False,
+            "debugpy_enabled": False,
+            "pgweb_enabled": True,
+            "sin_demo": "all",
+            "addon_mounts": [],
+        }
+
+        renderizar_templates(tmp_path, valores, mapa)
+
+        ruta_env = tmp_path / ".env"
+        assert ruta_env.exists(), ".env debe existir despues de renderizar"
+        modo = ruta_env.stat().st_mode & 0o777
+        assert modo == 0o600, (
+            f".env debe tener permisos 0600, tiene {oct(modo)}"
+        )
