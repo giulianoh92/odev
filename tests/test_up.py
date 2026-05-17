@@ -165,3 +165,134 @@ class TestUpPreflightFail:
 
             with pytest.raises(typer.Exit):
                 up()
+
+
+class TestPgwebUrlGated:
+    """Verifica que la URL de pgweb solo se imprime cuando pgweb_habilitado=True (Q4).
+
+    T15.1 RED: estos tests fallan hasta que se agregue el condicional
+    en up.py:106.
+    """
+
+    def _run_up_success(self, tmp_path: Path, pgweb_habilitado: bool):
+        """Helper: ejecuta up() exitosamente con pgweb_habilitado configurado."""
+        from odev.core.preflight import PortStatus, PreflightResult
+
+        preflight_ok = PreflightResult(statuses=[
+            PortStatus("WEB_PORT", 8069, "free", None),
+        ])
+
+        contexto_mock = _mock_contexto("mi-proyecto", tmp_path)
+        contexto_mock.config = MagicMock()
+        contexto_mock.config.pgweb_habilitado = pgweb_habilitado
+        rutas_mock = _mock_rutas(tmp_path)
+        dc_mock = MagicMock()
+
+        info_calls = []
+
+        def track_info(msg):
+            info_calls.append(msg)
+
+        with (
+            patch("odev.commands.up.requerir_proyecto", return_value=contexto_mock),
+            patch("odev.commands.up.obtener_rutas", return_value=rutas_mock),
+            patch("odev.commands.up.obtener_docker", return_value=dc_mock),
+            patch("odev.core.regen.necesita_regeneracion", return_value=False),
+            patch("odev.commands.up.verificar_puertos_pre_up", return_value=preflight_ok),
+            patch("odev.commands.up.Registry"),
+            patch("odev.commands.up.load_env", return_value={
+                "WEB_PORT": "8069", "PGWEB_PORT": "8081",
+                "DB_PORT": "5432", "DEBUGPY_PORT": "5678", "MAILHOG_PORT": "8025",
+            }),
+            patch("odev.main.obtener_nombre_proyecto", return_value="mi-proyecto"),
+            patch("odev.commands.up.info", side_effect=track_info),
+            patch("odev.commands.up.success"),
+        ):
+            from odev.commands.up import up
+            up()
+
+        return info_calls
+
+    def test_pgweb_url_oculta_cuando_deshabilitado(self, tmp_path: Path, registry_tmp: None):
+        """Con pgweb_habilitado=False, la URL de pgweb NO se imprime.
+
+        REQ-UX-4 Scenario 2: services.pgweb=false -> no pgweb URL.
+        """
+        info_calls = self._run_up_success(tmp_path, pgweb_habilitado=False)
+        pgweb_calls = [c for c in info_calls if "pgweb" in c.lower() or "8081" in c]
+        assert pgweb_calls == [], (
+            f"La URL de pgweb NO debe imprimirse cuando pgweb_habilitado=False. "
+            f"Llamadas a info(): {info_calls}"
+        )
+
+    def test_pgweb_url_visible_cuando_habilitado(self, tmp_path: Path, registry_tmp: None):
+        """Con pgweb_habilitado=True, la URL de pgweb SI se imprime.
+
+        REQ-UX-4 Scenario 1: services.pgweb=true -> pgweb URL printed.
+        """
+        info_calls = self._run_up_success(tmp_path, pgweb_habilitado=True)
+        pgweb_calls = [c for c in info_calls if "pgweb" in c.lower() or "8081" in c]
+        assert pgweb_calls, (
+            f"La URL de pgweb DEBE imprimirse cuando pgweb_habilitado=True. "
+            f"Llamadas a info(): {info_calls}"
+        )
+
+
+class TestPreflightHint:
+    """Verifica que el mensaje de error de preflight incluye un hint (Q7 — REQ-UX-6).
+
+    T17.1 RED: estos tests fallan hasta que se agregue el hint en _preflight_puertos.
+    """
+
+    def test_preflight_hint_cuando_propietario_conocido(
+        self, tmp_path: Path, registry_tmp: None, capsys
+    ):
+        """El mensaje de error incluye un hint 'odev doctor' cuando el propietario es conocido.
+
+        REQ-UX-6: hint aparece en el error cuando hay conflicto con owner conocido.
+        """
+        from odev.core.preflight import PortStatus, PreflightResult
+
+        preflight_fail = PreflightResult(statuses=[
+            PortStatus("WEB_PORT", 8069, "foreign_known", "otro-proyecto"),
+        ])
+
+        contexto_mock = _mock_contexto("mi-proyecto", tmp_path)
+        rutas_mock = _mock_rutas(tmp_path)
+        dc_mock = MagicMock()
+
+        info_calls = []
+        error_calls = []
+
+        def track_info(msg):
+            info_calls.append(msg)
+
+        def track_error(msg):
+            error_calls.append(msg)
+
+        with (
+            patch("odev.commands.up.requerir_proyecto", return_value=contexto_mock),
+            patch("odev.commands.up.obtener_rutas", return_value=rutas_mock),
+            patch("odev.commands.up.obtener_docker", return_value=dc_mock),
+            patch("odev.core.regen.necesita_regeneracion", return_value=False),
+            patch("odev.commands.up.verificar_puertos_pre_up", return_value=preflight_fail),
+            patch("odev.commands.up.Registry"),
+            patch("odev.commands.up.load_env", return_value={
+                "WEB_PORT": "8069", "PGWEB_PORT": "8081",
+                "DB_PORT": "5432", "DEBUGPY_PORT": "5678", "MAILHOG_PORT": "8025",
+            }),
+            patch("odev.main.obtener_nombre_proyecto", return_value="mi-proyecto"),
+            patch("odev.commands.up.info", side_effect=track_info),
+            patch("odev.commands.up.error", side_effect=track_error),
+            patch("odev.commands.up.success"),
+        ):
+            from odev.commands.up import up
+
+            with pytest.raises(typer.Exit):
+                up()
+
+        all_output = " ".join(info_calls + error_calls)
+        assert "odev doctor" in all_output or "doctor" in all_output.lower(), (
+            f"El mensaje debe incluir un hint con 'odev doctor'. "
+            f"Output: {all_output}"
+        )

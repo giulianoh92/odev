@@ -55,3 +55,40 @@ class TestDebugFlag:
         # The root logger should NOT be set to DEBUG level
         # (it may be WARNING/INFO from basicConfig defaults)
         assert root_logger.level != logging.DEBUG or original_level == logging.DEBUG
+
+
+class TestHelpSubgroups:
+    """Verifica que --help muestra subgrupos organizados (Q3 — REQ-UX-3).
+
+    T14.1 RED: estos tests fallan hasta que se agregue rich_help_panel
+    a los app.add_typer() en main.py.
+    """
+
+    def test_help_shows_subgrupos_panel(self):
+        """El help raiz muestra un panel 'Subgrupos' con db y projects."""
+        result = runner.invoke(app, ["--help"])
+        assert result.exit_code == 0
+        output = result.output
+        # El panel "Subgrupos" debe aparecer en el help
+        assert "Subgrupos" in output, (
+            f"El panel 'Subgrupos' debe aparecer en el help. Output:\n{output}"
+        )
+
+    def test_help_lists_db_subgroup(self):
+        """El help raiz lista el subgrupo 'db'."""
+        result = runner.invoke(app, ["--help"])
+        assert result.exit_code == 0
+        assert "db" in result.output, (
+            f"El subgrupo 'db' debe aparecer en el help. Output:\n{result.output}"
+        )
+
+    def test_help_lists_projects_subgroup(self):
+        """El help raiz lista el subgrupo 'projects' cuando esta disponible."""
+        result = runner.invoke(app, ["--help"])
+        assert result.exit_code == 0
+        # projects puede no estar disponible si el modulo no existe, skip en ese caso
+        # pero si aparece en el output debe estar bajo Subgrupos
+        if "projects" in result.output:
+            assert "Subgrupos" in result.output, (
+                "Si 'projects' aparece en help, debe estar bajo el panel 'Subgrupos'"
+            )
