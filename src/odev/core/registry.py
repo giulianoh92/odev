@@ -147,8 +147,10 @@ class Registry:
 
         contenido = {"projects": proyectos}
 
-        modo = "r+" if REGISTRY_PATH.exists() else "w"
-        with open(REGISTRY_PATH, modo, encoding="utf-8") as archivo:
+        # Always open in 'w' mode — eliminates the TOCTOU window between
+        # checking file existence and opening it. Under flock(LOCK_EX), 'w'
+        # is safe: yaml.dump rewrites the full content unconditionally (D4).
+        with open(REGISTRY_PATH, "w", encoding="utf-8") as archivo:
             fcntl.flock(archivo, fcntl.LOCK_EX)
             try:
                 archivo.seek(0)

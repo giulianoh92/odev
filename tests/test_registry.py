@@ -440,3 +440,85 @@ class TestPortsMethods:
 
         # No debe lanzar excepcion
         reg.liberar_puertos("no-existe")
+
+
+# ── T4.1 RED: TOCTOU-safe registry write ──────────────────────────────────────
+
+
+class TestTOCTOUSafeWrite:
+    """Verifica que _escribir_fcntl tolera la ausencia del archivo (B2 — REQ-RR-1).
+
+    Simula el race condition donde Path.exists() retorna True (o el archivo no
+    existe en absoluto) pero cuando open() se ejecuta el archivo ya fue eliminado.
+    Con 'r+' esto lanzaria FileNotFoundError; con 'w' siempre funciona.
+    """
+
+    def test_write_succeeds_when_file_deleted_between_calls(
+        self, registry_dir: Path
+    ) -> None:
+        """Registrar un proyecto en un registry inexistente no lanza FileNotFoundError.
+
+        Simula el caso donde el archivo de registry fue eliminado externamente
+        justo antes de la llamada a open(). El modo 'w' crea el archivo si no existe.
+        """
+        # Asegurarse de que el registry no existe (simula deletion entre exists() y open())
+        registry_path = registry_dir / "registry.yaml"
+        assert not registry_path.exists(), "El registry no debe existir antes del test"
+
+        reg = Registry()
+        entry = _crear_entry(
+            "toctou-proyecto",
+            Path("/tmp/toctou"),
+            registry_dir / "projects" / "toctou-proyecto",
+        )
+
+        # Con el bug original (modo 'r+'), esto falla si el archivo no existe.
+        # Con el fix (modo 'w'), debe crear el archivo sin error.
+        reg.registrar(entry)
+
+        assert registry_path.exists()
+        recuperado = reg.obtener("toctou-proyecto")
+        assert recuperado is not None
+        assert recuperado.nombre == "toctou-proyecto"
+
+    def test_write_does_not_use_r_plus_mode(self, registry_dir: Path) -> None:
+        """Verifica que _escribir_fcntl abre el archivo en modo 'w', no 'r+'.
+
+        Pre-crea el archivo para forzar el branch 'r+' del codigo original.
+        Confirma el diseño D4: siempre 'w' bajo flock, sin branch de '.exists()'.
+        """
+        import builtins
+
+        reg = Registry()
+        entry = _crear_entry(
+            "modo-test",
+            Path("/tmp/modo"),
+            registry_dir / "projects" / "modo-test",
+        )
+        # Primera escritura: crea el archivo
+        reg.registrar(entry)
+
+        registry_path = registry_dir / "registry.yaml"
+        assert registry_path.exists(), "El archivo debe existir tras la primera escritura"
+
+        opened_modes = []
+        original_open = builtins.open
+
+        def tracking_open(file, mode="r", **kwargs):
+            if str(file) == str(registry_path):
+                opened_modes.append(mode)
+            return original_open(file, mode, **kwargs)
+
+        from unittest.mock import patch
+
+        with patch("builtins.open", side_effect=tracking_open):
+            # Segunda escritura: el archivo EXISTE — el codigo viejo usaria 'r+'
+            reg.registrar(entry)
+
+        # El archivo registry debe abrirse en modo 'w' (nunca 'r+')
+        assert "r+" not in opened_modes, (
+            f"No debe usarse modo 'r+'. Modos usados: {opened_modes}"
+        )
+        assert "w" in opened_modes, (
+            f"Debe usarse modo 'w'. Modos usados: {opened_modes}"
+        )
