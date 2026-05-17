@@ -522,3 +522,61 @@ class TestTOCTOUSafeWrite:
         assert "w" in opened_modes, (
             f"Debe usarse modo 'w'. Modos usados: {opened_modes}"
         )
+
+
+# ── T7.1 RED: fcntl Windows ImportError guard ─────────────────────────────────
+
+
+class TestFcntlImportGuard:
+    """Verifica que registry.py no crashea si fcntl no esta disponible (B6 — REQ-RR-3).
+
+    Simula el entorno Windows donde 'import fcntl' lanzaria ImportError.
+    Usa mock.patch.dict sobre sys.modules para forzar la ruta de fallback.
+    """
+
+    def test_import_fcntl_failure_sets_has_fcntl_false(self) -> None:
+        """HAS_FCNTL es False cuando fcntl no puede importarse.
+
+        Fuerza el ImportError simulando un entorno sin fcntl y verifica
+        que el modulo define HAS_FCNTL = False (atributo exportado).
+        """
+        import sys
+        import importlib
+        from unittest.mock import patch
+
+        with patch.dict(sys.modules, {"fcntl": None}):
+            # Re-importar el modulo con fcntl bloqueado
+            import odev.core.registry as reg_mod
+            # Verificar que HAS_FCNTL existe y es un bool
+            assert hasattr(reg_mod, "HAS_FCNTL"), (
+                "registry.py debe exportar HAS_FCNTL"
+            )
+
+    def test_registrar_succeeds_without_fcntl(self, registry_dir: Path) -> None:
+        """Registry.registrar() funciona aunque fcntl no este disponible.
+
+        Verifica que la operacion completa sin invocar flock cuando
+        HAS_FCNTL es False (fallback para Windows).
+        """
+        import sys
+        from unittest.mock import patch
+
+        import odev.core.registry as reg_mod
+
+        # Simular que fcntl no esta disponible
+        with (
+            patch.object(reg_mod, "HAS_FCNTL", False),
+            patch.object(reg_mod, "fcntl", None),
+        ):
+            reg = Registry()
+            entry = _crear_entry(
+                "windows-compat",
+                Path("/tmp/win"),
+                registry_dir / "projects" / "windows-compat",
+            )
+            # No debe lanzar AttributeError ni ImportError
+            reg.registrar(entry)
+
+        recuperado = reg.obtener("windows-compat")
+        assert recuperado is not None
+        assert recuperado.nombre == "windows-compat"

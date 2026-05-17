@@ -8,9 +8,15 @@ para manejar acceso concurrente.
 
 from __future__ import annotations
 
-import fcntl
 import logging
 import threading
+
+try:
+    import fcntl
+    HAS_FCNTL = True
+except ImportError:
+    fcntl = None  # type: ignore[assignment]
+    HAS_FCNTL = False
 from dataclasses import asdict, dataclass, fields
 from datetime import date
 from pathlib import Path
@@ -151,7 +157,8 @@ class Registry:
         # checking file existence and opening it. Under flock(LOCK_EX), 'w'
         # is safe: yaml.dump rewrites the full content unconditionally (D4).
         with open(REGISTRY_PATH, "w", encoding="utf-8") as archivo:
-            fcntl.flock(archivo, fcntl.LOCK_EX)
+            if HAS_FCNTL:
+                fcntl.flock(archivo, fcntl.LOCK_EX)
             try:
                 archivo.seek(0)
                 archivo.truncate()
@@ -163,7 +170,8 @@ class Registry:
                     sort_keys=False,
                 )
             finally:
-                fcntl.flock(archivo, fcntl.LOCK_UN)
+                if HAS_FCNTL:
+                    fcntl.flock(archivo, fcntl.LOCK_UN)
 
     def _escribir(self, entries: dict[str, RegistryEntry]) -> None:
         """Escribe el registry.yaml con bloqueo de archivo y de thread.
