@@ -8,7 +8,7 @@ lo que detiene Y elimina los contenedores.
 import typer
 
 from odev.commands._helpers import obtener_docker, requerir_proyecto
-from odev.core.console import success
+from odev.core.console import info, success
 
 
 def down(
@@ -17,6 +17,11 @@ def down(
         "-v",
         "--volumes",
         help="Tambien eliminar volumenes de datos.",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Mostrar que se haria sin tocar los contenedores.",
     ),
 ) -> None:
     """Detiene y elimina los contenedores del proyecto.
@@ -28,5 +33,13 @@ def down(
 
     contexto = requerir_proyecto(obtener_nombre_proyecto())
     dc = obtener_docker(contexto)
+
+    if dry_run:
+        info(f"Se ejecutaria: docker compose down{' -v' if volumes else ''}")
+        info("  - Detendria y eliminaria los contenedores del proyecto.")
+        if volumes:
+            info("  - Eliminaria los volumenes de datos asociados.")
+        return
+
     dc.down(volumes=volumes)
     success("Entorno detenido.")
