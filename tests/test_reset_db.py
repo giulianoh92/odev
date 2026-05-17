@@ -3,8 +3,11 @@
 Verifica que el comando reset-db ejecute la secuencia correcta de
 operaciones (down, up, neutralizacion) y que la funcion de espera
 funcione correctamente.
+
+Q5: tests del flag --dry-run (preview sin ejecutar Docker).
 """
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -118,3 +121,78 @@ class TestEsperarBaseDatosLista:
         # Verificar que la consulta SQL esta incluida
         sql = comando[-1]
         assert "ir_config_parameter" in sql
+
+
+# ─── Q5: --dry-run ────────────────────────────────────────────────────────────
+
+
+def _hacer_mocks_reset_db(tmp_path: Path):
+    """Construye mocks comunes para el comando reset_db."""
+    ctx = MagicMock()
+    ctx.nombre = "test-project"
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("DB_USER=odoo\nDB_NAME=odoo_db\nWEB_PORT=8069\n")
+
+    rutas = MagicMock()
+    rutas.env_file = env_file
+
+    dc = MagicMock()
+
+    return ctx, rutas, dc
+
+
+class TestResetDbDryRun:
+    """Q5 — verifica que --dry-run muestra info pero no ejecuta operaciones."""
+
+    def test_dry_run_no_borra_db(self, tmp_path: Path) -> None:
+        """Con --dry-run: dc.down y dc.up NO deben ser llamados."""
+        ctx, rutas, dc = _hacer_mocks_reset_db(tmp_path)
+
+        with (
+            patch("odev.commands.reset_db.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.reset_db.obtener_rutas", return_value=rutas),
+            patch("odev.commands.reset_db.obtener_docker", return_value=dc),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+        ):
+            from odev.commands.reset_db import reset_db
+
+            reset_db(neutralize=True, yes=True, dry_run=True)
+
+        dc.down.assert_not_called()
+        dc.up.assert_not_called()
+
+    def test_dry_run_muestra_nombre_bd(self, tmp_path: Path) -> None:
+        """Con --dry-run: la salida menciona la base de datos objetivo."""
+        ctx, rutas, dc = _hacer_mocks_reset_db(tmp_path)
+
+        with (
+            patch("odev.commands.reset_db.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.reset_db.obtener_rutas", return_value=rutas),
+            patch("odev.commands.reset_db.obtener_docker", return_value=dc),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands.reset_db.info") as mock_info,
+        ):
+            from odev.commands.reset_db import reset_db
+
+            reset_db(neutralize=True, yes=True, dry_run=True)
+
+        all_msgs = " ".join(str(c) for c in mock_info.call_args_list)
+        assert "odoo_db" in all_msgs
+
+    def test_dry_run_con_yes_omite_confirmacion(self, tmp_path: Path) -> None:
+        """--dry-run --yes no muestra prompt de confirmacion."""
+        ctx, rutas, dc = _hacer_mocks_reset_db(tmp_path)
+
+        with (
+            patch("odev.commands.reset_db.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.reset_db.obtener_rutas", return_value=rutas),
+            patch("odev.commands.reset_db.obtener_docker", return_value=dc),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("typer.confirm") as mock_confirm,
+        ):
+            from odev.commands.reset_db import reset_db
+
+            reset_db(neutralize=True, yes=True, dry_run=True)
+
+        mock_confirm.assert_not_called()
