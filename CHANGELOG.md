@@ -4,6 +4,44 @@ Todos los cambios notables en este proyecto se documentan en este archivo.
 
 El formato esta basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 y este proyecto adhiere a [Versionado Semantico](https://semver.org/spec/v2.0.0.html).
+Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
+
+## [0.3.0] - 2026-05-17
+
+### Agregado
+
+- Comandos agent-friendly no-interactivos con propagacion de stdout/stderr crudo y exit code:
+  - `odev shell <svc> -c "<cmd>"` -- bash -c en contenedor
+  - `odev sql "<query>"` -- psql -c en db (flag `--csv` sin bordes ni alineacion)
+  - `odev py "<expr>"` -- eval Python via `odoo shell` (stdin pipe)
+- `odev test` con flags `--summary`, `--failures`, `--json`, `--tags`, `--save-log` para output AI-friendly
+- Parser de output de tests Odoo (`core/odoo_test_parser.py`) con soporte Odoo 19, `setUpClass`, loading errors
+- Pre-flight de modulo + puerto en `odev test` (usa `WEB_PORT` env)
+- CSV multi-modulo en `update`, `addon-install`, `test` -- una sola invocacion a Odoo (`mod1,mod2,mod3`)
+- Flag `--no-validate` para saltar validacion de addons-path en operaciones multi-modulo
+- Helper de parseo/validacion de CSV de modulos + listado de modulos disponibles
+- TUI: panel de proyecto, paleta de comandos, ayuda contextual, selector de servicio, sistema de notificaciones
+- `core/docker.exec_cmd_stream()` para streaming de stdout en operaciones largas
+- Detect: descubre modulos en submodulos git anidados y en subdirectorios convencionales (`addons/`, `custom/`, etc.)
+- Politica de versionado explicita -- ver `VERSIONING.md`
+
+### Corregido
+
+- Parser de tests soporta formato Odoo 19, `setUpClass` y loading errors
+- `[fix] test`: merge correcto de `--tags`, `raw_summary_line` en JSON, epilog con exit codes
+- `[fix] test`: removido pre-flight de puerto host (falso positivo con web container ya corriendo)
+- `[fix] test`: usa `--no-http` para evitar colision de puerto con web container corriendo
+- `[fix] docker`: normaliza nombre de proyecto a minusculas para `docker compose`
+- `[fix] enterprise`: corrige lookup de `odev.yaml` en modo config externo
+- `[fix] test`: aisla test de `ruta_enterprise` del filesystem del host
+
+### Cambiado
+
+- Refactor: `ejecutar_passthrough()` en `_helpers.py` unifica logica de `shell -c`, `sql` y `py`
+- Refactor: limpia imports stale y dead code post CSV-modules
+- Docs: README documenta CSV de modulos, flag `--no-validate`, ejemplos `shell -c` / `sql` / `py`
+- Docs: CLAUDE.md template agrega comandos no-interactivos + CSV multi-modulo
+- `.gitignore`: agrega `.atl/` y `uv.lock`
 
 ## [0.2.0] - 2026-03-26
 
