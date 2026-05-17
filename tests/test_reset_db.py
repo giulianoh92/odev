@@ -53,11 +53,17 @@ class TestEsperarBaseDatosLista:
 
     @patch("time.sleep")
     def test_maneja_excepciones_de_exec_cmd(self, mock_sleep):
-        """Maneja excepciones si el contenedor de BD no esta listo."""
+        """Maneja SubprocessError si el contenedor de BD no esta listo.
+
+        Actualizado para usar subprocess.SubprocessError en lugar de Exception
+        generico, acorde al expect narrowing de B5 (REQ-UX-1).
+        """
+        import subprocess as sp
+
         dc_mock = MagicMock()
-        # Primera vez exception, segunda vez ok
+        # Primera vez SubprocessError (contenedor no listo), segunda vez ok
         dc_mock.exec_cmd.side_effect = [
-            Exception("Container not running"),
+            sp.SubprocessError("Container not running"),
             MagicMock(stdout=b"t\n"),
         ]
 
@@ -77,6 +83,20 @@ class TestEsperarBaseDatosLista:
         _esperar_base_datos_lista(dc_mock, "odoo_db", "odoo", intentos=3, intervalo=0)
 
         assert dc_mock.exec_cmd.call_count == 2
+
+    @patch("time.sleep")
+    def test_type_error_no_es_silenciado(self, mock_sleep):
+        """TypeError dentro del loop NO debe ser silenciado — solo SubprocessError/OSError.
+
+        Verifica REQ-UX-1 (B5): el except debe ser estrecho. Un TypeError (bug de
+        programacion) debe propagarse al llamador, no ser swallowed silenciosamente.
+        """
+        dc_mock = MagicMock()
+        # TypeError no es SubprocessError ni OSError — debe propagarse
+        dc_mock.exec_cmd.side_effect = TypeError("simulated programming error")
+
+        with pytest.raises(TypeError):
+            _esperar_base_datos_lista(dc_mock, "odoo_db", "odoo", intentos=2, intervalo=0)
 
     def test_consulta_sql_correcta(self):
         """Verifica que la consulta SQL busque ir_config_parameter."""

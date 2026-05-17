@@ -5,9 +5,14 @@ luego levanta el entorno nuevamente para empezar con una base de datos limpia.
 Opcionalmente neutraliza la base de datos y configura parametros de desarrollo.
 """
 
+import logging
+import subprocess
+
 import typer
 
 from odev.commands._helpers import obtener_docker, obtener_rutas, requerir_proyecto
+
+logger = logging.getLogger(__name__)
 from odev.core.config import load_env
 from odev.core.console import info, success, warning
 from odev.core.neutralize import (
@@ -125,8 +130,8 @@ def _esperar_base_datos_lista(
             if salida == "t":
                 info("Base de datos lista.")
                 return
-        except Exception:
-            pass  # El contenedor de BD puede no estar listo aun
+        except (subprocess.SubprocessError, OSError) as e:
+            logger.debug("DB no lista aun: %s", e)
 
         if i < intentos - 1:
             info(f"  Esperando inicializacion... ({i + 1}/{intentos})")
