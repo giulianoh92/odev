@@ -158,7 +158,7 @@ class TestLoadBackupStreaming:
         ):
             from odev.commands.load_backup import load_backup
 
-            load_backup(backup=zip_path, neutralize=False, yes=True)
+            load_backup(backup=zip_path, neutralize=False, yes=True, dry_run=False)
 
         # exec_cmd_file debe haber sido llamado para el restore
         assert dc.exec_cmd_file.called, "exec_cmd_file no fue llamado"
@@ -169,17 +169,10 @@ class TestLoadBackupStreaming:
         assert isinstance(stdin_file_arg, Path)
         assert stdin_file_arg.name == "dump.sql"
 
-    def test_no_usa_read_bytes_para_dump(self, tmp_path: Path) -> None:
-        """read_bytes no debe ser invocado sobre el archivo dump."""
+    def test_dump_sql_path_pasado_a_exec_cmd_file(self, tmp_path: Path) -> None:
+        """El path del dump SQL se pasa como stdin_file a exec_cmd_file."""
         zip_path = _crear_zip_backup(tmp_path, "dump.sql")
         ctx, rutas, dc = _hacer_mocks_base(tmp_path)
-
-        read_bytes_called = []
-
-        original_open = Path.open
-
-        def spy_open(self, *args, **kwargs):
-            return original_open(self, *args, **kwargs)
 
         with (
             patch("odev.commands.load_backup.requerir_proyecto", return_value=ctx),
@@ -192,22 +185,15 @@ class TestLoadBackupStreaming:
         ):
             from odev.commands.load_backup import load_backup
 
-            load_backup(backup=zip_path, neutralize=False, yes=True)
+            load_backup(backup=zip_path, neutralize=False, yes=True, dry_run=False)
 
-        # Si exec_cmd_file fue llamado y exec_cmd no fue llamado con stdin_data,
-        # entonces read_bytes no fue necesario en el path de restore.
-        # Verificar que exec_cmd no fue llamado con stdin_data para el restore
-        for call in dc.exec_cmd.call_args_list:
-            kwargs = call[1]
-            args = call[0]
-            # Ignorar llamadas que no son el restore (terminate connections, dropdb, createdb)
-            if "stdin_data" in kwargs and kwargs["stdin_data"] is not None:
-                if len(kwargs["stdin_data"]) > 100:  # un dump real tendria mas de 100 bytes
-                    read_bytes_called.append(call)
+        # exec_cmd_file debe haber sido llamado exactamente una vez para el restore
+        assert dc.exec_cmd_file.call_count == 1
 
-        assert len(read_bytes_called) == 0, (
-            "exec_cmd fue llamado con stdin_data para el restore (deberia usar exec_cmd_file)"
-        )
+        # El comando pasado debe incluir psql
+        call_args = dc.exec_cmd_file.call_args
+        cmd_arg = call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("command", [])
+        assert "psql" in cmd_arg
 
 
 # ─── Q5: --dry-run ────────────────────────────────────────────────────────────

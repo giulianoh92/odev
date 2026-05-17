@@ -76,6 +76,11 @@ def load_backup(
         "-y",
         help="Skip confirmation prompt (for automation/CI).",
     ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Previsualizar operaciones sin ejecutarlas.",
+    ),
 ) -> None:
     """Carga un backup de Odoo.sh (o el Gestor de Base de Datos) en el entorno local.
 
@@ -139,6 +144,15 @@ def load_backup(
     info(f"  Dump: {nombre_dump} ({'custom' if es_formato_custom else 'SQL'})")
     info(f"  Filestore: {'si' if tiene_filestore else 'no'}")
 
+    if dry_run:
+        info("Modo --dry-run: no se ejecutara ninguna operacion.")
+        info(f"  Se restauraria dump: {nombre_dump}")
+        info(f"  Sobre base de datos: {nombre_bd}")
+        info(f"  Filestore: {'se copiaria' if tiene_filestore else 'no hay filestore'}")
+        if neutralize:
+            info("  Se ejecutaria neutralize despues de la restauracion.")
+        return
+
     warning(f"Esto REEMPLAZARA la base de datos '{nombre_bd}' con el contenido del backup!")
     if not yes and not typer.confirm("Continuar?", default=False):
         info("Operacion cancelada.")
@@ -177,10 +191,9 @@ def load_backup(
 
         # -- Restaurar dump ---------------------------------------------------
         info("Restaurando base de datos (esto puede tomar un rato)...")
-        datos_dump = archivo_dump.read_bytes()
 
         if es_formato_custom:
-            dc.exec_cmd(
+            dc.exec_cmd_file(
                 "db",
                 [
                     "pg_restore",
@@ -192,13 +205,13 @@ def load_backup(
                     "--no-acl",
                     "--jobs=2",
                 ],
-                stdin_data=datos_dump,
+                stdin_file=archivo_dump,
             )
         else:
-            dc.exec_cmd(
+            dc.exec_cmd_file(
                 "db",
                 ["psql", "-U", usuario_bd, "-d", nombre_bd, "--quiet"],
-                stdin_data=datos_dump,
+                stdin_file=archivo_dump,
             )
 
         success("Base de datos restaurada.")
