@@ -9,12 +9,11 @@ import ast
 from datetime import datetime
 from pathlib import Path
 
-import typer
 from jinja2 import Environment, FileSystemLoader
 
 from odev.commands._helpers import obtener_rutas, requerir_proyecto
 from odev.core.config import load_env
-from odev.core.console import info, success, warning
+from odev.core.console import success, warning
 from odev.core.paths import get_templates_dir
 
 

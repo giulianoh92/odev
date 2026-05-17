@@ -4,7 +4,6 @@ Presenta una tabla con informacion de cada servicio de Docker Compose
 incluyendo nombre, estado, salud y puertos publicados.
 """
 
-import typer
 from rich.table import Table
 
 from odev.commands._helpers import obtener_docker, requerir_proyecto

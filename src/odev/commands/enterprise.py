@@ -159,7 +159,7 @@ def enterprise_status() -> None:
     """Muestra versiones enterprise disponibles y proyectos vinculados."""
     if not ENTERPRISE_DIR.exists():
         info("No se encontraron addons enterprise compartidos.")
-        info(f"Importar con: odev enterprise import <version> <ruta>")
+        info("Importar con: odev enterprise import <version> <ruta>")
         return
 
     table = Table(title="Addons Enterprise Compartidos")

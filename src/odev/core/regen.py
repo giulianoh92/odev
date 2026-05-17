@@ -19,7 +19,7 @@ from odev.core.config import (
     load_env,
     write_env,
 )
-from odev.core.console import info, success
+from odev.core.console import success
 from odev.core.paths import get_project_templates_dir
 from odev.core.project import ProjectConfig
 from odev.core.resolver import ProjectContext
