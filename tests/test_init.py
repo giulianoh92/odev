@@ -220,24 +220,6 @@ class TestValoresPorDefectoAllocatePorts:
         assert valores["PROJECT_NAME"] == "test-project"
         assert valores["WEB_PORT"] == "8069"
 
-    def test_valores_por_defecto_no_usa_sugerir_puertos(self):
-        """_valores_por_defecto no llama a sugerir_puertos directamente."""
-        puertos_mock = {
-            "WEB_PORT": 8069,
-            "PGWEB_PORT": 8081,
-            "DB_PORT": 5432,
-            "DEBUGPY_PORT": 5678,
-            "MAILHOG_PORT": 8025,
-        }
-
-        # sugerir_puertos ya no se importa en init.py; verificar que allocate_ports
-        # es el simbolo que llama la funcion
-        with patch("odev.commands.init.allocate_ports", return_value=puertos_mock) as mock_alloc:
-            _valores_por_defecto("test-project", "19.0")
-
-        # Si llego hasta aca sin ImportError, el modulo no importa sugerir_puertos
-        mock_alloc.assert_called_once()
-
 
 class TestInitEntrypoint:
     """Grupo de tests para la configuracion del entrypoint."""

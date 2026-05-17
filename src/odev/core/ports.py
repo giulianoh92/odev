@@ -1,15 +1,13 @@
 """Gestion de puertos para soporte multi-proyecto.
 
-Detecta puertos disponibles y sugiere conjuntos de puertos libres
-para que multiples proyectos puedan correr simultaneamente sin
-conflictos. En 0.4.0 se agrego allocate_ports() para asignacion
-atomica con coordinacion via el registro global.
+Detecta puertos disponibles y asigna atomicamente conjuntos de puertos libres
+para que multiples proyectos puedan correr simultaneamente sin conflictos.
+allocate_ports() coordina via el registro global para evitar colisiones TOCTOU.
 """
 
 from __future__ import annotations
 
 import socket
-import warnings
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -110,35 +108,3 @@ def allocate_ports(project_name: str, registry: Registry) -> dict[str, int]:
     )
 
 
-def sugerir_puertos() -> dict[str, int]:
-    """Sugiere un conjunto de puertos disponibles para un nuevo proyecto.
-
-    .. deprecated:: 0.4.0
-        Usar :func:`allocate_ports` en su lugar. Esta funcion no coordina
-        con el registro global y puede provocar colisiones TOCTOU en
-        ejecuciones concurrentes de wizards.
-
-    Empieza con los puertos base definidos en CONJUNTOS_PUERTOS.
-    Si alguno esta ocupado, incrementa TODOS los puertos del set
-    en 1 hasta encontrar un set completo disponible.
-
-    Limite de seguridad: intenta hasta 100 incrementos antes de retornar
-    los puertos base como valor por defecto.
-
-    Retorna:
-        Diccionario con nombre de variable -> puerto disponible.
-    """
-    warnings.warn(
-        "sugerir_puertos() esta deprecada desde 0.4.0. "
-        "Usar allocate_ports(project_name, registry) para asignacion atomica.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    offset = 0
-    while offset < 100:  # limite de seguridad
-        puertos = {nombre: base + offset for nombre, base in CONJUNTOS_PUERTOS.items()}
-        if all(puerto_disponible(p) for p in puertos.values()):
-            return puertos
-        offset += 1
-    # Valor por defecto: retorna los puertos base sin verificar
-    return CONJUNTOS_PUERTOS.copy()

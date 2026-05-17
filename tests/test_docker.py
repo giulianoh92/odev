@@ -516,3 +516,75 @@ class TestExecCmdFile:
 
         call_kwargs = mock_popen.call_args[1]
         assert call_kwargs["cwd"] == tmp_path
+
+
+class TestExecCapture:
+    """Tests para DockerCompose.exec_capture() — captura de stdout/stderr sin TTY.
+
+    Spec C1-1 / C1-2 / C1-3 / C1-4.
+    """
+
+    @pytest.fixture
+    def dc(self, tmp_path):
+        """Crea una instancia de DockerCompose mockeada."""
+        with (
+            patch("shutil.which", return_value="/usr/bin/docker"),
+            patch("subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = MagicMock(returncode=0)
+            instancia = DockerCompose(project_root=tmp_path)
+        return instancia
+
+    def test_happy_path_retorna_tupla_stdout(self, dc):
+        """exec_capture retorna (stdout_bytes, stderr_bytes, returncode) en caso exitoso.
+
+        Spec C1-1: happy path — valid service and command.
+        """
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout=b"Odoo 17.0\n",
+                stderr=b"",
+            )
+            resultado = dc.exec_capture("web", ["odoo", "--version"])
+
+        stdout, stderr, rc = resultado
+        assert rc == 0
+        assert b"Odoo" in stdout
+        assert isinstance(stdout, bytes)
+        assert isinstance(stderr, bytes)
+
+    def test_codigo_no_cero_no_lanza_excepcion(self, dc):
+        """exec_capture no lanza excepcion en codigo de salida no cero.
+
+        Spec C1-2: non-zero exit code — caller receives tuple, no raise.
+        """
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1, stdout=b"", stderr=b"")
+            stdout, stderr, rc = dc.exec_capture("web", ["false"])
+
+        assert rc != 0
+
+    def test_stderr_capturado_independientemente(self, dc):
+        """exec_capture devuelve stderr separado de stdout.
+
+        Spec C1-3: command produces stderr output.
+        """
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout=b"",
+                stderr=b"error message\n",
+            )
+            stdout, stderr, rc = dc.exec_capture("web", ["bash", "-c", "echo err >&2"])
+
+        assert b"error message" in stderr
+        assert stdout == b""
+
+    def test_servicio_invalido_lanza_valueerror(self, dc):
+        """exec_capture lanza ValueError para servicios con nombre invalido.
+
+        Spec C1-4: invalid service name raises error consistent with exec_cmd.
+        """
+        with pytest.raises(ValueError, match="invalido"):
+            dc.exec_capture("bad service!", ["ls"])

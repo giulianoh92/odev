@@ -41,7 +41,7 @@ def preguntar_configuracion_base(puertos: dict[str, int]) -> dict[str, Any]:
     usuario de BD, password de BD, idioma, datos de demo, debugpy y pgweb.
 
     Argumentos:
-        puertos: Puertos sugeridos por sugerir_puertos().
+        puertos: Puertos asignados por allocate_ports().
 
     Retorna:
         Diccionario con las claves: web_port, pgweb_port, db_name,
@@ -142,7 +142,7 @@ def valores_configuracion_por_defecto(puertos: dict[str, int]) -> dict[str, Any]
     con valores por defecto sin preguntar al usuario.
 
     Argumentos:
-        puertos: Puertos sugeridos por sugerir_puertos().
+        puertos: Puertos asignados por allocate_ports().
 
     Retorna:
         Diccionario con las mismas claves que preguntar_configuracion_base().

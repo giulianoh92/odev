@@ -170,21 +170,6 @@ class TestAdoptWithoutForceHint:
 class TestAdoptUsesAllocatePorts:
     """Verifica que adopt usa allocate_ports desde 0.4.0."""
 
-    def test_adopt_importa_allocate_ports_no_sugerir_puertos(self) -> None:
-        """El modulo adopt.py importa allocate_ports en lugar de sugerir_puertos.
-
-        T13: verificar que el simbolo sugerir_puertos no esta en adopt.py
-        y que allocate_ports si lo esta.
-        """
-        import odev.commands.adopt as mod
-
-        assert hasattr(mod, "allocate_ports"), (
-            "adopt.py debe importar allocate_ports"
-        )
-        assert not hasattr(mod, "sugerir_puertos"), (
-            "adopt.py no debe importar sugerir_puertos directamente"
-        )
-
     def test_adopt_llama_allocate_ports_en_wizard(self) -> None:
         """En el flujo no-interactivo, adopt llama allocate_ports.
 

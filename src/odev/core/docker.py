@@ -326,6 +326,41 @@ class DockerCompose:
             return self._exec(args, interactive=True)
         return self._run(args, capture=True, input_data=stdin_data)
 
+    def exec_capture(
+        self,
+        service: str,
+        command: list[str],
+    ) -> tuple[bytes, bytes, int]:
+        """Ejecuta un comando dentro de un contenedor capturando stdout y stderr.
+
+        A diferencia de exec_cmd, este metodo:
+        - Aplica siempre -T (sin TTY) para captura limpia en flujos no interactivos.
+        - NO lanza excepcion en codigo de salida no cero — el caller decide.
+        - NO acepta stdin — usar exec_cmd_file para stdin desde archivo.
+        - Retorna bytes para evitar suposiciones de encoding; el caller decodifica.
+
+        Util para agentes y automatizacion donde se necesita capturar stdout/stderr
+        y tomar decisiones basadas en el resultado.
+
+        Argumentos:
+            service: Nombre del servicio donde ejecutar el comando.
+            command: Comando y sus argumentos a ejecutar.
+
+        Retorna:
+            Tupla (stdout: bytes, stderr: bytes, returncode: int).
+
+        Lanza:
+            ValueError: Si el nombre de servicio contiene caracteres invalidos.
+        """
+        if not self._PATRON_SERVICIO.match(service):
+            raise ValueError(
+                f"Nombre de servicio invalido: '{service}'. "
+                "Solo se permiten letras, numeros, guiones y guiones bajos."
+            )
+        args = ["exec", "-T", service, *command]
+        result = self._run(args, capture=True, check=False)
+        return (result.stdout, result.stderr, result.returncode)
+
     def exec_cmd_stream(
         self,
         service: str,

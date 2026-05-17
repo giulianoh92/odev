@@ -6,6 +6,24 @@ El formato esta basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 y este proyecto adhiere a [Versionado Semantico](https://semver.org/spec/v2.0.0.html).
 Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
 
+## [0.5.0] - 2026-05-17
+
+### Cambios incompatibles
+
+- `odev.core.ports.sugerir_puertos` ha sido **eliminada**. Si tu codigo importa esta funcion, reemplazala por `allocate_ports(project_name, registry)` de `odev.core.ports`. La deprecacion estaba activa desde 0.4.0 con `DeprecationWarning`; la eliminacion es un break MINOR bajo la politica pre-1.0 del proyecto.
+
+### Agregado
+
+- D1: `DockerCompose.exec_capture(service, command)` — nuevo metodo que retorna `(stdout: bytes, stderr: bytes, returncode: int)` sin TTY, sin lanzar excepcion en codigo no cero. Base para todos los flujos de captura de agentes en 0.5.0.
+
+### Corregido
+
+- D2: `odev db restore` ahora streamea el dump via `exec_cmd_file` en lugar de cargarlo entero en RAM con `read_bytes()`. Elimina OOM en snapshots grandes. Mismo patron que la fix B3 de `load-backup` en 0.4.3.
+
+### Eliminado
+
+- D3: `sugerir_puertos()` eliminada de `odev.core.ports`. Reemplazar por `allocate_ports(project_name, registry)`.
+
 ## [0.4.3] - 2026-05-17
 
 ### Corregido

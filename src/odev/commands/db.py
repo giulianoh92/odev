@@ -117,11 +117,12 @@ def restore(
     dc.exec_cmd("db", ["createdb", "-U", usuario_bd, nombre_bd])
 
     info("Restaurando desde snapshot...")
-    datos_dump = ruta_archivo.read_bytes()
-    dc.exec_cmd(
+    # Streaming restore — evita cargar todo el dump en RAM.
+    # Mismo patron que la fix de load_backup.py (0.4.3).
+    dc.exec_cmd_file(
         "db",
         ["pg_restore", "-U", usuario_bd, "-d", nombre_bd, "--no-owner", "--no-acl"],
-        stdin_data=datos_dump,
+        stdin_file=ruta_archivo,
     )
 
     info("Iniciando servicio web...")
