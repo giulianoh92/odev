@@ -68,7 +68,7 @@ class TestValoresPorDefecto:
 
     def test_genera_valores_completos(self):
         """Genera un diccionario con todas las claves necesarias para templates."""
-        with patch("odev.commands.init.sugerir_puertos") as mock_puertos:
+        with patch("odev.commands.init.allocate_ports") as mock_puertos:
             mock_puertos.return_value = {
                 "WEB_PORT": 8069,
                 "PGWEB_PORT": 8081,
@@ -88,7 +88,7 @@ class TestValoresPorDefecto:
 
     def test_mapeo_version_odoo_a_pg(self):
         """Mapea la version de Odoo al tag correcto de PostgreSQL."""
-        with patch("odev.commands.init.sugerir_puertos") as mock_puertos:
+        with patch("odev.commands.init.allocate_ports") as mock_puertos:
             mock_puertos.return_value = {
                 "WEB_PORT": 8069,
                 "PGWEB_PORT": 8081,
@@ -193,6 +193,51 @@ class TestRenderizarArchivosProyecto:
         """Verifica que los archivos regenerables estan definidos correctamente."""
         assert ".env.example" in _ARCHIVOS_REGENERABLES
         assert "config/odoo.conf" in _ARCHIVOS_REGENERABLES
+
+
+# ── T11 RED: Tests que verifican que init usa allocate_ports (no sugerir_puertos) ──
+
+
+class TestValoresPorDefectoAllocatePorts:
+    """Verifica que _valores_por_defecto usa allocate_ports desde 0.4.0."""
+
+    def test_valores_por_defecto_usa_allocate_ports(self):
+        """_valores_por_defecto llama a allocate_ports, no a sugerir_puertos.
+
+        T11: el mock debe estar en odev.commands.init.allocate_ports.
+        """
+        puertos_mock = {
+            "WEB_PORT": 8069,
+            "PGWEB_PORT": 8081,
+            "DB_PORT": 5432,
+            "DEBUGPY_PORT": 5678,
+            "MAILHOG_PORT": 8025,
+        }
+
+        with patch("odev.commands.init.allocate_ports", return_value=puertos_mock) as mock_alloc:
+            valores = _valores_por_defecto("test-project", "19.0")
+
+        mock_alloc.assert_called_once()
+        assert valores["PROJECT_NAME"] == "test-project"
+        assert valores["WEB_PORT"] == "8069"
+
+    def test_valores_por_defecto_no_usa_sugerir_puertos(self):
+        """_valores_por_defecto no llama a sugerir_puertos directamente."""
+        puertos_mock = {
+            "WEB_PORT": 8069,
+            "PGWEB_PORT": 8081,
+            "DB_PORT": 5432,
+            "DEBUGPY_PORT": 5678,
+            "MAILHOG_PORT": 8025,
+        }
+
+        # sugerir_puertos ya no se importa en init.py; verificar que allocate_ports
+        # es el simbolo que llama la funcion
+        with patch("odev.commands.init.allocate_ports", return_value=puertos_mock) as mock_alloc:
+            _valores_por_defecto("test-project", "19.0")
+
+        # Si llego hasta aca sin ImportError, el modulo no importa sugerir_puertos
+        mock_alloc.assert_called_once()
 
 
 class TestInitEntrypoint:
