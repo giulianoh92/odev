@@ -407,3 +407,112 @@ class TestExecCmdStream:
 
         call_kwargs = mock_popen_cls.call_args[1]
         assert call_kwargs["cwd"] == tmp_path
+
+
+class TestExecCmdFile:
+    """Tests para DockerCompose.exec_cmd_file() — stdin streaming desde archivo."""
+
+    @pytest.fixture
+    def dc(self, tmp_path):
+        """Crea una instancia de DockerCompose con mocks."""
+        with (
+            patch("shutil.which", return_value="/usr/bin/docker"),
+            patch("subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = MagicMock(returncode=0)
+            instancia = DockerCompose(project_root=tmp_path)
+        return instancia
+
+    def test_streams_stdin_from_file(self, dc, tmp_path):
+        """Popen es llamado con stdin=file handle y communicate() invocado."""
+        dump_file = tmp_path / "dump.sql"
+        dump_file.write_bytes(b"SELECT 1;")
+
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+        mock_proc.communicate.return_value = (b"", b"")
+
+        with patch("odev.core.docker.subprocess.Popen", return_value=mock_proc) as mock_popen:
+            result = dc.exec_cmd_file("db", ["psql", "-U", "odoo"], stdin_file=dump_file)
+
+        call_kwargs = mock_popen.call_args[1]
+        cmd = mock_popen.call_args[0][0]
+
+        # Popen llamado con exec -T db psql -U odoo en el cmd
+        assert "exec" in cmd
+        assert "-T" in cmd
+        assert "db" in cmd
+        assert "psql" in cmd
+
+        # stdin debe ser un file object (no bytes)
+        assert hasattr(call_kwargs["stdin"], "read")
+
+        # communicate() debe haber sido invocado
+        mock_proc.communicate.assert_called_once()
+
+        # Retorna CompletedProcess con returncode correcto
+        assert isinstance(result, subprocess.CompletedProcess)
+        assert result.returncode == 0
+
+    def test_returncode_nonzero_propagado_sin_excepcion(self, dc, tmp_path):
+        """Un returncode != 0 se propaga en CompletedProcess sin lanzar excepcion."""
+        dump_file = tmp_path / "dump.sql"
+        dump_file.write_bytes(b"SELECT 1;")
+
+        mock_proc = MagicMock()
+        mock_proc.returncode = 1
+        mock_proc.communicate.return_value = (b"", b"ERROR: relation does not exist")
+
+        with patch("odev.core.docker.subprocess.Popen", return_value=mock_proc):
+            result = dc.exec_cmd_file("db", ["psql"], stdin_file=dump_file)
+
+        assert result.returncode == 1
+        assert not isinstance(result, Exception)
+
+    def test_file_not_found_antes_de_popen(self, dc, tmp_path):
+        """FileNotFoundError si el archivo no existe — antes de lanzar Popen."""
+        ruta_inexistente = tmp_path / "no_existe.sql"
+
+        with pytest.raises(FileNotFoundError):
+            dc.exec_cmd_file("db", ["psql"], stdin_file=ruta_inexistente)
+
+    def test_rechaza_servicio_invalido(self, dc, tmp_path):
+        """ValueError para nombres de servicio con caracteres invalidos."""
+        dump_file = tmp_path / "dump.sql"
+        dump_file.write_bytes(b"x")
+
+        with pytest.raises(ValueError, match="invalido"):
+            dc.exec_cmd_file("web; rm -rf /", ["ls"], stdin_file=dump_file)
+
+    def test_incluye_project_name_cuando_configurado(self, dc, tmp_path):
+        """El cmd incluye '-p <project_name>' cuando _project_name esta configurado."""
+        dc._project_name = "mi-proyecto"
+        dump_file = tmp_path / "dump.sql"
+        dump_file.write_bytes(b"x")
+
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+        mock_proc.communicate.return_value = (b"", b"")
+
+        with patch("odev.core.docker.subprocess.Popen", return_value=mock_proc) as mock_popen:
+            dc.exec_cmd_file("db", ["psql"], stdin_file=dump_file)
+
+        cmd = mock_popen.call_args[0][0]
+        assert "-p" in cmd
+        idx = cmd.index("-p")
+        assert cmd[idx + 1] == "mi-proyecto"
+
+    def test_usa_cwd_correcto(self, dc, tmp_path):
+        """exec_cmd_file ejecuta Popen con cwd=project_root."""
+        dump_file = tmp_path / "dump.sql"
+        dump_file.write_bytes(b"x")
+
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+        mock_proc.communicate.return_value = (b"", b"")
+
+        with patch("odev.core.docker.subprocess.Popen", return_value=mock_proc) as mock_popen:
+            dc.exec_cmd_file("db", ["psql"], stdin_file=dump_file)
+
+        call_kwargs = mock_popen.call_args[1]
+        assert call_kwargs["cwd"] == tmp_path
