@@ -6,6 +6,12 @@ El formato esta basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 y este proyecto adhiere a [Versionado Semantico](https://semver.org/spec/v2.0.0.html).
 Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
 
+## [0.4.2] - 2026-05-17
+
+### Corregido
+
+- `odev test` fallaba con `Address already in use` en Odoo 19 cuando el stack del proyecto estaba corriendo. Odoo 19 ignora el flag `--no-http` y sigue bindeando el puerto HTTP default (8069 interno), lo que colisionaba con el proceso principal de odoo en el container. Solucion: pasar `--http-port=8073` (constante `_TEST_HTTP_PORT` en `commands/test.py`) para redirigir el bind del proceso de test a un puerto interno libre. Se mantiene `--no-http` para retro-compat con Odoo ≤18 donde si era suficiente. Bloqueaba el flujo TDD para agentes IA en proyectos Odoo 19.
+
 ## [0.4.1] - 2026-05-17
 
 ### Corregido
