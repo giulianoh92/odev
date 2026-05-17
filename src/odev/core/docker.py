@@ -362,6 +362,55 @@ class DockerCompose:
             stderr=subprocess.STDOUT,
         )
 
+    def exec_cmd_file(
+        self,
+        service: str,
+        command: list[str],
+        stdin_file: Path,
+    ) -> subprocess.CompletedProcess:
+        """Ejecuta un comando dentro de un contenedor pipeando stdin desde un archivo.
+
+        Diferencia con exec_cmd: el contenido no se carga en memoria. Para datasets
+        grandes (dumps de DB, archivos binarios) que no caben comodos en RAM del host.
+        stdout/stderr se capturan via communicate() — adecuado para procesos que emiten
+        poco output (pg_restore, psql restore solo emiten errores).
+
+        Argumentos:
+            service: Nombre del servicio donde ejecutar el comando.
+            command: Comando y sus argumentos a ejecutar.
+            stdin_file: Ruta a un archivo a abrir en modo binario y pipear como stdin.
+
+        Retorna:
+            CompletedProcess con returncode, stdout, stderr capturados.
+
+        Lanza:
+            ValueError: Si el nombre de servicio contiene caracteres invalidos.
+            FileNotFoundError: Si stdin_file no existe en el host.
+        """
+        if not self._PATRON_SERVICIO.match(service):
+            raise ValueError(
+                f"Nombre de servicio invalido: '{service}'. "
+                "Solo se permiten letras, numeros, guiones y guiones bajos."
+            )
+        if not stdin_file.exists():
+            raise FileNotFoundError(f"Archivo no encontrado: '{stdin_file}'")
+        cmd = [*self._cmd]
+        if self._project_name:
+            cmd.extend(["-p", self._project_name])
+        cmd.extend(["exec", "-T", service, *command])
+        with stdin_file.open("rb") as fp:
+            proc = subprocess.Popen(
+                cmd,
+                cwd=self._project_root,
+                stdin=fp,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            stdout, stderr = proc.communicate()
+        return subprocess.CompletedProcess(
+            args=cmd, returncode=proc.returncode, stdout=stdout, stderr=stderr
+        )
+
     def get_container_name(self, service: str) -> str | None:
         """Busca dinamicamente el nombre del contenedor para un servicio.
 
