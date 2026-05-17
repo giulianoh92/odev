@@ -142,10 +142,7 @@ def adopt(
                 shutil.rmtree(existente.directorio_config)
             info(f"Cleaned up: {existente.directorio_config}")
         else:
-            error(
-                f"Ya existe un proyecto '{name}' en el registro. "
-                "Usa --force para re-adoptar."
-            )
+            error(f"Ya existe un proyecto '{name}' en el registro. Usa --force para re-adoptar.")
             raise typer.Exit(1)
 
     # 7. Recopilar version de Odoo ---------------------------------------------
@@ -240,7 +237,6 @@ def _mostrar_deteccion(layout: RepoLayout) -> None:
     info(f"Directorios de addons: {len(layout.rutas_addons)}")
     for ruta_addon in layout.rutas_addons:
         console.print(f"  [dim]•[/dim] {ruta_addon}")
-
 
 
 def _construir_valores(
@@ -367,13 +363,26 @@ def _extraer_env_values(valores: dict[str, Any]) -> dict[str, str]:
         Diccionario filtrado con solo las variables de entorno.
     """
     claves_env = {
-        "PROJECT_NAME", "ODOO_VERSION", "ODOO_IMAGE_TAG", "WEB_PORT",
-        "PGWEB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD", "DB_IMAGE_TAG",
-        "DB_PORT", "DB_HOST", "LOAD_LANGUAGE", "WITHOUT_DEMO", "DEBUGPY",
-        "DEBUGPY_PORT", "ADMIN_PASSWORD", "INIT_MODULES", "MAILHOG_PORT",
+        "PROJECT_NAME",
+        "ODOO_VERSION",
+        "ODOO_IMAGE_TAG",
+        "WEB_PORT",
+        "PGWEB_PORT",
+        "DB_NAME",
+        "DB_USER",
+        "DB_PASSWORD",
+        "DB_IMAGE_TAG",
+        "DB_PORT",
+        "DB_HOST",
+        "LOAD_LANGUAGE",
+        "WITHOUT_DEMO",
+        "DEBUGPY",
+        "DEBUGPY_PORT",
+        "ADMIN_PASSWORD",
+        "INIT_MODULES",
+        "MAILHOG_PORT",
     }
     return {k: str(v) for k, v in valores.items() if k in claves_env}
-
 
 
 def _mostrar_resumen(
@@ -395,13 +404,15 @@ def _mostrar_resumen(
         puertos: Puertos asignados al proyecto.
     """
     success(f"Proyecto '{nombre}' adoptado exitosamente.")
-    console.print(Panel(
-        f"[bold]Directorio de trabajo:[/bold] {ruta}\n"
-        f"[bold]Configuracion:[/bold] {directorio_config}\n"
-        f"[bold]Odoo:[/bold] {odoo_version}\n"
-        f"[bold]Addons:[/bold] {len(layout.rutas_addons)} directorios\n"
-        f"[bold]Puerto web:[/bold] {puertos['WEB_PORT']}\n\n"
-        f"Para iniciar: [bold green]odev up[/bold green]",
-        title="Proyecto adoptado",
-        border_style="green",
-    ))
+    console.print(
+        Panel(
+            f"[bold]Directorio de trabajo:[/bold] {ruta}\n"
+            f"[bold]Configuracion:[/bold] {directorio_config}\n"
+            f"[bold]Odoo:[/bold] {odoo_version}\n"
+            f"[bold]Addons:[/bold] {len(layout.rutas_addons)} directorios\n"
+            f"[bold]Puerto web:[/bold] {puertos['WEB_PORT']}\n\n"
+            f"Para iniciar: [bold green]odev up[/bold green]",
+            title="Proyecto adoptado",
+            border_style="green",
+        )
+    )

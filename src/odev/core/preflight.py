@@ -171,12 +171,14 @@ def verificar_puertos_pre_up(
 
     for nombre, numero_puerto in puertos.items():
         if puerto_disponible(numero_puerto):
-            statuses.append(PortStatus(
-                nombre=nombre,
-                puerto=numero_puerto,
-                estado="free",
-                propietario=None,
-            ))
+            statuses.append(
+                PortStatus(
+                    nombre=nombre,
+                    puerto=numero_puerto,
+                    estado="free",
+                    propietario=None,
+                )
+            )
             continue
 
         # Puerto ocupado — clasificar
@@ -186,11 +188,13 @@ def verificar_puertos_pre_up(
             dc,
             registry,
         )
-        statuses.append(PortStatus(
-            nombre=nombre,
-            puerto=numero_puerto,
-            estado=estado,
-            propietario=propietario,
-        ))
+        statuses.append(
+            PortStatus(
+                nombre=nombre,
+                puerto=numero_puerto,
+                estado=estado,
+                propietario=propietario,
+            )
+        )
 
     return PreflightResult(statuses=statuses)

@@ -15,11 +15,7 @@ from odev.core.config import load_env
 def install(
     module: str = typer.Argument(
         ...,
-        help=(
-            "Modulo(s) a instalar. "
-            "CSV soportado: 'm1,m2,m3'. "
-            "'all' solo como token unico."
-        ),
+        help=("Modulo(s) a instalar. CSV soportado: 'm1,m2,m3'. 'all' solo como token unico."),
     ),
     no_validate: bool = typer.Option(
         False,
@@ -41,6 +37,7 @@ def install(
     dc = obtener_docker(contexto)
 
     from odev.core.console import info, success
+
     modulos_csv = ",".join(modulos)
     info(f"Instalando modulo(s): {modulos_csv}")
     dc.exec_cmd(

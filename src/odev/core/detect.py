@@ -18,58 +18,64 @@ logger = logging.getLogger(__name__)
 
 
 # Directorios que se omiten al escanear subdirectorios
-_DIRS_IGNORADOS = frozenset({
-    "__pycache__",
-    "node_modules",
-    ".git",
-    ".tox",
-    ".mypy_cache",
-    ".pytest_cache",
-    "egg-info",
-})
+_DIRS_IGNORADOS = frozenset(
+    {
+        "__pycache__",
+        "node_modules",
+        ".git",
+        ".tox",
+        ".mypy_cache",
+        ".pytest_cache",
+        "egg-info",
+    }
+)
 
 # Nombres convencionales de subdirectorios que contienen addons Odoo.
 # Se escanean a un segundo nivel de profundidad si no se encuentran
 # modulos directamente en la raiz.
-_DIRS_ADDONS_CONVENCIONALES = frozenset({
-    "addons",
-    "custom",
-    "custom_addons",
-    "extra-addons",
-    "third-party",
-})
+_DIRS_ADDONS_CONVENCIONALES = frozenset(
+    {
+        "addons",
+        "custom",
+        "custom_addons",
+        "extra-addons",
+        "third-party",
+    }
+)
 
 # Nombres de modulos conocidos de Odoo Enterprise para deteccion heuristica
-_MODULOS_ENTERPRISE_CONOCIDOS = frozenset({
-    "account_accountant",
-    "account_reports",
-    "hr_payroll",
-    "planning",
-    "helpdesk",
-    "quality_control",
-    "sign",
-    "studio",
-    "web_enterprise",
-    "web_studio",
-    "mrp_workorder",
-    "sale_subscription",
-    "appointment",
-    "knowledge",
-    "documents",
-    "industry_fsm",
-    "social",
-    "marketing_automation",
-})
+_MODULOS_ENTERPRISE_CONOCIDOS = frozenset(
+    {
+        "account_accountant",
+        "account_reports",
+        "hr_payroll",
+        "planning",
+        "helpdesk",
+        "quality_control",
+        "sign",
+        "studio",
+        "web_enterprise",
+        "web_studio",
+        "mrp_workorder",
+        "sale_subscription",
+        "appointment",
+        "knowledge",
+        "documents",
+        "industry_fsm",
+        "social",
+        "marketing_automation",
+    }
+)
 
 
 class TipoRepo(str, Enum):
     """Tipo de layout de repositorio Odoo detectado."""
 
-    MODULO_UNICO = "modulo_unico"      # Modulo unico (raiz tiene __manifest__.py)
-    MULTI_ADDON = "multi_addon"        # Multiples modulos en la raiz (repo plano)
-    ODOOSH = "odoosh"                  # Repo Odoo.sh con submodulos git
-    ODOO_FUENTE = "odoo_fuente"        # Codigo fuente completo de Odoo (fuera de alcance)
-    DESCONOCIDO = "desconocido"        # Layout no reconocido
+    MODULO_UNICO = "modulo_unico"  # Modulo unico (raiz tiene __manifest__.py)
+    MULTI_ADDON = "multi_addon"  # Multiples modulos en la raiz (repo plano)
+    ODOOSH = "odoosh"  # Repo Odoo.sh con submodulos git
+    ODOO_FUENTE = "odoo_fuente"  # Codigo fuente completo de Odoo (fuera de alcance)
+    DESCONOCIDO = "desconocido"  # Layout no reconocido
 
 
 @dataclass
@@ -143,10 +149,7 @@ def detectar_layout(ruta: Path) -> RepoLayout:
     modulos_convencionales: dict[Path, list[Path]] = {}
     if not modulos_raiz:
         for entrada in sorted(ruta.iterdir()) if ruta.is_dir() else []:
-            if (
-                entrada.is_dir()
-                and entrada.name in _DIRS_ADDONS_CONVENCIONALES
-            ):
+            if entrada.is_dir() and entrada.name in _DIRS_ADDONS_CONVENCIONALES:
                 encontrados = _buscar_modulos_en(entrada)
                 if encontrados:
                     modulos_convencionales[entrada] = encontrados
@@ -182,10 +185,7 @@ def detectar_layout(ruta: Path) -> RepoLayout:
 
             # 4c. Buscar en directorios convencionales dentro del submodulo
             for entrada in sorted(ruta_absoluta.iterdir()):
-                if (
-                    entrada.is_dir()
-                    and entrada.name in _DIRS_ADDONS_CONVENCIONALES
-                ):
+                if entrada.is_dir() and entrada.name in _DIRS_ADDONS_CONVENCIONALES:
                     encontrados_conv = _buscar_modulos_en(entrada)
                     if encontrados_conv:
                         dirs_conv_submodulos[entrada] = encontrados_conv

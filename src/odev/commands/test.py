@@ -105,9 +105,7 @@ def render_summary(result: TestResult) -> None:
         return
 
     status = (
-        "[bold green]OK[/]"
-        if result.failed == 0 and result.errors == 0
-        else "[bold red]FAIL[/]"
+        "[bold green]OK[/]" if result.failed == 0 and result.errors == 0 else "[bold red]FAIL[/]"
     )
     console.print(
         f"{status} {result.passed} passed, {result.failed} failed, "
@@ -222,7 +220,8 @@ def _run_test(
         "odoo",
         "--test-enable",
         "--stop-after-init",
-        "-d", nombre_bd,
+        "-d",
+        nombre_bd,
         "--no-http",
         f"--http-port={_TEST_HTTP_PORT}",
         f"--log-level={log_level}",
@@ -242,11 +241,7 @@ def _run_test(
 
     # Determinar si usar modo stream o modo interactivo legacy
     use_stream = (
-        json_out
-        or failures_only
-        or summary
-        or save_log is not None
-        or not sys.stdout.isatty()
+        json_out or failures_only or summary or save_log is not None or not sys.stdout.isatty()
     )
 
     if not use_stream:

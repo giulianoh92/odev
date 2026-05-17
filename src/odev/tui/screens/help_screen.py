@@ -66,17 +66,19 @@ class HelpScreen(ModalScreen):
             yield Label("Atajos de Teclado — odev TUI", id="help-titulo")
             tabla = DataTable(id="help-table", show_cursor=False)
             tabla.add_columns("Tecla", "Accion", "Descripcion")
-            tabla.add_rows([
-                ("u", "Levantar", "docker compose up -d"),
-                ("d", "Detener", "docker compose stop"),
-                ("r", "Reiniciar", "Reiniciar servicio web"),
-                ("s", "Shell", "Abrir shell interactivo"),
-                ("c", "Contexto", "Generar PROJECT_CONTEXT.md"),
-                ("q", "Salir", "Cerrar la aplicacion"),
-                ("?", "Ayuda", "Mostrar esta pantalla"),
-                ("Ctrl+P", "Paleta", "Abrir paleta de comandos"),
-                ("Tab", "Servicio", "Ciclar servicio en logs"),
-                ("Escape", "Cerrar", "Cerrar pantalla modal"),
-            ])
+            tabla.add_rows(
+                [
+                    ("u", "Levantar", "docker compose up -d"),
+                    ("d", "Detener", "docker compose stop"),
+                    ("r", "Reiniciar", "Reiniciar servicio web"),
+                    ("s", "Shell", "Abrir shell interactivo"),
+                    ("c", "Contexto", "Generar PROJECT_CONTEXT.md"),
+                    ("q", "Salir", "Cerrar la aplicacion"),
+                    ("?", "Ayuda", "Mostrar esta pantalla"),
+                    ("Ctrl+P", "Paleta", "Abrir paleta de comandos"),
+                    ("Tab", "Servicio", "Ciclar servicio en logs"),
+                    ("Escape", "Cerrar", "Cerrar pantalla modal"),
+                ]
+            )
             yield tabla
             yield Static("[dim]Presiona Escape, q o ? para cerrar[/]", id="help-footer")

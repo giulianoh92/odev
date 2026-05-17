@@ -69,9 +69,11 @@ def neutralizar_base_datos(
     dc.exec_cmd(
         "web",
         [
-            "odoo", "neutralize",
+            "odoo",
+            "neutralize",
             "--config=/etc/odoo/odoo.conf",
-            "-d", nombre_bd,
+            "-d",
+            nombre_bd,
         ],
         interactive=True,
     )
@@ -99,7 +101,8 @@ def resetear_credenciales_admin(
     resultado_hash = dc.exec_cmd(
         "web",
         [
-            "python3", "-c",
+            "python3",
+            "-c",
             "from passlib.context import CryptContext; "
             "print(CryptContext(['pbkdf2_sha512']).hash('admin'))",
         ],
@@ -109,8 +112,15 @@ def resetear_credenciales_admin(
     hash_pw_safe = hash_pw.replace("'", "''")
     dc.exec_cmd(
         "db",
-        ["psql", "-U", usuario_bd, "-d", nombre_bd, "-c",
-         f"UPDATE res_users SET login = 'admin', password = '{hash_pw_safe}' WHERE id = 2;"],
+        [
+            "psql",
+            "-U",
+            usuario_bd,
+            "-d",
+            nombre_bd,
+            "-c",
+            f"UPDATE res_users SET login = 'admin', password = '{hash_pw_safe}' WHERE id = 2;",
+        ],
     )
     success("Credenciales de admin reseteadas: login=admin, password=admin")
 

@@ -36,6 +36,7 @@ def scaffold(
         raise typer.Exit(1)
 
     from odev.main import obtener_nombre_proyecto
+
     contexto = requerir_proyecto(obtener_nombre_proyecto())
     rutas = obtener_rutas(contexto)
 

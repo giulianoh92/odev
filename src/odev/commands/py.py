@@ -28,9 +28,11 @@ def _run_py(expression: str) -> None:
 
     script = f"print({expression})\n".encode("utf-8")
     args = [
-        "odoo", "shell",
+        "odoo",
+        "shell",
         "--config=/etc/odoo/odoo.conf",
-        "-d", nombre_bd,
+        "-d",
+        nombre_bd,
         "--no-http",
     ]
 

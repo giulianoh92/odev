@@ -95,10 +95,24 @@ def _extraer_env_values(valores: dict[str, Any]) -> dict[str, str]:
         Diccionario filtrado con solo las variables de entorno.
     """
     claves_env = {
-        "PROJECT_NAME", "ODOO_VERSION", "ODOO_IMAGE_TAG", "WEB_PORT",
-        "PGWEB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD", "DB_IMAGE_TAG",
-        "DB_PORT", "DB_HOST", "LOAD_LANGUAGE", "WITHOUT_DEMO", "DEBUGPY",
-        "DEBUGPY_PORT", "ADMIN_PASSWORD", "INIT_MODULES", "MAILHOG_PORT",
+        "PROJECT_NAME",
+        "ODOO_VERSION",
+        "ODOO_IMAGE_TAG",
+        "WEB_PORT",
+        "PGWEB_PORT",
+        "DB_NAME",
+        "DB_USER",
+        "DB_PASSWORD",
+        "DB_IMAGE_TAG",
+        "DB_PORT",
+        "DB_HOST",
+        "LOAD_LANGUAGE",
+        "WITHOUT_DEMO",
+        "DEBUGPY",
+        "DEBUGPY_PORT",
+        "ADMIN_PASSWORD",
+        "INIT_MODULES",
+        "MAILHOG_PORT",
     }
     return {k: str(v) for k, v in valores.items() if k in claves_env}
 
@@ -274,7 +288,10 @@ def regenerar_configuracion(
     # 3. Construir contexto unificado
     dir_trabajo = contexto.directorio_trabajo
     valores = construir_contexto_templates(
-        config, env_values, dir_config, dir_trabajo,
+        config,
+        env_values,
+        dir_config,
+        dir_trabajo,
     )
 
     # 4. Renderizar docker-compose.yml

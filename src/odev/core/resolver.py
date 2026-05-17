@@ -30,9 +30,9 @@ logger = logging.getLogger(__name__)
 class ModoProyecto(str, Enum):
     """Modo de operacion de un proyecto odev."""
 
-    INLINE = "inline"       # Config vive dentro del directorio del proyecto
-    EXTERNAL = "external"   # Config vive en ~/.odev/projects/<nombre>/
-    LEGACY = "legacy"       # Formato viejo odoo-dev-env (compatibilidad hacia atras)
+    INLINE = "inline"  # Config vive dentro del directorio del proyecto
+    EXTERNAL = "external"  # Config vive en ~/.odev/projects/<nombre>/
+    LEGACY = "legacy"  # Formato viejo odoo-dev-env (compatibilidad hacia atras)
 
 
 @dataclass
@@ -64,9 +64,7 @@ class ProyectoNoEncontradoError(Exception):
 
     def __init__(self, directorio: Path) -> None:
         self.directorio = directorio
-        super().__init__(
-            f"No se encontró un proyecto odev en '{directorio}' ni en el registro."
-        )
+        super().__init__(f"No se encontró un proyecto odev en '{directorio}' ni en el registro.")
 
 
 class ProyectoAmbiguoError(Exception):
@@ -99,9 +97,7 @@ def _modo_desde_string(valor: str) -> ModoProyecto:
     try:
         return ModoProyecto(valor)
     except ValueError:
-        logger.warning(
-            "Modo desconocido '%s' en el registro, usando EXTERNAL.", valor
-        )
+        logger.warning("Modo desconocido '%s' en el registro, usando EXTERNAL.", valor)
         return ModoProyecto.EXTERNAL
 
 

@@ -50,11 +50,7 @@ def _contar_modulos(directorio: Path) -> int:
     """
     if not directorio.is_dir():
         return 0
-    return sum(
-        1
-        for d in directorio.iterdir()
-        if d.is_dir() and (d / "__manifest__.py").exists()
-    )
+    return sum(1 for d in directorio.iterdir() if d.is_dir() and (d / "__manifest__.py").exists())
 
 
 def _tamano_directorio(directorio: Path) -> float:
@@ -171,9 +167,7 @@ def enterprise_status() -> None:
     table.add_column("Tipo")
 
     versiones = sorted(ENTERPRISE_DIR.iterdir()) if ENTERPRISE_DIR.is_dir() else []
-    version_entries = [
-        e for e in versiones if e.is_dir() or e.is_symlink()
-    ]
+    version_entries = [e for e in versiones if e.is_dir() or e.is_symlink()]
 
     if not version_entries:
         info("No se encontraron versiones enterprise compartidas.")

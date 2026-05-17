@@ -23,14 +23,36 @@ from odev.core.resolver import (
 # Modulos builtin de Odoo — bypass del pre-flight de validacion
 # ---------------------------------------------------------------------------
 
-MODULOS_BUILTIN: frozenset[str] = frozenset({
-    "base", "web", "web_tour", "mail", "bus", "barcodes",
-    "sale", "sale_management", "purchase", "account",
-    "stock", "hr", "hr_holidays", "point_of_sale",
-    "calendar", "contacts", "fleet", "lunch", "note",
-    "portal", "product", "uom", "resource", "rating",
-    "auth_signup", "digest",
-})
+MODULOS_BUILTIN: frozenset[str] = frozenset(
+    {
+        "base",
+        "web",
+        "web_tour",
+        "mail",
+        "bus",
+        "barcodes",
+        "sale",
+        "sale_management",
+        "purchase",
+        "account",
+        "stock",
+        "hr",
+        "hr_holidays",
+        "point_of_sale",
+        "calendar",
+        "contacts",
+        "fleet",
+        "lunch",
+        "note",
+        "portal",
+        "product",
+        "uom",
+        "resource",
+        "rating",
+        "auth_signup",
+        "digest",
+    }
+)
 
 
 def parsear_modulos_csv(valor: str) -> list[str]:
@@ -242,5 +264,3 @@ def validar_modulo_existe(nombre: str, contexto: ProjectContext) -> None:
         typer.Exit(2): cuando el modulo no se encuentra y no es builtin.
     """
     validar_modulos([nombre], contexto, no_validate=False)
-
-

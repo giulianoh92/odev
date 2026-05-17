@@ -70,6 +70,7 @@ class OdevCommandProvider(Provider):
         Retorna:
             Callable asincrono que llama a la accion correspondiente.
         """
+
         async def _ejecutar() -> None:
             await self.app.run_action(accion)
 

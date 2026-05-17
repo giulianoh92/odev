@@ -25,6 +25,7 @@ def context() -> None:
     contexto completo para referencia.
     """
     from odev.main import obtener_nombre_proyecto
+
     contexto = requerir_proyecto(obtener_nombre_proyecto())
     rutas = obtener_rutas(contexto)
 
@@ -277,9 +278,7 @@ def _tiene_controladores(directorio_modulo: Path) -> bool:
     directorio_controladores = directorio_modulo / "controllers"
     if not directorio_controladores.exists():
         return False
-    return any(
-        f for f in directorio_controladores.glob("*.py") if f.name != "__init__.py"
-    )
+    return any(f for f in directorio_controladores.glob("*.py") if f.name != "__init__.py")
 
 
 def _contar_wizards(directorio_modulo: Path) -> int:

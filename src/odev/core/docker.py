@@ -103,8 +103,7 @@ class DockerCompose:
         if shutil.which("docker-compose"):
             return ["docker-compose"]
         raise RuntimeError(
-            "No se encontro 'docker compose' ni 'docker-compose'. "
-            "Por favor instala Docker."
+            "No se encontro 'docker compose' ni 'docker-compose'. Por favor instala Docker."
         )
 
     def _run(

@@ -124,8 +124,7 @@ def _validar_esquema(datos: dict, ruta_archivo: Path) -> list[str]:
     for clave in datos:
         if clave not in claves_conocidas:
             advertencias.append(
-                f"Clave desconocida '{clave}' en {ruta_archivo}. "
-                "Posible error tipografico."
+                f"Clave desconocida '{clave}' en {ruta_archivo}. Posible error tipografico."
             )
 
     # 2. Validar tipos de primer nivel
@@ -163,8 +162,7 @@ def _validar_esquema(datos: dict, ruta_archivo: Path) -> list[str]:
                 else:
                     nombres_tipos = tipo_esperado.__name__
                 advertencias.append(
-                    f"'{seccion}.{clave}' deberia ser {nombres_tipos}, "
-                    f"pero es NoneType."
+                    f"'{seccion}.{clave}' deberia ser {nombres_tipos}, pero es NoneType."
                 )
             elif isinstance(tipo_esperado, tuple):
                 if not isinstance(valor, tipo_esperado):

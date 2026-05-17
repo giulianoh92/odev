@@ -30,8 +30,12 @@ def self_update() -> None:
 
     try:
         resultado = subprocess.run(
-            [*ejecutable_pip, "install", "--upgrade",
-             "git+https://github.com/giulianoh92/odev.git"],
+            [
+                *ejecutable_pip,
+                "install",
+                "--upgrade",
+                "git+https://github.com/giulianoh92/odev.git",
+            ],
             capture_output=True,
             text=True,
             timeout=120,

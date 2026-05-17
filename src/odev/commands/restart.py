@@ -14,6 +14,7 @@ def restart(
 ) -> None:
     """Reinicia un servicio del stack Docker (por defecto: web)."""
     from odev.main import obtener_nombre_proyecto
+
     contexto = requerir_proyecto(obtener_nombre_proyecto())
     dc = obtener_docker(contexto)
 

@@ -31,9 +31,7 @@ RE_RAN = re.compile(r"Ran (\d+) tests? in ([\d.]+)s")
 RE_RESULT_OK = re.compile(r"^\s*OK\s*$")
 
 # Resultado fallido: "FAILED (failures=N)" o "FAILED (errors=N)" o ambos
-RE_RESULT_FAILED = re.compile(
-    r"FAILED\s*\((?:failures=(\d+))?(?:,\s*)?(?:errors=(\d+))?\)"
-)
+RE_RESULT_FAILED = re.compile(r"FAILED\s*\((?:failures=(\d+))?(?:,\s*)?(?:errors=(\d+))?\)")
 
 # Separadores de bloque: "======" o "------" (5+ caracteres)
 RE_SEPARATOR = re.compile(r"^[=\-]{5,}\s*$")
@@ -44,14 +42,10 @@ RE_ODOO19_SUMMARY = re.compile(
 )
 
 # Odoo v19: linea de duracion "odoo.tests.stats: <module>: N tests X.Xs Q queries"
-RE_ODOO19_DURATION = re.compile(
-    r"odoo\.tests\.stats:\s+\S+:\s+(\d+) tests ([\d.]+)s (\d+) queries"
-)
+RE_ODOO19_DURATION = re.compile(r"odoo\.tests\.stats:\s+\S+:\s+(\d+) tests ([\d.]+)s (\d+) queries")
 
 # Cabecera setUpClass: "ERROR: setUpClass (odoo.addons.mod.tests.file.Class)"
-RE_FAIL_SETUP = re.compile(
-    r"\b(FAIL|ERROR):\s+setUpClass\s+\(([\w.]+)\)"
-)
+RE_FAIL_SETUP = re.compile(r"\b(FAIL|ERROR):\s+setUpClass\s+\(([\w.]+)\)")
 
 # Inicio de traceback bare (sin cabecera FAIL/ERROR previa)
 RE_TRACEBACK_START = re.compile(r"Traceback \(most recent call last\):")

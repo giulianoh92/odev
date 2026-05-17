@@ -18,6 +18,7 @@ def status() -> None:
     el nombre del proyecto y el modo detectado en la cabecera.
     """
     from odev.main import obtener_nombre_proyecto
+
     contexto = requerir_proyecto(obtener_nombre_proyecto())
     dc = obtener_docker(contexto)
     servicios = dc.ps_parsed()
@@ -49,9 +50,7 @@ def status() -> None:
             )
 
         estilo_estado = (
-            "green" if estado == "running"
-            else "red" if estado == "exited"
-            else "yellow"
+            "green" if estado == "running" else "red" if estado == "exited" else "yellow"
         )
         tabla.add_row(
             nombre,

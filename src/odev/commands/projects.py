@@ -93,9 +93,7 @@ def eliminar(
             if not force:
                 from rich.prompt import Confirm
 
-                if not Confirm.ask(
-                    f"Eliminar directorio de configuracion '{config_dir}'?"
-                ):
+                if not Confirm.ask(f"Eliminar directorio de configuracion '{config_dir}'?"):
                     return
             shutil.rmtree(config_dir)
             success(f"Directorio de configuracion eliminado: {config_dir}")

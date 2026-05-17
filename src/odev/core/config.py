@@ -101,11 +101,13 @@ def construir_addon_mounts(
             container_path = f"/mnt/extra-addons-{i}"
 
         nombre = p.name if p.name != "." else f"addons-{i}"
-        mounts.append({
-            "host_path": host_path,
-            "container_path": container_path,
-            "nombre": nombre,
-        })
+        mounts.append(
+            {
+                "host_path": host_path,
+                "container_path": container_path,
+                "nombre": nombre,
+            }
+        )
     return mounts
 
 

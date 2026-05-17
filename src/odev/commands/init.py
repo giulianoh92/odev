@@ -351,12 +351,10 @@ def _construir_valores(
         # --- Variables de addon mounts para templates dinamicos ---
         "addon_mounts": construir_addon_mounts(["./addons"], Path(".")),
         "addon_container_paths": [
-            m["container_path"]
-            for m in construir_addon_mounts(["./addons"], Path("."))
+            m["container_path"] for m in construir_addon_mounts(["./addons"], Path("."))
         ],
         "addon_dirs_container": [
-            m["container_path"]
-            for m in construir_addon_mounts(["./addons"], Path("."))
+            m["container_path"] for m in construir_addon_mounts(["./addons"], Path("."))
         ],
         "addons_paths_list": ["./addons"],
         "project_mode": "inline",

@@ -35,6 +35,7 @@ def _obtener_info_bd() -> tuple[str, str, ProjectPaths, ProjectContext]:
         SystemExit: Si no se encuentra un proyecto odev.
     """
     from odev.main import obtener_nombre_proyecto
+
     contexto = requerir_proyecto(obtener_nombre_proyecto())
     rutas = obtener_rutas(contexto)
 
@@ -137,6 +138,7 @@ def list_snapshots() -> None:
     encontrado en el directorio snapshots/ del proyecto.
     """
     from odev.main import obtener_nombre_proyecto
+
     contexto = requerir_proyecto(obtener_nombre_proyecto())
     rutas = obtener_rutas(contexto)
 

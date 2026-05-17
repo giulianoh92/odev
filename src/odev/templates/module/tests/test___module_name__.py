@@ -5,10 +5,12 @@ class Test__module_name__(TransactionCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.record = cls.env["__module_name__"].create({
-            "name": "Registro de prueba",
-            "amount": 100.0,
-        })
+        cls.record = cls.env["__module_name__"].create(
+            {
+                "name": "Registro de prueba",
+                "amount": 100.0,
+            }
+        )
 
     def test_create(self):
         """Verifica que se cree correctamente un registro."""

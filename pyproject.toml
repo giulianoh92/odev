@@ -64,6 +64,10 @@ select = ["E", "F", "I", "W"]
 [tool.ruff.lint.per-file-ignores]
 # Test fixtures contienen strings de log Odoo que no pueden acortarse
 "tests/*.py" = ["E501"]
+# CI YAML template strings no pueden recortarse sin cambiar el output generado
+"src/odev/commands/init.py" = ["E501"]
+# Scaffold templates usan re-exports intencionales (patron Odoo __init__.py)
+"src/odev/templates/**/*.py" = ["F401"]
 
 [tool.coverage.run]
 source = ["odev"]
