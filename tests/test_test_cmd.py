@@ -659,19 +659,21 @@ class TestModulePreFlight:
 
 
 class TestHttpDisabled:
-    """El comando de tests pasa --no-http para evitar bindear puertos.
+    """El comando de tests pasa --no-http + --http-port=8073 para evitar bindear puertos.
 
-    Anteriormente se propagaba `WEB_PORT` como `--http-port`, pero cuando el
-    proyecto mapea WEB_PORT directo al 8069 interno (caso default), el odoo
-    principal del container ya lo ocupa y la corrida fallaba con
-    "Address already in use". Con `--no-http` el proceso de test no bindea
-    nada y los TransactionCase/HttpCase corren igual.
+    Historia:
+    - Pre-0.4.0: pasaba `--http-port=$WEB_PORT`. Cuando WEB_PORT host = 8069
+      (default), colisionaba con odoo principal en 8069 interno del container.
+    - 0.4.0-0.4.1: solo `--no-http`. Funciono en Odoo <=18 pero Odoo 19 ignora
+      `--no-http` y sigue bindeando 8069 interno → "Address already in use".
+    - 0.4.2+: `--no-http` (retro-compat <=18) + `--http-port=8073` (Odoo 19
+      bindea un puerto interno libre, distinto del 8069 del web container).
     """
 
-    def test_comando_incluye_no_http(self, tmp_path: Path, monkeypatch) -> None:
-        """El comando ejecutado dentro del container incluye --no-http."""
+    def test_comando_incluye_no_http_y_http_port_libre(self, tmp_path: Path, monkeypatch) -> None:
+        """El comando incluye --no-http y --http-port=8073 (Odoo 19 fix)."""
         monkeypatch.setattr("sys.stdout.isatty", lambda: False)
-        from odev.commands.test import _run_test
+        from odev.commands.test import _TEST_HTTP_PORT, _run_test
 
         ctx = _make_contexto(tmp_path)
         fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
@@ -697,9 +699,10 @@ class TestHttpDisabled:
         args = mock_dc.exec_cmd_stream.call_args[0]
         cmd_list = args[1]
         assert "--no-http" in cmd_list
-        # `--http-port=...` ya no se inyecta — evita colisiones con el odoo
-        # principal del container que ya bindea 8069.
-        assert not any(arg.startswith("--http-port=") for arg in cmd_list)
+        # Odoo 19 ignora --no-http; --http-port=8073 redirige el bind a un puerto
+        # interno libre, distinto del 8069 que ocupa el odoo principal.
+        assert f"--http-port={_TEST_HTTP_PORT}" in cmd_list
+        assert _TEST_HTTP_PORT == 8073
 
 
 # ---------------------------------------------------------------------------
