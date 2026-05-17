@@ -33,6 +33,11 @@ def reset_db(
         "-y",
         help="Skip confirmation prompt (for automation/CI).",
     ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Mostrar que se borraria sin ejecutar la operacion.",
+    ),
 ) -> None:
     """Destruye la base de datos y volumenes, luego reinicia el entorno desde cero.
 
@@ -47,6 +52,17 @@ def reset_db(
     from odev.main import obtener_nombre_proyecto
 
     contexto = requerir_proyecto(obtener_nombre_proyecto())
+    rutas = obtener_rutas(contexto)
+    valores_env = load_env(rutas.env_file)
+    nombre_bd = valores_env.get("DB_NAME", "odoo_db")
+
+    if dry_run:
+        info(f"Modo --dry-run: no se ejecutara ninguna operacion.")
+        info(f"  Se borraria la base de datos: {nombre_bd}")
+        info("  Se recrearia y levantaria el entorno.")
+        if neutralize:
+            info("  Se ejecutaria neutralize despues del reinicio.")
+        return
 
     warning("Esto ELIMINARA la base de datos y TODOS los datos!")
     if not yes:
@@ -55,10 +71,7 @@ def reset_db(
             info("Operacion cancelada.")
             raise typer.Exit()
 
-    rutas = obtener_rutas(contexto)
-    valores_env = load_env(rutas.env_file)
     usuario_bd = valores_env.get("DB_USER", "odoo")
-    nombre_bd = valores_env.get("DB_NAME", "odoo_db")
     puerto_web = valores_env.get("WEB_PORT", "8069")
 
     dc = obtener_docker(contexto)
