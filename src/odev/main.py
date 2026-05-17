@@ -7,6 +7,8 @@ Este es el modulo referenciado por el entry point del paquete:
 
 from __future__ import annotations
 
+import logging
+
 import typer
 
 from odev import __version__
@@ -71,10 +73,24 @@ def main(
         callback=_version_callback,
         is_eager=True,
     ),
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        help="Activar logging DEBUG global.",
+    ),
 ) -> None:
     """CLI para gestion de entornos de desarrollo Odoo."""
     global _nombre_proyecto
     _nombre_proyecto = project
+    if debug:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            force=True,
+        )
+        logging.getLogger().setLevel(logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.INFO, force=True)
 
 
 def obtener_nombre_proyecto() -> str | None:
@@ -128,24 +144,28 @@ app.add_typer(db.app, name="db")
 # --- Comandos nuevos (a implementar en Batch 5) ---
 try:
     from odev.commands.adopt import adopt
+
     app.command(name="adopt")(adopt)
 except ImportError:
     pass
 
 try:
     from odev.commands.reconfigure import reconfigure
+
     app.command(name="reconfigure")(reconfigure)
 except ImportError:
     pass
 
 try:
     from odev.commands.projects import app as projects_app
+
     app.add_typer(projects_app, name="projects")
 except ImportError:
     pass
 
 try:
     from odev.commands.enterprise import app as enterprise_app
+
     app.add_typer(enterprise_app, name="enterprise")
 except ImportError:
     pass
