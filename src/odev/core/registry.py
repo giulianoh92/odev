@@ -13,6 +13,7 @@ import threading
 
 try:
     import fcntl
+
     HAS_FCNTL = True
 except ImportError:
     fcntl = None  # type: ignore[assignment]
@@ -110,9 +111,7 @@ class Registry:
                 continue
             try:
                 # Filtrar solo campos conocidos para tolerar datos extra
-                datos_filtrados = {
-                    k: v for k, v in valores.items() if k in campos_validos
-                }
+                datos_filtrados = {k: v for k, v in valores.items() if k in campos_validos}
                 datos_filtrados["nombre"] = nombre
                 # Convertir rutas de string a Path
                 for campo_ruta in ("directorio_trabajo", "directorio_config"):
@@ -122,9 +121,7 @@ class Registry:
                         datos_filtrados[campo_ruta] = Path(datos_filtrados[campo_ruta])
                 resultado[nombre] = RegistryEntry(**datos_filtrados)
             except (TypeError, ValueError) as e:
-                logger.warning(
-                    "No se pudo cargar el proyecto '%s': %s", nombre, e
-                )
+                logger.warning("No se pudo cargar el proyecto '%s': %s", nombre, e)
                 continue
 
         return resultado

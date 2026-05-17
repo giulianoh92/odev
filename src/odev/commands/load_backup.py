@@ -13,10 +13,6 @@ from pathlib import Path
 
 import typer
 
-# Error codes for load-backup validation failures
-LOAD_BACKUP_UNSAFE_MEMBER = "LOAD_BACKUP_UNSAFE_MEMBER"
-LOAD_BACKUP_INVALID_DB_NAME = "LOAD_BACKUP_INVALID_DB_NAME"
-
 from odev.commands._helpers import obtener_docker, obtener_rutas, requerir_proyecto
 from odev.core.config import load_env
 from odev.core.console import error, info, success, warning
@@ -25,6 +21,10 @@ from odev.core.neutralize import (
     neutralizar_base_datos,
     resetear_credenciales_admin,
 )
+
+# Error codes for load-backup validation failures
+LOAD_BACKUP_UNSAFE_MEMBER = "LOAD_BACKUP_UNSAFE_MEMBER"
+LOAD_BACKUP_INVALID_DB_NAME = "LOAD_BACKUP_INVALID_DB_NAME"
 
 
 def _validar_miembros_zip(zf: zipfile.ZipFile, destino: Path) -> None:
@@ -48,14 +48,14 @@ def _validar_miembros_zip(zf: zipfile.ZipFile, destino: Path) -> None:
         # Early-exit: rutas absolutas o con componentes '..' son siempre inseguras
         if nombre.startswith("/") or ".." in Path(nombre).parts:
             raise typer.BadParameter(
-                f"{LOAD_BACKUP_UNSAFE_MEMBER}: '{nombre}' apunta fuera del directorio de extraccion."
+                f"{LOAD_BACKUP_UNSAFE_MEMBER}: '{nombre}' escapa al directorio de extraccion."
             )
         ruta_final = (destino / nombre).resolve()
         try:
             ruta_final.relative_to(destino_resuelto)
         except ValueError:
             raise typer.BadParameter(
-                f"{LOAD_BACKUP_UNSAFE_MEMBER}: '{nombre}' apunta fuera del directorio de extraccion."
+                f"{LOAD_BACKUP_UNSAFE_MEMBER}: '{nombre}' escapa al directorio de extraccion."
             )
 
 
@@ -72,7 +72,8 @@ def load_backup(
     ),
     yes: bool = typer.Option(
         False,
-        "--yes", "-y",
+        "--yes",
+        "-y",
         help="Skip confirmation prompt (for automation/CI).",
     ),
 ) -> None:
@@ -85,6 +86,7 @@ def load_backup(
     ni ejecute acciones programadas.
     """
     from odev.main import obtener_nombre_proyecto
+
     contexto = requerir_proyecto(obtener_nombre_proyecto())
     rutas = obtener_rutas(contexto)
 
@@ -107,10 +109,7 @@ def load_backup(
 
     # Pre-flight: verify db container is running
     if not dc.is_service_running("db"):
-        error(
-            "El servicio de base de datos no esta corriendo. "
-            "Ejecuta 'odev up' primero."
-        )
+        error("El servicio de base de datos no esta corriendo. Ejecuta 'odev up' primero.")
         raise typer.Exit(1)
 
     # -- Validar backup -------------------------------------------------------
@@ -184,8 +183,14 @@ def load_backup(
             dc.exec_cmd(
                 "db",
                 [
-                    "pg_restore", "-U", usuario_bd, "-d", nombre_bd,
-                    "--no-owner", "--no-acl", "--jobs=2",
+                    "pg_restore",
+                    "-U",
+                    usuario_bd,
+                    "-d",
+                    nombre_bd,
+                    "--no-owner",
+                    "--no-acl",
+                    "--jobs=2",
                 ],
                 stdin_data=datos_dump,
             )
@@ -211,25 +216,31 @@ def load_backup(
             else:
                 destino = f"/var/lib/odoo/filestore/{nombre_bd}"
                 subprocess.run(
-                    ["docker", "exec", "--user", "root", contenedor,
-                     "rm", "-rf", destino],
+                    ["docker", "exec", "--user", "root", contenedor, "rm", "-rf", destino],
                     check=False,
                 )
                 # Crear directorio destino — en contenedores frescos no existe aún
                 subprocess.run(
-                    ["docker", "exec", "--user", "root", contenedor,
-                     "mkdir", "-p", destino],
+                    ["docker", "exec", "--user", "root", contenedor, "mkdir", "-p", destino],
                     check=True,
                 )
                 subprocess.run(
-                    ["docker", "cp", str(directorio_filestore) + "/.",
-                     f"{contenedor}:{destino}"],
+                    ["docker", "cp", str(directorio_filestore) + "/.", f"{contenedor}:{destino}"],
                     check=True,
                 )
                 # Corregir permisos — docker cp crea archivos con el usuario del host
                 subprocess.run(
-                    ["docker", "exec", "--user", "root", contenedor,
-                     "chown", "-R", "odoo:odoo", destino],
+                    [
+                        "docker",
+                        "exec",
+                        "--user",
+                        "root",
+                        contenedor,
+                        "chown",
+                        "-R",
+                        "odoo:odoo",
+                        destino,
+                    ],
                     check=True,
                 )
                 success("Filestore restaurado.")

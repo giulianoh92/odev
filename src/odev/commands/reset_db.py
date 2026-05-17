@@ -11,8 +11,6 @@ import subprocess
 import typer
 
 from odev.commands._helpers import obtener_docker, obtener_rutas, requerir_proyecto
-
-logger = logging.getLogger(__name__)
 from odev.core.config import load_env
 from odev.core.console import info, success, warning
 from odev.core.neutralize import (
@@ -20,6 +18,8 @@ from odev.core.neutralize import (
     neutralizar_base_datos,
     resetear_credenciales_admin,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def reset_db(
@@ -29,7 +29,8 @@ def reset_db(
     ),
     yes: bool = typer.Option(
         False,
-        "--yes", "-y",
+        "--yes",
+        "-y",
         help="Skip confirmation prompt (for automation/CI).",
     ),
 ) -> None:
@@ -44,6 +45,7 @@ def reset_db(
     de admin).
     """
     from odev.main import obtener_nombre_proyecto
+
     contexto = requerir_proyecto(obtener_nombre_proyecto())
 
     warning("Esto ELIMINARA la base de datos y TODOS los datos!")
