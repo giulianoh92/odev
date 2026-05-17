@@ -197,3 +197,47 @@ class TestAllocatePorts:
 
         deprecation_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
         assert len(deprecation_warnings) >= 1, "Se esperaba al menos un DeprecationWarning"
+
+
+# ── T12 RED: PORT_KEYS debe existir como tupla derivada de CONJUNTOS_PUERTOS ──
+
+
+class TestPortKeys:
+    """Verifica que PORT_KEYS es una constante publica en core/ports.py (Q10).
+
+    T12.1 RED: el test falla hasta que se defina PORT_KEYS en ports.py.
+    """
+
+    def test_port_keys_exportada(self):
+        """PORT_KEYS se puede importar desde odev.core.ports."""
+        from odev.core.ports import PORT_KEYS  # noqa: F401 — solo verifica importabilidad
+
+    def test_port_keys_es_tupla(self):
+        """PORT_KEYS es una tupla de strings."""
+        from odev.core.ports import PORT_KEYS
+
+        assert isinstance(PORT_KEYS, tuple), "PORT_KEYS debe ser una tupla"
+        assert all(isinstance(k, str) for k in PORT_KEYS), (
+            "Todos los elementos de PORT_KEYS deben ser strings"
+        )
+
+    def test_port_keys_coincide_con_conjuntos_puertos(self):
+        """PORT_KEYS es igual a tuple(CONJUNTOS_PUERTOS.keys()).
+
+        Esto garantiza una unica fuente de verdad para las claves de puertos.
+        """
+        from odev.core.ports import PORT_KEYS
+
+        esperado = tuple(CONJUNTOS_PUERTOS.keys())
+        assert PORT_KEYS == esperado, (
+            f"PORT_KEYS {PORT_KEYS} debe ser igual a tuple(CONJUNTOS_PUERTOS.keys()) {esperado}"
+        )
+
+    def test_port_keys_contiene_claves_esperadas(self):
+        """PORT_KEYS contiene las claves canonicas de puertos."""
+        from odev.core.ports import PORT_KEYS
+
+        claves_esperadas = {"WEB_PORT", "PGWEB_PORT", "DB_PORT", "DEBUGPY_PORT", "MAILHOG_PORT"}
+        assert set(PORT_KEYS) == claves_esperadas, (
+            f"PORT_KEYS debe contener exactamente {claves_esperadas}"
+        )
