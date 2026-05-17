@@ -6,6 +6,21 @@ El formato esta basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 y este proyecto adhiere a [Versionado Semantico](https://semver.org/spec/v2.0.0.html).
 Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
 
+## [0.4.3] - 2026-05-17
+
+### Corregido
+
+- B3: `odev load-backup` ahora streamea el dump SQL desde archivo (`DockerCompose.exec_cmd_file`) en lugar de cargarlo entero en RAM, eliminando OOM en dumps grandes (5-20 GB)
+
+### Agregado
+
+- Q5: Flag `--dry-run` en `odev down`, `odev reset-db`, y `odev load-backup` — previsualiza operaciones destructivas sin ejecutarlas. Util para agentes IA y operadores antes de comandos peligrosos
+
+### Cambiado
+
+- Lint cleanup interno: ruff check + format clean en todo src/. Configurados per-file-ignores en pyproject.toml para template strings (init.py CI YAML, scaffold templates)
+- Nota: `commands/db.py` snapshot restore (mismo patron OOM que B3) queda diferido a 0.5.0; impacto menor (snapshots son tipicamente mas pequenos que dumps de produccion)
+
 ## [0.4.2] - 2026-05-17
 
 ### Corregido
