@@ -53,19 +53,20 @@ class TestThreadingAllocatePorts:
         def worker(idx: int) -> None:
             """Cada thread reclama un conjunto de puertos."""
             try:
-                with patch("odev.core.ports.puerto_disponible", return_value=True):
-                    ports = allocate_ports(f"proyecto-{idx}", registry_concurrencia)
+                ports = allocate_ports(f"proyecto-{idx}", registry_concurrencia)
                 with lock:
                     resultados.append(ports)
             except Exception as e:
                 with lock:
                     errores.append(e)
 
-        threads = [threading.Thread(target=worker, args=(i,)) for i in range(n_threads)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
+        # Patch al nivel del test (thread-safe) — no por-thread
+        with patch("odev.core.ports.puerto_disponible", return_value=True):
+            threads = [threading.Thread(target=worker, args=(i,)) for i in range(n_threads)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
 
         assert not errores, f"Errores en threads: {errores}"
         assert len(resultados) == n_threads
@@ -97,15 +98,16 @@ class TestThreadingAllocatePorts:
 
         def worker(idx: int) -> None:
             barrier.wait()  # Todos arrancan a la vez
-            with patch("odev.core.ports.puerto_disponible", return_value=True):
-                ports = allocate_ports(f"wizard-{idx}", registry_concurrencia)
+            ports = allocate_ports(f"wizard-{idx}", registry_concurrencia)
             resultados.append(ports)
 
-        threads = [threading.Thread(target=worker, args=(i,)) for i in range(n)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
+        # Patch al nivel del test (thread-safe) — no por-thread
+        with patch("odev.core.ports.puerto_disponible", return_value=True):
+            threads = [threading.Thread(target=worker, args=(i,)) for i in range(n)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
 
         assert len(resultados) == n
 
