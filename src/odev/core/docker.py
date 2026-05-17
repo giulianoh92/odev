@@ -279,6 +279,33 @@ class DockerCompose:
                 return True
         return False
 
+    def logs_capture(self, service: str, tail: int = 100) -> str:
+        """Capture a snapshot of logs from a service (no follow).
+
+        Returns decoded stdout. Raises ValueError for invalid service names.
+        Returns empty string on docker non-zero (caller decides exit policy).
+
+        Arguments:
+            service: Name of the service to capture logs from.
+            tail: Number of lines to capture from the end (default 100).
+
+        Returns:
+            Decoded log output as string, or empty string on failure.
+
+        Raises:
+            ValueError: If service name contains invalid characters.
+        """
+        if not self._PATRON_SERVICIO.match(service):
+            raise ValueError(
+                f"Nombre de servicio invalido: '{service}'. "
+                "Solo se permiten letras, numeros, guiones y guiones bajos."
+            )
+        args = ["logs", "--no-color", "--timestamps", "--tail", str(tail), service]
+        result = self._run(args, capture=True, check=False)
+        if result.returncode != 0:
+            return ""
+        return result.stdout.decode("utf-8", errors="replace")
+
     def logs(self, service: str | None = None, follow: bool = True, tail: int = 100) -> None:
         """Muestra los logs de los servicios.
 

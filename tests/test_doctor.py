@@ -581,10 +581,10 @@ class TestDoctorJsonOutput:
         assert exit_code == 0
 
     def test_c1_s3_no_project_stderr_json(self, tmp_path):
-        """C1-S3: no project context — doctor --json emits valid JSON to stdout.
+        """C1-S3 (W1 fix): no project context -> stderr JSON error, stdout empty, exit 1.
 
-        With ProjectMode.NONE all checks return info/ok (doctor handles gracefully).
-        Stdout contains a JSON document; no fail → exit 0.
+        Per spec: GIVEN no odev project is initialized, WHEN doctor --json,
+        THEN stderr contains {"error": "<message>"}, stdout is empty, exit 1.
         """
         import json
 
@@ -594,24 +594,33 @@ class TestDoctorJsonOutput:
             tmp_path,
             overrides={"detect_mode": (ProjectMode.NONE, None)},
         )
-        out, err, _ = _run_doctor(patches, json_output=True)
+        out, err, exit_code = _run_doctor(patches, json_output=True)
 
-        # Find the JSON line in stdout (may have Rich [WARN] lines from real registry GC
-        # if the overall detect_mode patch doesn't fully suppress _verificar_registry_puertos)
-        json_data = None
-        for line in out.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("{"):
-                try:
-                    json_data = json.loads(stripped)
-                    break
-                except json.JSONDecodeError:
-                    continue
+        # W1: stdout must be empty when no project found
+        assert out.strip() == "", f"stdout must be empty with no project, got: {out!r}"
+        # W1: stderr must contain JSON with error key
+        assert err.strip(), "stderr must contain error JSON when no project found"
+        err_data = json.loads(err.strip())
+        assert "error" in err_data, f"stderr JSON must have 'error' key, got: {err_data}"
+        # W1: exit code must be 1
+        assert exit_code == 1, f"exit code must be 1 when no project, got: {exit_code}"
 
-        if json_data is not None:
-            assert "checks" in json_data or "error" in json_data
-        else:
-            # stdout has no JSON → stderr should have error JSON
-            assert err.strip(), "Either stdout or stderr must have content"
-            err_data = json.loads(err.strip())
-            assert "error" in err_data
+    def test_c1_s5_no_rich_leak_in_json_mode(self, tmp_path):
+        """C1-S5 / W2: --json mode must NOT emit Rich text to stdout.
+
+        Verifies that _verificar_registry_puertos does NOT call _imprimir_warn
+        (which calls console.print) when doctor is in JSON mode.
+        All _verificar_* are fully mocked so only doctor() itself can emit.
+        """
+        import json
+
+        patches = _doctor_json_patches(tmp_path)
+        out, _, _ = _run_doctor(patches, json_output=True)
+
+        # stdout must contain ONLY valid JSON (no Rich markup leakage)
+        lines = [ln for ln in out.splitlines() if ln.strip()]
+        assert len(lines) == 1, (
+            f"stdout must contain exactly 1 line in JSON mode (got {len(lines)}): {out!r}"
+        )
+        data = json.loads(lines[0])
+        assert "checks" in data

@@ -21,6 +21,7 @@ from odev.commands import (
     load_backup,
     logs,
     migrate,
+    model_info,
     modules,
     py,
     reset_db,
@@ -135,6 +136,7 @@ app.command(name="context", epilog=EPILOG_EXIT_CODES)(context.context)
 app.command(name="tui", epilog=EPILOG_EXIT_CODES)(tui.tui)
 app.command(name="migrate", epilog=EPILOG_EXIT_CODES)(migrate.migrate)
 app.command(name="doctor", epilog=EPILOG_EXIT_CODES)(doctor.doctor)
+app.command(name="model-info", epilog=EPILOG_EXIT_CODES)(model_info.model_info)
 app.command(name="self-update", epilog=EPILOG_EXIT_CODES)(self_update.self_update)
 
 # --- Registro de subgrupos ---

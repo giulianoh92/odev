@@ -19,6 +19,7 @@ doctor() decide el modo de presentacion).
 from __future__ import annotations
 
 import json
+import logging
 import platform
 import shutil
 import subprocess
@@ -31,6 +32,8 @@ from odev import __version__
 from odev.core.compat import ProjectMode, detect_mode
 from odev.core.console import console
 from odev.core.ports import PORT_KEYS, puerto_disponible
+
+_logger = logging.getLogger(__name__)
 
 # CheckResult shape (plain dict, not TypedDict — ADR-1):
 # {
@@ -100,6 +103,13 @@ def doctor(
     ]
 
     if json_output:
+        # W1: When no project context, emit error JSON to stderr and exit 1.
+        # Doctor in JSON mode is agent-facing; agents need a clean error signal.
+        modo, _ = detect_mode()
+        if modo == ProjectMode.NONE:
+            sys.stderr.write(json.dumps({"error": "no project context"}) + "\n")
+            raise typer.Exit(1)
+
         # JSON path: collect all CheckResult dicts, build envelope, emit to stdout.
         # Rich console is NOT called in this path (D1 design).
         resultados: list[CheckResult] = []
@@ -572,9 +582,12 @@ def _verificar_registry_puertos(registry=None) -> dict:
 
         ruta_env = entry.directorio_trabajo / ".env"
         if not ruta_env.exists():
-            _imprimir_warn(
-                f"Proyecto '{entry.nombre}': no se puede hacer backfill "
-                f"(.env no encontrado en {entry.directorio_trabajo})"
+            # W2: do not call _imprimir_warn (leaks Rich to stdout in JSON mode).
+            # These are internal backfill diagnostics; log at WARNING level instead.
+            _logger.warning(
+                "Proyecto '%s': no se puede hacer backfill (.env no encontrado en %s)",
+                entry.nombre,
+                entry.directorio_trabajo,
             )
             continue
 
@@ -584,16 +597,20 @@ def _verificar_registry_puertos(registry=None) -> dict:
         for clave in _CLAVES_PUERTOS_BACKFILL:
             valor = valores_env.get(clave)
             if valor is None:
-                _imprimir_warn(
-                    f"Proyecto '{entry.nombre}': {clave} falta en .env — no se inventara el valor"
+                _logger.warning(
+                    "Proyecto '%s': %s falta en .env — no se inventara el valor",
+                    entry.nombre,
+                    clave,
                 )
                 continue
             try:
                 puertos_backfill[clave] = int(valor)
             except (ValueError, TypeError):
-                _imprimir_warn(
-                    f"Proyecto '{entry.nombre}': "
-                    f"{clave}={valor!r} no es un entero valido — se omite"
+                _logger.warning(
+                    "Proyecto '%s': %s=%r no es un entero valido — se omite",
+                    entry.nombre,
+                    clave,
+                    valor,
                 )
 
         if puertos_backfill:

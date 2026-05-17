@@ -588,3 +588,60 @@ class TestExecCapture:
         """
         with pytest.raises(ValueError, match="invalido"):
             dc.exec_capture("bad service!", ["ls"])
+
+
+class TestLogsCapture:
+    """Tests para DockerCompose.logs_capture() — snapshot capture sin follow.
+
+    Spec D2: logs_capture(service, tail=100) -> str
+    """
+
+    @pytest.fixture
+    def dc(self, tmp_path):
+        """Crea una instancia de DockerCompose mockeada."""
+        with (
+            patch("shutil.which", return_value="/usr/bin/docker"),
+            patch("subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = MagicMock(returncode=0)
+            instancia = DockerCompose(project_root=tmp_path)
+        return instancia
+
+    def test_happy_path_returns_decoded_stdout(self, dc):
+        """logs_capture retorna stdout decodificado cuando docker retorna 0.
+
+        D2: happy path — valid service, non-empty log output.
+        """
+        log_line = "web  | 2024-01-01T00:00:00Z INFO logger message\n"
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout=log_line.encode("utf-8"),
+            )
+            resultado = dc.logs_capture("web", tail=10)
+
+        assert "web" in resultado
+        assert "INFO" in resultado
+        assert isinstance(resultado, str)
+
+    def test_invalid_service_raises_value_error(self, dc):
+        """logs_capture lanza ValueError para nombres de servicio invalidos.
+
+        D2: mirror exec_capture validation pattern.
+        """
+        with pytest.raises(ValueError, match="invalido"):
+            dc.logs_capture("bad service!", tail=10)
+
+    def test_empty_stdout_returns_empty_string(self, dc):
+        """logs_capture retorna '' cuando docker retorna non-zero (stack down etc.).
+
+        D2: returns empty string on docker non-zero.
+        """
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=1,
+                stdout=b"",
+            )
+            resultado = dc.logs_capture("web", tail=10)
+
+        assert resultado == ""

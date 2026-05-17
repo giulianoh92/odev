@@ -10,7 +10,14 @@ Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
 
 ### Agregado
 
-- F2: `odev doctor --json` / `-j` — emite documento JSON unico con resultados de todos los checks. Schema: `{"version": "0.5.1", "checks": [{"name": str, "status": "ok"|"warn"|"fail"|"info", "message": str, "hint": str|null}], "summary": {"ok": int, "warn": int, "fail": int}, "exit_code": 0|1}`. Exit 0 si no hay fail, exit 1 si hay al menos uno.
+- F2: `odev doctor --json` / `-j` — emite documento JSON unico con resultados de todos los checks. Schema: `{"version": "0.5.1", "checks": [{"name": str, "status": "ok"|"warn"|"fail"|"info", "message": str, "hint": str|null}], "summary": {"ok": int, "warn": int, "fail": int}, "exit_code": 0|1}`. Exit 0 si no hay fail, exit 1 si hay al menos uno. Sin proyecto: `{"error": "no project context"}` en stderr, exit 1, stdout vacio.
+- F3: `odev logs <service> --json` / `-j` — captura snapshot de logs recientes y los emite como array JSON `[{"service": str, "timestamp": str, "level": str|null, "message": str}]`. Implica no-follow. `--tail N` (default 100) limita las lineas capturadas. `--json` y `--follow` / `-f` son mutuamente excluyentes (exit 2).
+- F5: `odev model-info <model>` — nuevo comando. Introspecta un modelo Odoo via ORM en tiempo real y emite JSON `{"model": str, "description": str, "inherits": [str], "fields": [{"name": str, "type": str, "required": bool, "relation": str|null}]}`. Requiere stack corriendo. `--pretty` para JSON indentado. Exit 1 si modelo no existe; exit 3 si stack detenido.
+
+### Corregido
+
+- doctor `--json`: sin contexto de proyecto emite `{"error": "no project context"}` en stderr y sale con exit 1 en lugar de emitir JSON de checks a stdout con exit 0 (W1).
+- doctor `--json`: el backfill interno del registro ya no llama `_imprimir_warn` (que usaba `console.print` y filtraba Rich a stdout en modo JSON); reemplazado por `logging.warning` (W2).
 
 ### Interno
 
