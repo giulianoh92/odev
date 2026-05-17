@@ -52,9 +52,9 @@ def migrate() -> None:
     # 1. Leer configuracion existente del .env
     ruta_env = raiz / ".env"
     valores_env = load_env(ruta_env) if ruta_env.exists() else {}
-    nombre_proyecto = valores_env.get("PROJECT_NAME") or valores_env.get(
-        "COMPOSE_PROJECT_NAME"
-    ) or raiz.name
+    nombre_proyecto = (
+        valores_env.get("PROJECT_NAME") or valores_env.get("COMPOSE_PROJECT_NAME") or raiz.name
+    )
 
     # 2. Crear .odev.yaml
     _crear_odev_yaml(raiz, valores_env, nombre_proyecto)
@@ -295,9 +295,7 @@ node_modules/
     ruta.write_text(contenido, encoding="utf-8")
 
 
-def _generar_archivos_faltantes(
-    raiz: Path, valores_env: dict, nombre_proyecto: str
-) -> None:
+def _generar_archivos_faltantes(raiz: Path, valores_env: dict, nombre_proyecto: str) -> None:
     """Genera archivos que falten en el proyecto migrado.
 
     Crea CLAUDE.md, docs/.gitkeep y otros archivos que son parte
@@ -403,8 +401,16 @@ def _generar_env_example(raiz: Path, valores_env: dict) -> None:
         "# ==========================================",
         "# Configuracion del Entorno de Desarrollo Odoo",
         "# ==========================================",
+        "# WARNING: This file may contain real secrets if generated from a populated .env.",
+        "# Do NOT commit to version control. Add to .gitignore.",
         "# Copia este archivo como .env y ajusta los valores.",
-        f"# Proyecto: {valores_env.get('PROJECT_NAME', valores_env.get('COMPOSE_PROJECT_NAME', 'mi-proyecto'))}",
+        "# Proyecto: "
+        + str(
+            valores_env.get(
+                "PROJECT_NAME",
+                valores_env.get("COMPOSE_PROJECT_NAME", "mi-proyecto"),
+            )
+        ),
         "",
     ]
 
@@ -418,4 +424,17 @@ def _generar_env_example(raiz: Path, valores_env: dict) -> None:
 
     contenido = "\n".join(lineas) + "\n"
     ruta_example.write_text(contenido, encoding="utf-8")
+
+    # S3: warn user that .env.example may contain real secrets
+    warning(
+        ".env.example generado: revisar antes de commitear. "
+        "Puede contener secretos reales si el .env tenia valores no-placeholder."
+    )
+
+    # S3: restrict permissions (owner read/write only)
+    try:
+        ruta_example.chmod(0o600)
+    except OSError:
+        pass  # Windows: chmod is best-effort
+
     success(f"Creado: {ruta_example}")

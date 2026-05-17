@@ -5,6 +5,8 @@ cree .odev.yaml, actualice .gitignore, y maneje los casos de proyecto
 ya migrado o directorio vacio.
 """
 
+import sys
+from unittest.mock import patch
 
 import pytest
 import typer
@@ -196,6 +198,73 @@ class TestGenerarEnvExample:
         _generar_env_example(tmp_path, {})
 
         assert not (tmp_path / ".env.example").exists()
+
+
+# ── T10 RED: .env.example debe tener warning header y permisos 0600 (S3) ──
+
+
+class TestGenerarEnvExampleSecurity:
+    """Verifica comportamiento de seguridad en _generar_env_example (S3)."""
+
+    def test_env_example_contiene_warning_header(self, tmp_path):
+        """El .env.example generado incluye un comentario de advertencia de seguridad.
+
+        T10 RED: el test falla hasta que se agregue el header en
+        _generar_env_example().
+        """
+        valores = {
+            "PROJECT_NAME": "test-warn",
+            "DB_PASSWORD": "supersecret",
+            "DB_USER": "odoo",
+        }
+
+        _generar_env_example(tmp_path, valores)
+
+        contenido = (tmp_path / ".env.example").read_text()
+        assert "WARNING" in contenido, (
+            ".env.example debe incluir un comentario WARNING sobre secretos"
+        )
+
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="chmod semantics differ on Windows",
+    )
+    def test_env_example_tiene_permisos_0600(self, tmp_path):
+        """El .env.example generado tiene permisos 0600 (S3).
+
+        T10 RED: el test falla hasta que se agregue chmod(0o600) en
+        _generar_env_example().
+        """
+        valores = {
+            "PROJECT_NAME": "test-chmod",
+            "DB_PASSWORD": "secreto123",
+            "DB_USER": "odoo",
+        }
+
+        _generar_env_example(tmp_path, valores)
+
+        ruta = tmp_path / ".env.example"
+        assert ruta.exists()
+        modo = ruta.stat().st_mode & 0o777
+        assert modo == 0o600, (
+            f".env.example debe tener permisos 0600, tiene {oct(modo)}"
+        )
+
+    def test_warning_emitido_al_generar(self, tmp_path):
+        """Se llama a warning() al generar el .env.example (S3).
+
+        Verifica que la funcion de aviso sea invocada para alertar al usuario.
+        """
+        valores = {
+            "PROJECT_NAME": "test-warn-call",
+            "DB_PASSWORD": "secreto",
+            "DB_USER": "odoo",
+        }
+
+        with patch("odev.commands.migrate.warning") as mock_warning:
+            _generar_env_example(tmp_path, valores)
+
+        mock_warning.assert_called()
 
 
 class TestMigrateCommand:
