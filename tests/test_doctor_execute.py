@@ -1,19 +1,11 @@
-"""RED tests for _execute_doctor(contexto) -> dict.
+"""Tests para _execute_doctor(contexto) -> dict.
 
-C6-R1: helper returns doctor JSON schema dict without Typer side effects.
+C6-R1: helper retorna el esquema JSON de doctor sin efectos secundarios de Typer.
+Tras el refactor 0.6.0: _execute_doctor pasa contexto a los helpers.
+Se usa contexto=None para degradacion graceful (todos los checks de proyecto retornan INFO).
 """
 
 from __future__ import annotations
-
-from unittest.mock import MagicMock
-
-
-def _make_contexto() -> MagicMock:
-    ctx = MagicMock()
-    ctx.nombre = "test-project"
-    ctx.config = MagicMock()
-    ctx.config.rutas_addons = None
-    return ctx
 
 
 class TestExecuteDoctor:
@@ -23,8 +15,7 @@ class TestExecuteDoctor:
         """Returns dict with version/checks/summary/exit_code keys."""
         from odev.commands.doctor import _execute_doctor
 
-        ctx = _make_contexto()
-        result = _execute_doctor(ctx)
+        result = _execute_doctor(None)
 
         assert isinstance(result, dict)
         assert "version" in result
@@ -36,8 +27,7 @@ class TestExecuteDoctor:
         """checks key contains a list of CheckResult dicts."""
         from odev.commands.doctor import _execute_doctor
 
-        ctx = _make_contexto()
-        result = _execute_doctor(ctx)
+        result = _execute_doctor(None)
 
         assert isinstance(result["checks"], list)
         for check in result["checks"]:
@@ -49,8 +39,7 @@ class TestExecuteDoctor:
         """_execute_doctor must not write to stdout."""
         from odev.commands.doctor import _execute_doctor
 
-        ctx = _make_contexto()
-        _execute_doctor(ctx)
+        _execute_doctor(None)
 
         captured = capsys.readouterr()
         assert captured.out == ""
@@ -61,10 +50,9 @@ class TestExecuteDoctor:
 
         from odev.commands.doctor import _execute_doctor
 
-        ctx = _make_contexto()
         raised = False
         try:
-            _execute_doctor(ctx)
+            _execute_doctor(None)
         except typer.Exit:
             raised = True
 
@@ -74,8 +62,7 @@ class TestExecuteDoctor:
         """summary dict contains ok/warn/fail integer counters."""
         from odev.commands.doctor import _execute_doctor
 
-        ctx = _make_contexto()
-        result = _execute_doctor(ctx)
+        result = _execute_doctor(None)
 
         summary = result["summary"]
         assert "ok" in summary

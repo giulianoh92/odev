@@ -188,8 +188,9 @@ class TestVerificarPuertosMailhog:
 
         REQ-DC-1: MAILHOG_PORT debe aparecer en la lista de verificacion.
         """
+        from unittest.mock import MagicMock
+
         from odev.commands.doctor import _verificar_puertos
-        from odev.core.compat import ProjectMode
 
         # Setup: proyecto con .env que incluye MAILHOG_PORT
         env_file = tmp_path / ".env"
@@ -198,11 +199,11 @@ class TestVerificarPuertosMailhog:
             "DEBUGPY_PORT=5678\nMAILHOG_PORT=8025\n"
         )
 
-        with (
-            patch("odev.commands.doctor.detect_mode", return_value=(ProjectMode.PROJECT, tmp_path)),
-            patch("odev.commands.doctor.puerto_disponible", return_value=True),
-        ):
-            resultado = _verificar_puertos()
+        fake_ctx = MagicMock()
+        fake_ctx.directorio_trabajo = tmp_path
+
+        with patch("odev.commands.doctor.puerto_disponible", return_value=True):
+            resultado = _verificar_puertos(fake_ctx)
 
         # Debe retornar CheckResult ok (todos disponibles) sin crashear por MAILHOG_PORT
         assert isinstance(resultado, dict)
@@ -229,20 +230,21 @@ class TestVerificarPuertosMailhog:
 
         REQ-DC-1 Scenario: MAILHOG conflict detected.
         """
+        from unittest.mock import MagicMock
+
         from odev.commands.doctor import _verificar_puertos
-        from odev.core.compat import ProjectMode
 
         env_file = tmp_path / ".env"
         env_file.write_text("MAILHOG_PORT=8025\n")
 
+        fake_ctx = MagicMock()
+        fake_ctx.directorio_trabajo = tmp_path
+
         def mock_puerto_disponible(puerto: int) -> bool:
             return puerto != 8025  # MAILHOG_PORT ocupado
 
-        with (
-            patch("odev.commands.doctor.detect_mode", return_value=(ProjectMode.PROJECT, tmp_path)),
-            patch("odev.commands.doctor.puerto_disponible", side_effect=mock_puerto_disponible),
-        ):
-            resultado = _verificar_puertos()
+        with patch("odev.commands.doctor.puerto_disponible", side_effect=mock_puerto_disponible):
+            resultado = _verificar_puertos(fake_ctx)
 
         assert isinstance(resultado, dict)
         assert resultado["status"] == "fail"
@@ -370,13 +372,13 @@ class TestDoctorBackfill:
 def _doctor_json_patches(tmp_path, overrides: dict | None = None):
     """Build the standard list of patches for doctor --json tests.
 
-    All _verificar_* functions and detect_mode are replaced with safe mocks
+    All _verificar_* functions and requerir_proyecto are replaced with safe mocks
     that return ok/info CheckResult dicts. Pass overrides to replace specific
     function mocks.
-    """
-    from unittest.mock import patch
 
-    from odev.core.compat import ProjectMode
+    After 0.6.0 refactor: requerir_proyecto replaces detect_mode in the JSON gate.
+    """
+    from unittest.mock import MagicMock, patch
 
     ok = {"name": "x", "status": "ok", "message": "ok", "hint": None}
     gc = {
@@ -386,6 +388,24 @@ def _doctor_json_patches(tmp_path, overrides: dict | None = None):
         "hint": None,
     }
     overrides = overrides or {}
+
+    # Contexto mock por defecto (para las pruebas que no sobrescriben requerir_proyecto)
+    fake_ctx = MagicMock()
+    fake_ctx.nombre = "test-project"
+    fake_ctx.directorio_trabajo = tmp_path
+
+    # Cuando overrides contiene "requerir_proyecto_raises", simular fallo de resolucion
+    if overrides.get("requerir_proyecto_raises"):
+        import typer
+        req_patch = patch(
+            "odev.commands._helpers.requerir_proyecto",
+            side_effect=typer.Exit(1),
+        )
+    else:
+        req_patch = patch(
+            "odev.commands._helpers.requerir_proyecto",
+            return_value=overrides.get("requerir_proyecto_returns", fake_ctx),
+        )
 
     return [
         patch(
@@ -432,12 +452,8 @@ def _doctor_json_patches(tmp_path, overrides: dict | None = None):
             "odev.commands.doctor._verificar_version_compatible",
             return_value=overrides.get("_verificar_version_compatible", ok),
         ),
-        patch(
-            "odev.commands.doctor.detect_mode",
-            return_value=overrides.get(
-                "detect_mode", (ProjectMode.PROJECT, tmp_path)
-            ),
-        ),
+        patch("odev.main.obtener_nombre_proyecto", return_value=None),
+        req_patch,
     ]
 
 
@@ -510,15 +526,16 @@ class TestDoctorJsonOutput:
     def test_c1_s4_default_rich_path_untouched(self, tmp_path):
         """C1-S4: without --json, Rich output printed (no JSON on stdout)."""
         import json as _json
+        import typer
         from unittest.mock import patch
 
-        from odev.core.compat import ProjectMode
-
-        detect_patch = patch(
-            "odev.commands.doctor.detect_mode",
-            return_value=(ProjectMode.NONE, None),
+        # Simular que no hay proyecto (requerir_proyecto falla) para el path Rich
+        req_patch = patch(
+            "odev.commands._helpers.requerir_proyecto",
+            side_effect=typer.Exit(1),
         )
-        out, _, _ = _run_doctor([detect_patch], json_output=False)
+        obtener_patch = patch("odev.main.obtener_nombre_proyecto", return_value=None)
+        out, _, _ = _run_doctor([req_patch, obtener_patch], json_output=False)
 
         # In Rich mode, stdout should NOT contain a JSON document
         try:
@@ -581,18 +598,17 @@ class TestDoctorJsonOutput:
         assert exit_code == 0
 
     def test_c1_s3_no_project_stderr_json(self, tmp_path):
-        """C1-S3 (W1 fix): no project context -> stderr JSON error, stdout empty, exit 1.
+        """C1-S3 (0.6.0 refactor): no project context -> stderr JSON error, stdout empty, exit 1.
 
         Per spec: GIVEN no odev project is initialized, WHEN doctor --json,
         THEN stderr contains {"error": "<message>"}, stdout is empty, exit 1.
+        Despues del refactor 0.6.0: se parchea requerir_proyecto (no detect_mode).
         """
         import json
 
-        from odev.core.compat import ProjectMode
-
         patches = _doctor_json_patches(
             tmp_path,
-            overrides={"detect_mode": (ProjectMode.NONE, None)},
+            overrides={"requerir_proyecto_raises": True},
         )
         out, err, exit_code = _run_doctor(patches, json_output=True)
 
@@ -624,3 +640,137 @@ class TestDoctorJsonOutput:
         )
         data = json.loads(lines[0])
         assert "checks" in data
+
+
+# ── Group 3 (SDD 0.6.0): doctor resolution via requerir_proyecto ──────────────
+
+
+class TestDoctorProjectResolutionRefactor:
+    """Tests para la refactorizacion del gate JSON y helpers de doctor.
+
+    Verifica que doctor() usa requerir_proyecto (Path B) en lugar de detect_mode().
+    """
+
+    def test_c1_s3_no_project_patches_requerir_proyecto(self, tmp_path):
+        """C1-S3 updated: patch requerir_proyecto raising typer.Exit(1) -> stderr JSON, exit 1.
+
+        Despues del refactor, el gate JSON usa requerir_proyecto, no detect_mode.
+        """
+        import io
+        import json
+        from unittest.mock import patch
+
+        import typer
+
+        from odev.commands.doctor import doctor
+
+        stdout_buf = io.StringIO()
+        stderr_buf = io.StringIO()
+        exit_code = 0
+
+        with (
+            patch("sys.stdout", stdout_buf),
+            patch("sys.stderr", stderr_buf),
+            patch(
+                "odev.commands._helpers.requerir_proyecto",
+                side_effect=typer.Exit(1),
+            ),
+            patch("odev.main.obtener_nombre_proyecto", return_value=None),
+        ):
+            try:
+                doctor(json_output=True)
+            except (SystemExit, typer.Exit) as e:
+                exit_code = e.code if isinstance(e, SystemExit) else e.exit_code
+
+        out = stdout_buf.getvalue()
+        err = stderr_buf.getvalue()
+
+        assert out.strip() == "", f"stdout debe estar vacio cuando no hay proyecto, got: {out!r}"
+        assert err.strip(), "stderr debe contener JSON de error cuando no hay proyecto"
+        err_data = json.loads(err.strip())
+        assert "error" in err_data
+        assert exit_code == 1
+
+    def test_doctor_json_with_project_flag_resolves_project(self, tmp_path):
+        """JSON gate: con obtener_nombre_proyecto()=='sis-odoo', requerir_proyecto es llamado."""
+        import io
+        from unittest.mock import MagicMock, patch
+
+        import typer
+
+        from odev.commands.doctor import doctor
+
+        fake_ctx = MagicMock()
+        fake_ctx.nombre = "sis-odoo"
+
+        ok = {"name": "x", "status": "ok", "message": "ok", "hint": None}
+        gc = {"name": "registry-gc", "status": "info", "message": "GC ok", "hint": None}
+
+        with (
+            patch("sys.stdout", io.StringIO()),
+            patch("sys.stderr", io.StringIO()),
+            patch("odev.commands._helpers.requerir_proyecto", return_value=fake_ctx) as mock_req,
+            patch("odev.main.obtener_nombre_proyecto", return_value="sis-odoo"),
+            patch("odev.commands.doctor._verificar_docker", return_value=ok),
+            patch("odev.commands.doctor._verificar_docker_compose", return_value=ok),
+            patch("odev.commands.doctor._verificar_python", return_value=ok),
+            patch("odev.commands.doctor._verificar_proyecto", return_value=ok),
+            patch("odev.commands.doctor._verificar_env", return_value=ok),
+            patch("odev.commands.doctor._ejecutar_registry_gc_y_backfill", return_value=gc),
+            patch("odev.commands.doctor._verificar_puertos", return_value=ok),
+            patch("odev.commands.doctor._verificar_docker_compose_file", return_value=ok),
+            patch("odev.commands.doctor._verificar_odoo_conf", return_value=ok),
+            patch("odev.commands.doctor._verificar_addons", return_value=ok),
+            patch("odev.commands.doctor._verificar_version_compatible", return_value=ok),
+        ):
+            try:
+                doctor(json_output=True)
+            except (SystemExit, typer.Exit):
+                pass
+
+        # requerir_proyecto debe haber sido llamado con el nombre del proyecto
+        mock_req.assert_called_once_with("sis-odoo")
+
+    def test_execute_doctor_uses_contexto_not_detect_mode(self, tmp_path):
+        """_execute_doctor(contexto) pasa contexto a los helpers sin llamar detect_mode."""
+        from unittest.mock import MagicMock, patch
+
+        import odev.core.compat as compat_mod
+
+        from odev.commands.doctor import _execute_doctor
+
+        fake_ctx = MagicMock()
+        fake_ctx.nombre = "sis-odoo"
+        fake_ctx.directorio_trabajo = tmp_path
+        fake_ctx.directorio_config = tmp_path
+
+        with patch.object(compat_mod, "detect_mode") as mock_detect:
+            _execute_doctor(fake_ctx)
+
+        # detect_mode no debe ser llamado por _execute_doctor
+        mock_detect.assert_not_called()
+
+    def test_verificar_env_with_contexto(self, tmp_path):
+        """_verificar_env(contexto) con directorio_trabajo que tiene .env -> status ok."""
+        from unittest.mock import MagicMock
+
+        env_file = tmp_path / ".env"
+        env_file.write_text("WEB_PORT=8069\n")
+
+        fake_ctx = MagicMock()
+        fake_ctx.directorio_trabajo = tmp_path
+
+        from odev.commands.doctor import _verificar_env
+
+        result = _verificar_env(fake_ctx)
+
+        assert result["status"] == "ok"
+
+    def test_verificar_env_without_contexto(self):
+        """_verificar_env(None) -> status info, mensaje incluye 'sin un proyecto detectado'."""
+        from odev.commands.doctor import _verificar_env
+
+        result = _verificar_env(None)
+
+        assert result["status"] == "info"
+        assert "sin un proyecto detectado" in result["message"]

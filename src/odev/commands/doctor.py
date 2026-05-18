@@ -14,6 +14,10 @@ _verificar_registry_puertos() para backfill y GC del registro.
 En 0.5.1 se agrego: --json/-j flag para emitir resultados como JSON
 (D1: dual-mode refactor — cada _verificar_* retorna CheckResult dict;
 doctor() decide el modo de presentacion).
+
+En 0.6.0 se agrego: resolucion de proyecto via requerir_proyecto (Path B)
+en lugar de detect_mode(); los helpers _verificar_* reciben contexto
+explicitamente; el path Rich degrada sin abortar.
 """
 
 from __future__ import annotations
@@ -29,9 +33,9 @@ from typing import Any
 import typer
 
 from odev import __version__
-from odev.core.compat import ProjectMode, detect_mode
 from odev.core.console import console
 from odev.core.ports import PORT_KEYS, puerto_disponible
+from odev.core.resolver import ProjectContext
 
 _logger = logging.getLogger(__name__)
 
@@ -68,14 +72,14 @@ def _render_check(result: CheckResult) -> None:
         _imprimir_info(hint)
 
 
-def _execute_doctor(contexto) -> dict:
+def _execute_doctor(contexto: ProjectContext | None) -> dict:
     """Pure data-return. No I/O, no exits. MCP-callable.
 
     Runs all doctor checks and returns the full result envelope as a dict.
 
     Args:
-        contexto: Resolved ProjectContext (accepted for API consistency;
-                  current checks are environment-level and do not use it directly).
+        contexto: Contexto del proyecto resuelto, o None para degradar checks
+                  de proyecto a status 'info'.
 
     Returns:
         Dict matching the doctor JSON schema:
@@ -97,7 +101,7 @@ def _execute_doctor(contexto) -> dict:
 
     resultados: list[CheckResult] = []
     for verificacion in verificaciones:
-        resultado = verificacion()
+        resultado = verificacion(contexto)
         if resultado is not None and isinstance(resultado, dict):
             resultados.append(resultado)
 
@@ -109,7 +113,7 @@ def _execute_doctor(contexto) -> dict:
 
     exit_code = 1 if summary["fail"] > 0 else 0
     return {
-        "version": "0.5.2",
+        "version": "0.6.0",
         "checks": resultados,
         "summary": summary,
         "exit_code": exit_code,
@@ -136,6 +140,47 @@ def doctor(
 
       1  Una o mas verificaciones fallaron
     """
+    if json_output:
+        # JSON gate: usa requerir_proyecto (Path B) para respetar --project y ODEV_PROJECT.
+        # Si no se puede resolver, emite JSON de error a stderr y sale con codigo 1.
+        from odev.commands._helpers import requerir_proyecto  # noqa: PLC0415
+        from odev.main import obtener_nombre_proyecto  # noqa: PLC0415
+
+        try:
+            contexto: ProjectContext | None = requerir_proyecto(obtener_nombre_proyecto())
+        except typer.Exit:
+            sys.stderr.write(json.dumps({"error": "no project context"}) + "\n")
+            raise typer.Exit(1) from None
+
+        # JSON path: delega a _execute_doctor con el contexto resuelto (D1 design).
+        # Rich console NO se llama en este path.
+        envelope = _execute_doctor(contexto)
+        sys.stdout.write(json.dumps(envelope) + "\n")
+        raise typer.Exit(envelope["exit_code"])
+
+    # Rich path: intenta resolver proyecto pero degrada sin abortar (ADR-3).
+    from odev.commands._helpers import requerir_proyecto  # noqa: PLC0415
+    from odev.main import obtener_nombre_proyecto  # noqa: PLC0415
+
+    rich_contexto: ProjectContext | None
+    try:
+        rich_contexto = requerir_proyecto(obtener_nombre_proyecto())
+    except typer.Exit:
+        rich_contexto = None
+        _imprimir_warn(
+            "No se detecto proyecto odev (registry/cwd). "
+            "Solo se ejecutaran chequeos de entorno."
+        )
+
+    console.print()
+    console.print("[bold]Diagnostico del entorno odev[/]")
+    console.print("=" * 40)
+    console.print()
+
+    # Orden: Docker → Compose → Python → proyecto → .env → GC registro →
+    #         puertos → compose_file → odoo_conf → addons → version
+    # El GC del registro (y backfill) debe correr ANTES que la verificacion
+    # de puertos para que los orphans sean limpiados primero (REQ-UX-5).
     verificaciones = [
         _verificar_docker,
         _verificar_docker_compose,
@@ -150,34 +195,9 @@ def doctor(
         _verificar_version_compatible,
     ]
 
-    if json_output:
-        # W1: When no project context, emit error JSON to stderr and exit 1.
-        # Doctor in JSON mode is agent-facing; agents need a clean error signal.
-        modo, _ = detect_mode()
-        if modo == ProjectMode.NONE:
-            sys.stderr.write(json.dumps({"error": "no project context"}) + "\n")
-            raise typer.Exit(1)
-
-        # JSON path: delegate to _execute_doctor for data collection.
-        # Rich console is NOT called in this path (D1 design).
-        envelope = _execute_doctor(None)
-        sys.stdout.write(json.dumps(envelope) + "\n")
-        raise typer.Exit(envelope["exit_code"])
-
-    # Rich path (default): unchanged behavior from 0.5.0.
-    console.print()
-    console.print("[bold]Diagnostico del entorno odev[/]")
-    console.print("=" * 40)
-    console.print()
-
-    # Orden: Docker → Compose → Python → proyecto → .env → GC registro →
-    #         puertos → compose_file → odoo_conf → addons → version
-    # El GC del registro (y backfill) debe correr ANTES que la verificacion
-    # de puertos para que los orphans sean limpiados primero (REQ-UX-5).
-
     total_fallos = 0
     for verificacion in verificaciones:
-        resultado = verificacion()
+        resultado = verificacion(rich_contexto)
         # Each _verificar_* now returns a CheckResult dict (0.5.1+).
         # _render_check handles the Rich presentation for each result.
         if isinstance(resultado, dict):
@@ -234,8 +254,11 @@ def _imprimir_info(mensaje: str) -> None:
     console.print(f"  [bold blue]\\[INFO][/] {mensaje}")
 
 
-def _verificar_docker() -> CheckResult:
+def _verificar_docker(contexto: ProjectContext | None = None) -> CheckResult:
     """Verifica que Docker este instalado y funcionando.
+
+    Args:
+        contexto: Contexto del proyecto (no usado; parametro para uniformidad del dispatcher).
 
     Returns:
         CheckResult dict.
@@ -280,8 +303,11 @@ def _verificar_docker() -> CheckResult:
         }
 
 
-def _verificar_docker_compose() -> CheckResult:
+def _verificar_docker_compose(contexto: ProjectContext | None = None) -> CheckResult:
     """Verifica que Docker Compose v2 este disponible.
+
+    Args:
+        contexto: Contexto del proyecto (no usado; parametro para uniformidad del dispatcher).
 
     Returns:
         CheckResult dict.
@@ -321,8 +347,11 @@ def _verificar_docker_compose() -> CheckResult:
         }
 
 
-def _verificar_python() -> CheckResult:
+def _verificar_python(contexto: ProjectContext | None = None) -> CheckResult:
     """Verifica la version de Python.
+
+    Args:
+        contexto: Contexto del proyecto (no usado; parametro para uniformidad del dispatcher).
 
     Returns:
         CheckResult dict.
@@ -347,28 +376,28 @@ def _verificar_python() -> CheckResult:
         }
 
 
-def _verificar_proyecto() -> CheckResult:
+def _verificar_proyecto(contexto: ProjectContext | None = None) -> CheckResult:
     """Verifica si se detecta un proyecto odev.
+
+    Args:
+        contexto: Contexto del proyecto resuelto. Si None, reporta ausencia como INFO.
 
     Returns:
         CheckResult dict.
     """
-    modo, raiz = detect_mode()
+    if contexto is None:
+        msg = (
+            "No se detecto proyecto odev en el directorio actual. "
+            "Ejecuta 'odev init' para crear uno."
+        )
+        return {"name": "proyecto", "status": "info", "message": msg, "hint": None}
 
-    if modo == ProjectMode.PROJECT:
-        nombre = raiz.name if raiz else "desconocido"
-        # Intentar leer nombre desde .odev.yaml
-        try:
-            from odev.core.project import ProjectConfig
+    nombre = contexto.nombre
+    modo = contexto.modo
+    # Distinguir legacy (ModoProyecto) del modo normal
+    from odev.core.resolver import ModoProyecto  # noqa: PLC0415
 
-            config = ProjectConfig(raiz)
-            nombre = config.nombre_proyecto or nombre
-        except (FileNotFoundError, Exception):
-            pass
-        msg = f"Proyecto detectado: {nombre} (modo: {modo.value})"
-        return {"name": "proyecto", "status": "ok", "message": msg, "hint": None}
-    elif modo == ProjectMode.LEGACY:
-        nombre = raiz.name if raiz else "desconocido"
+    if modo == ModoProyecto.LEGACY:
         msg = (
             f"Proyecto legacy detectado: {nombre} (modo: {modo.value}). "
             "Ejecuta 'odev migrate' para migrar."
@@ -379,25 +408,25 @@ def _verificar_proyecto() -> CheckResult:
             "message": msg,
             "hint": "Ejecuta 'odev migrate'.",
         }
-    else:
-        msg = (
-            "No se detecto proyecto odev en el directorio actual. "
-            "Ejecuta 'odev init' para crear uno."
-        )
-        return {"name": "proyecto", "status": "info", "message": msg, "hint": None}
+
+    msg = f"Proyecto detectado: {nombre} (modo: {modo.value})"
+    return {"name": "proyecto", "status": "ok", "message": msg, "hint": None}
 
 
-def _verificar_env() -> CheckResult:
+def _verificar_env(contexto: ProjectContext | None = None) -> CheckResult:
     """Verifica si existe el archivo .env.
+
+    Args:
+        contexto: Contexto del proyecto resuelto. Si None, retorna INFO.
 
     Returns:
         CheckResult dict.
     """
-    modo, raiz = detect_mode()
-    if modo == ProjectMode.NONE or raiz is None:
+    if contexto is None:
         msg = ".env: no se puede verificar sin un proyecto detectado."
         return {"name": "env", "status": "info", "message": msg, "hint": None}
 
+    raiz = contexto.directorio_trabajo
     ruta_env = raiz / ".env"
     if ruta_env.exists():
         return {"name": "env", "status": "ok", "message": ".env existe", "hint": None}
@@ -406,17 +435,20 @@ def _verificar_env() -> CheckResult:
         return {"name": "env", "status": "fail", "message": msg, "hint": "Ejecuta 'odev init'."}
 
 
-def _verificar_docker_compose_file() -> CheckResult:
+def _verificar_docker_compose_file(contexto: ProjectContext | None = None) -> CheckResult:
     """Verifica si existe docker-compose.yml.
+
+    Args:
+        contexto: Contexto del proyecto resuelto. Si None, retorna INFO.
 
     Returns:
         CheckResult dict.
     """
-    modo, raiz = detect_mode()
-    if modo == ProjectMode.NONE or raiz is None:
+    if contexto is None:
         msg = "docker-compose.yml: no se puede verificar sin un proyecto detectado."
         return {"name": "compose-file", "status": "info", "message": msg, "hint": None}
 
+    raiz = contexto.directorio_trabajo
     ruta_compose = raiz / "docker-compose.yml"
     if ruta_compose.exists():
         return {
@@ -435,17 +467,20 @@ def _verificar_docker_compose_file() -> CheckResult:
         }
 
 
-def _verificar_odoo_conf() -> CheckResult:
+def _verificar_odoo_conf(contexto: ProjectContext | None = None) -> CheckResult:
     """Verifica si existe config/odoo.conf.
+
+    Args:
+        contexto: Contexto del proyecto resuelto. Si None, retorna INFO.
 
     Returns:
         CheckResult dict (warn if missing, ok if present).
     """
-    modo, raiz = detect_mode()
-    if modo == ProjectMode.NONE or raiz is None:
+    if contexto is None:
         msg = "config/odoo.conf: no se puede verificar sin un proyecto detectado."
         return {"name": "odoo-conf", "status": "info", "message": msg, "hint": None}
 
+    raiz = contexto.directorio_trabajo
     ruta_conf = raiz / "config" / "odoo.conf"
     if ruta_conf.exists():
         return {
@@ -459,31 +494,26 @@ def _verificar_odoo_conf() -> CheckResult:
         return {"name": "odoo-conf", "status": "warn", "message": msg, "hint": None}
 
 
-def _verificar_addons() -> CheckResult:
+def _verificar_addons(contexto: ProjectContext | None = None) -> CheckResult:
     """Verifica el estado de los directorios de addons.
 
     Usa el resolver unificado para obtener todos los directorios de addons
     configurados y verificar su existencia y contenido.
 
+    Args:
+        contexto: Contexto del proyecto resuelto. Si None, retorna INFO.
+
     Returns:
         CheckResult dict.
     """
-    modo, raiz = detect_mode()
-    if modo == ProjectMode.NONE or raiz is None:
+    if contexto is None:
         msg = "addons/: no se puede verificar sin un proyecto detectado."
         return {"name": "addons", "status": "info", "message": msg, "hint": None}
 
-    # Intentar usar el resolver para obtener todos los addons_dirs
-    try:
-        from odev.commands._helpers import obtener_rutas, requerir_proyecto
-        from odev.main import obtener_nombre_proyecto
+    from odev.commands._helpers import obtener_rutas  # noqa: PLC0415
 
-        contexto = requerir_proyecto(obtener_nombre_proyecto())
-        rutas = obtener_rutas(contexto)
-        directorios_addons = rutas.addons_dirs
-    except SystemExit:
-        # Fallback a directorio por defecto si no se puede resolver
-        directorios_addons = [raiz / "addons"]
+    rutas = obtener_rutas(contexto)
+    directorios_addons = rutas.addons_dirs
 
     cantidad_total = 0
     for directorio_addons in directorios_addons:
@@ -512,19 +542,22 @@ def _verificar_addons() -> CheckResult:
     }
 
 
-def _verificar_puertos() -> CheckResult:
+def _verificar_puertos(contexto: ProjectContext | None = None) -> CheckResult:
     """Verifica la disponibilidad de los puertos configurados.
 
     Lee los puertos del .env del proyecto y verifica si estan libres.
 
+    Args:
+        contexto: Contexto del proyecto resuelto. Si None, retorna INFO.
+
     Returns:
         CheckResult dict.
     """
-    modo, raiz = detect_mode()
-    if modo == ProjectMode.NONE or raiz is None:
+    if contexto is None:
         msg = "Puertos: no se puede verificar sin un proyecto detectado."
         return {"name": "puertos", "status": "info", "message": msg, "hint": None}
 
+    raiz = contexto.directorio_trabajo
     # Intentar leer puertos del .env
     ruta_env = raiz / ".env"
     if not ruta_env.exists():
@@ -650,10 +683,13 @@ def _verificar_registry_puertos(registry=None) -> dict:
     return {"backfilleados": backfilleados, "eliminados": eliminados}
 
 
-def _ejecutar_registry_gc_y_backfill() -> CheckResult:
+def _ejecutar_registry_gc_y_backfill(contexto: ProjectContext | None = None) -> CheckResult:
     """Ejecuta GC y backfill del registro de puertos como paso de doctor.
 
     # D1: JSON mode consolidates GC+backfill into a single info CheckResult; see sdd-design.
+
+    Args:
+        contexto: Contexto del proyecto (no usado; parametro para uniformidad del dispatcher).
 
     Returns:
         CheckResult dict (always info status).
@@ -678,23 +714,28 @@ def _ejecutar_registry_gc_y_backfill() -> CheckResult:
         }
 
 
-def _verificar_version_compatible() -> CheckResult:
+def _verificar_version_compatible(contexto: ProjectContext | None = None) -> CheckResult:
     """Verifica compatibilidad de version entre el CLI y el proyecto.
 
     Lee odev_min_version de .odev.yaml y compara con la version instalada.
 
+    Args:
+        contexto: Contexto del proyecto resuelto. Si None, solo reporta la version instalada.
+
     Returns:
         CheckResult dict.
     """
-    modo, raiz = detect_mode()
-    if modo == ProjectMode.NONE or raiz is None:
+    if contexto is None:
         msg = f"odev version {__version__}"
         return {"name": "version", "status": "info", "message": msg, "hint": None}
 
-    if modo == ProjectMode.LEGACY:
+    from odev.core.resolver import ModoProyecto  # noqa: PLC0415
+
+    if contexto.modo == ModoProyecto.LEGACY:
         msg = f"odev version {__version__} (proyecto legacy, sin verificacion de version)"
         return {"name": "version", "status": "info", "message": msg, "hint": None}
 
+    raiz = contexto.directorio_trabajo
     # Intentar leer la version minima del .odev.yaml
     ruta_yaml = raiz / ".odev.yaml"
     if not ruta_yaml.exists():
@@ -702,9 +743,9 @@ def _verificar_version_compatible() -> CheckResult:
         return {"name": "version", "status": "info", "message": msg, "hint": None}
 
     try:
-        from packaging.version import Version
+        from packaging.version import Version  # noqa: PLC0415
 
-        from odev.core.project import ProjectConfig
+        from odev.core.project import ProjectConfig  # noqa: PLC0415
 
         config = ProjectConfig(raiz)
         version_minima = config.version_minima
