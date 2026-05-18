@@ -68,6 +68,54 @@ def _render_check(result: CheckResult) -> None:
         _imprimir_info(hint)
 
 
+def _execute_doctor(contexto) -> dict:
+    """Pure data-return. No I/O, no exits. MCP-callable.
+
+    Runs all doctor checks and returns the full result envelope as a dict.
+
+    Args:
+        contexto: Resolved ProjectContext (accepted for API consistency;
+                  current checks are environment-level and do not use it directly).
+
+    Returns:
+        Dict matching the doctor JSON schema:
+        {version, checks: [CheckResult], summary: {ok, warn, fail}, exit_code}
+    """
+    verificaciones = [
+        _verificar_docker,
+        _verificar_docker_compose,
+        _verificar_python,
+        _verificar_proyecto,
+        _verificar_env,
+        _ejecutar_registry_gc_y_backfill,
+        _verificar_puertos,
+        _verificar_docker_compose_file,
+        _verificar_odoo_conf,
+        _verificar_addons,
+        _verificar_version_compatible,
+    ]
+
+    resultados: list[CheckResult] = []
+    for verificacion in verificaciones:
+        resultado = verificacion()
+        if resultado is not None and isinstance(resultado, dict):
+            resultados.append(resultado)
+
+    summary: dict[str, int] = {"ok": 0, "warn": 0, "fail": 0}
+    for r in resultados:
+        status = r.get("status", "info")
+        if status in summary:
+            summary[status] += 1
+
+    exit_code = 1 if summary["fail"] > 0 else 0
+    return {
+        "version": "0.5.2",
+        "checks": resultados,
+        "summary": summary,
+        "exit_code": exit_code,
+    }
+
+
 def doctor(
     json_output: bool = typer.Option(
         False,
@@ -110,29 +158,11 @@ def doctor(
             sys.stderr.write(json.dumps({"error": "no project context"}) + "\n")
             raise typer.Exit(1)
 
-        # JSON path: collect all CheckResult dicts, build envelope, emit to stdout.
+        # JSON path: delegate to _execute_doctor for data collection.
         # Rich console is NOT called in this path (D1 design).
-        resultados: list[CheckResult] = []
-        for verificacion in verificaciones:
-            resultado = verificacion()
-            if resultado is not None and isinstance(resultado, dict):
-                resultados.append(resultado)
-
-        summary: dict[str, int] = {"ok": 0, "warn": 0, "fail": 0}
-        for r in resultados:
-            status = r.get("status", "info")
-            if status in summary:
-                summary[status] += 1
-
-        exit_code = 1 if summary["fail"] > 0 else 0
-        envelope = {
-            "version": "0.5.1",
-            "checks": resultados,
-            "summary": summary,
-            "exit_code": exit_code,
-        }
+        envelope = _execute_doctor(None)
         sys.stdout.write(json.dumps(envelope) + "\n")
-        raise typer.Exit(exit_code)
+        raise typer.Exit(envelope["exit_code"])
 
     # Rich path (default): unchanged behavior from 0.5.0.
     console.print()

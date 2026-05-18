@@ -218,6 +218,82 @@ def render_json(result: TestResult) -> None:
     sys.stdout.write(json.dumps(payload) + "\n")
 
 
+def _execute_test(contexto, module: str, tags: Optional[str] = None) -> dict:
+    """Pure data-return. No I/O, no exits. MCP-callable.
+
+    Runs Odoo tests for a module and returns the parsed TestResult as a dict.
+
+    Args:
+        contexto: Resolved ProjectContext.
+        module: Module name(s) to test (CSV supported, or 'all').
+        tags: Optional Odoo test-tags expression.
+
+    Returns:
+        Dict matching the TestResult JSON schema:
+        {total, passed, failed, errors, duration, parse_failed,
+         raw_summary_line, fallback_counters_used, failures[]}
+
+    Raises:
+        ValueError: If module is empty or invalid combination.
+    """
+    module_name, shorthand_tag = _parse_test_target(module)
+    modulos = parsear_modulos_csv(module_name)
+    validar_modulos(modulos, contexto, no_validate=False)
+
+    rutas = obtener_rutas(contexto)
+    valores_env = load_env(rutas.env_file)
+    nombre_bd = valores_env.get("DB_NAME", "odoo_db")
+
+    comando = [
+        "odoo",
+        "--test-enable",
+        "--stop-after-init",
+        "-d",
+        nombre_bd,
+        "--no-http",
+        f"--http-port={_TEST_HTTP_PORT}",
+        "--log-level=test",
+    ]
+
+    tag_parts: list[str] = []
+    if modulos != ["all"]:
+        comando.extend(["-u", ",".join(modulos)])
+        if shorthand_tag is not None:
+            tag_parts.append(f"/{modulos[0]}:{shorthand_tag}")
+        else:
+            tag_parts.extend(f"/{m}" for m in modulos)
+    if tags is not None:
+        tag_parts.append(tags)
+    if tag_parts:
+        comando.extend(["--test-tags", ",".join(tag_parts)])
+
+    dc = obtener_docker(contexto)
+    popen = dc.exec_cmd_stream("web", comando)
+    lines, _ = _stream_and_collect(popen)
+    result = parse_odoo_test_output(lines)
+
+    return {
+        "total": result.total,
+        "passed": result.passed,
+        "failed": result.failed,
+        "errors": result.errors,
+        "duration": result.duration,
+        "parse_failed": result.parse_failed,
+        "raw_summary_line": result.raw_summary_line,
+        "fallback_counters_used": result.fallback_counters_used,
+        "failures": [
+            {
+                "class": f.test_class,
+                "method": f.method,
+                "kind": f.kind,
+                "message": f.message,
+                "traceback": f.traceback,
+            }
+            for f in result.failures
+        ],
+    }
+
+
 def _run_test(
     module: str,
     log_level: str,

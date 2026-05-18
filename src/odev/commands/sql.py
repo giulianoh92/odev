@@ -59,6 +59,50 @@ def _parse_psql_us_output(raw: bytes) -> list[dict[str, str]]:
     return rows
 
 
+def _execute_sql(contexto, query: str) -> list[dict]:
+    """Pure data-return. No I/O, no exits. MCP-callable.
+
+    Executes a SQL query via psql in the db container and returns rows as dicts.
+
+    Args:
+        contexto: Resolved ProjectContext.
+        query: SQL query to execute.
+
+    Returns:
+        List of row dicts {column: value}.
+
+    Raises:
+        RuntimeError: If psql returns non-zero exit code.
+        ValueError: If the query is empty.
+    """
+    if not query.strip():
+        raise ValueError("La consulta SQL no puede estar vacia.")
+
+    rutas = obtener_rutas(contexto)
+    valores_env = load_env(rutas.env_file)
+    nombre_bd = valores_env.get("DB_NAME", "odoo_db")
+    usuario_bd = valores_env.get("DB_USER", "odoo")
+
+    args = [
+        "psql",
+        "-U", usuario_bd,
+        "-d", nombre_bd,
+        "-c", query,
+        "--no-align",
+        f"--field-separator={_FIELD_SEP}",
+        "--pset=footer=off",
+    ]
+    dc = obtener_docker(contexto)
+    stdout, stderr, returncode = dc.exec_capture("db", args)
+
+    if returncode != 0:
+        first_err = stderr.decode("utf-8", errors="replace").splitlines()
+        first_err_line = first_err[0].strip() if first_err else "Error desconocido en psql"
+        raise RuntimeError(first_err_line)
+
+    return _parse_psql_us_output(stdout)
+
+
 def _run_sql(query: str, csv: bool, json_output: bool = False) -> None:
     from odev.main import obtener_nombre_proyecto
 
@@ -77,28 +121,11 @@ def _run_sql(query: str, csv: bool, json_output: bool = False) -> None:
     usuario_bd = valores_env.get("DB_USER", "odoo")
 
     if json_output:
-        # Usar ASCII Unit Separator como delimitador + tuples-only para datos.
-        # Ejecutar dos veces: una para el header, otra para los datos.
-        # Mas eficiente: una sola ejecucion con header separado por \x1f.
-        args = [
-            "psql",
-            "-U", usuario_bd,
-            "-d", nombre_bd,
-            "-c", query,
-            "--no-align",
-            f"--field-separator={_FIELD_SEP}",
-            "--pset=footer=off",
-        ]
-        dc = obtener_docker(contexto)
-        stdout, stderr, returncode = dc.exec_capture("db", args)
-
-        if returncode != 0:
-            first_err = stderr.decode("utf-8", errors="replace").splitlines()
-            first_err_line = first_err[0].strip() if first_err else "Error desconocido en psql"
-            sys.stderr.write(json.dumps({"error": first_err_line}) + "\n")
-            raise typer.Exit(1)
-
-        rows = _parse_psql_us_output(stdout)
+        try:
+            rows = _execute_sql(contexto, query)
+        except (RuntimeError, ValueError) as e:
+            sys.stderr.write(json.dumps({"error": str(e)}) + "\n")
+            raise typer.Exit(1) from e
         sys.stdout.write(json.dumps(rows) + "\n")
         raise typer.Exit(0)
 

@@ -31,6 +31,41 @@ from odev.core.console import success, warning
 from odev.core.paths import get_templates_dir
 
 
+def _execute_context(contexto) -> str:
+    """Pure data-return. No I/O, no exits. MCP-callable.
+
+    Renders the project context as a markdown string (same content as
+    PROJECT_CONTEXT.md) without writing the file to disk.
+
+    Args:
+        contexto: Resolved ProjectContext.
+
+    Returns:
+        Markdown string with project context information.
+    """
+    rutas = obtener_rutas(contexto)
+    valores_env = load_env(rutas.env_file)
+
+    modulos = []
+    for directorio_addons in rutas.addons_dirs:
+        modulos.extend(_escanear_modulos(directorio_addons))
+
+    directorio_templates = get_templates_dir()
+    entorno_jinja = Environment(
+        loader=FileSystemLoader(str(directorio_templates)),
+        keep_trailing_newline=True,
+    )
+    template = entorno_jinja.get_template("project_context.md.j2")
+
+    return template.render(
+        generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        odoo_version=valores_env.get("ODOO_VERSION", "N/A"),
+        db_name=valores_env.get("DB_NAME", "N/A"),
+        modules=modulos,
+        project_name=contexto.nombre,
+    )
+
+
 def context(
     json_output: bool = typer.Option(
         False,

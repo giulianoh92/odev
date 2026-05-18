@@ -14,6 +14,30 @@ from odev.commands._helpers import (
 from odev.core.console import error, info
 
 
+def _execute_shell(contexto, service: str, command: str) -> dict:
+    """Pure data-return. No I/O, no exits. MCP-callable.
+
+    Executes a shell command in a service container and returns captured output.
+
+    Args:
+        contexto: Resolved ProjectContext.
+        service: Service name (e.g. 'web', 'db').
+        command: Shell command to execute (passed to bash -c).
+
+    Returns:
+        Dict with {stdout: str, stderr: str, returncode: int}.
+    """
+    dc = obtener_docker(contexto)
+    stdout_bytes, stderr_bytes, returncode = dc.exec_capture(
+        service, ["bash", "-c", command]
+    )
+    return {
+        "stdout": stdout_bytes.decode("utf-8", errors="replace"),
+        "stderr": stderr_bytes.decode("utf-8", errors="replace"),
+        "returncode": returncode,
+    }
+
+
 def _run_shell(service: str, cmd: Optional[str]) -> None:
     from odev.main import obtener_nombre_proyecto
 

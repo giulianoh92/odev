@@ -71,6 +71,46 @@ def _parse_modules_output(raw: bytes) -> list[dict[str, str]]:
     return rows
 
 
+def _execute_modules(contexto) -> list[dict]:
+    """Pure data-return. No I/O, no exits. MCP-callable.
+
+    Queries installed Odoo modules via psql and returns structured list.
+
+    Args:
+        contexto: Resolved ProjectContext.
+
+    Returns:
+        List of {name, state, version} dicts.
+
+    Raises:
+        RuntimeError: If psql returns non-zero exit code.
+    """
+    rutas = obtener_rutas(contexto)
+    valores_env = load_env(rutas.env_file)
+    nombre_bd = valores_env.get("DB_NAME", "odoo_db")
+    usuario_bd = valores_env.get("DB_USER", "odoo")
+
+    args = [
+        "psql",
+        "-U", usuario_bd,
+        "-d", nombre_bd,
+        "-t",
+        "-A",
+        f"-F{_FIELD_SEP}",
+        "-c", _SQL_MODULES,
+    ]
+
+    dc = obtener_docker(contexto)
+    stdout, stderr, returncode = dc.exec_capture("db", args)
+
+    if returncode != 0:
+        first_err = stderr.decode("utf-8", errors="replace").splitlines()
+        first_err_line = first_err[0].strip() if first_err else "Error en psql"
+        raise RuntimeError(first_err_line)
+
+    return _parse_modules_output(stdout)
+
+
 def modules(
     json_output: bool = typer.Option(
         True,
@@ -107,30 +147,11 @@ def modules(
         sys.stderr.write(json.dumps({"error": err_msg}) + "\n")
         raise
 
-    rutas = obtener_rutas(contexto)
-    valores_env = load_env(rutas.env_file)
-    nombre_bd = valores_env.get("DB_NAME", "odoo_db")
-    usuario_bd = valores_env.get("DB_USER", "odoo")
+    try:
+        result = _execute_modules(contexto)
+    except RuntimeError as e:
+        sys.stderr.write(json.dumps({"error": str(e)}) + "\n")
+        raise typer.Exit(1) from e
 
-    args = [
-        "psql",
-        "-U", usuario_bd,
-        "-d", nombre_bd,
-        "-t",  # tuples only (sin header)
-        "-A",  # unaligned
-        f"-F{_FIELD_SEP}",  # field separator
-        "-c", _SQL_MODULES,
-    ]
-
-    dc = obtener_docker(contexto)
-    stdout, stderr, returncode = dc.exec_capture("db", args)
-
-    if returncode != 0:
-        first_err = stderr.decode("utf-8", errors="replace").splitlines()
-        first_err_line = first_err[0].strip() if first_err else "Error en psql"
-        sys.stderr.write(json.dumps({"error": first_err_line}) + "\n")
-        raise typer.Exit(1)
-
-    result = _parse_modules_output(stdout)
     sys.stdout.write(json.dumps(result) + "\n")
     raise typer.Exit(0)

@@ -29,14 +29,27 @@ from odev.core.config import load_env
 from odev.core.console import error
 
 
-def _run_py(expression: str, keep_banner: bool = False) -> None:
-    from odev.main import obtener_nombre_proyecto
+def _execute_py(contexto, expression: str) -> str:
+    """Pure data-return. No I/O, no exits. MCP-callable.
 
+    Evaluates a Python expression in the Odoo shell and returns the
+    banner-stripped result as a string.
+
+    Args:
+        contexto: Resolved ProjectContext.
+        expression: Python expression to evaluate.
+
+    Returns:
+        Banner-stripped result string.
+
+    Raises:
+        ValueError: If expression is empty.
+        RuntimeError: If the Odoo shell returns an error.
+        subprocess.CalledProcessError: If the exec_cmd fails.
+    """
     if not expression.strip():
-        error("La expresion Python no puede estar vacia.")
-        raise typer.Exit(2)
+        raise ValueError("La expresion Python no puede estar vacia.")
 
-    contexto = requerir_proyecto(obtener_nombre_proyecto())
     rutas = obtener_rutas(contexto)
     valores_env = load_env(rutas.env_file)
     nombre_bd = valores_env.get("DB_NAME", "odoo_db")
@@ -52,27 +65,65 @@ def _run_py(expression: str, keep_banner: bool = False) -> None:
     ]
 
     dc = obtener_docker(contexto)
-    # Usar exec_cmd con stdin_data (script es pequeno — no riesgo OOM).
-    # exec_capture no acepta stdin; exec_cmd con interactive=False captura stdout/stderr.
-    # exec_cmd lanza CalledProcessError en returncode != 0; capturamos aqui.
-    try:
-        result = dc.exec_cmd("web", args, interactive=False, stdin_data=script)
-        stdout = result.stdout or b""
-        stderr = result.stderr or b""
-        returncode = result.returncode
-    except subprocess.CalledProcessError as exc:
-        sys.stderr.buffer.write(exc.stderr or b"")
-        raise typer.Exit(exc.returncode) from exc
+    result = dc.exec_cmd("web", args, interactive=False, stdin_data=script)
+    stdout = result.stdout or b""
+    stderr = result.stderr or b""
+    returncode = result.returncode
 
     if returncode != 0 or (stderr and b"Traceback" in stderr):
-        sys.stderr.buffer.write(stderr)
-        raise typer.Exit(1)
+        raise RuntimeError(stderr.decode("utf-8", errors="replace"))
+
+    result_line = _strip_banner(stdout)
+    return result_line if result_line else ""
+
+
+def _run_py(expression: str, keep_banner: bool = False) -> None:
+    from odev.main import obtener_nombre_proyecto
+
+    if not expression.strip():
+        error("La expresion Python no puede estar vacia.")
+        raise typer.Exit(2)
+
+    contexto = requerir_proyecto(obtener_nombre_proyecto())
 
     if keep_banner:
+        # keep_banner path needs raw stdout — run directly, not via _execute_py
+        rutas = obtener_rutas(contexto)
+        valores_env = load_env(rutas.env_file)
+        nombre_bd = valores_env.get("DB_NAME", "odoo_db")
+        script = f"print({expression})\n".encode("utf-8")
+        args = [
+            "odoo",
+            "shell",
+            "--config=/etc/odoo/odoo.conf",
+            "-d",
+            nombre_bd,
+            "--no-http",
+        ]
+        dc = obtener_docker(contexto)
+        try:
+            result = dc.exec_cmd("web", args, interactive=False, stdin_data=script)
+            stdout = result.stdout or b""
+            stderr = result.stderr or b""
+            returncode = result.returncode
+        except subprocess.CalledProcessError as exc:
+            sys.stderr.buffer.write(exc.stderr or b"")
+            raise typer.Exit(exc.returncode) from exc
+        if returncode != 0 or (stderr and b"Traceback" in stderr):
+            sys.stderr.buffer.write(stderr)
+            raise typer.Exit(1)
         sys.stdout.buffer.write(stdout)
         raise typer.Exit(0)
 
-    result_line = _strip_banner(stdout)
+    # Normal path: delegate to _execute_py, then write result to stdout
+    try:
+        result_line = _execute_py(contexto, expression)
+    except subprocess.CalledProcessError as exc:
+        sys.stderr.buffer.write(exc.stderr or b"")
+        raise typer.Exit(exc.returncode) from exc
+    except RuntimeError as exc:
+        sys.stderr.write(str(exc))
+        raise typer.Exit(1) from exc
     if result_line:
         sys.stdout.write(result_line + "\n")
     raise typer.Exit(0)

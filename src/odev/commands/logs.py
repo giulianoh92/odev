@@ -73,6 +73,24 @@ def _parse_logs(raw: str) -> list[dict]:
     return entries
 
 
+def _execute_logs(contexto, service: str, tail: int) -> list[dict]:
+    """Pure data-return. No I/O, no exits. MCP-callable.
+
+    Captures log lines from a service and returns structured entries.
+
+    Args:
+        contexto: Resolved ProjectContext.
+        service: Service name (e.g. 'web', 'db').
+        tail: Number of lines from the end.
+
+    Returns:
+        List of {service, timestamp, level, message} dicts.
+    """
+    dc = obtener_docker(contexto)
+    raw = dc.logs_capture(service, tail=tail)
+    return _parse_logs(raw)
+
+
 def logs(
     service: str = typer.Argument(
         "web",
@@ -132,8 +150,7 @@ def logs(
             )
             raise typer.Exit(2)
 
-        raw = dc.logs_capture(service, tail=tail)
-        entries = _parse_logs(raw)
+        entries = _execute_logs(contexto, service, tail)
         sys.stdout.write(json.dumps(entries) + "\n")
         return
 

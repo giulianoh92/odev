@@ -304,6 +304,18 @@ class ProjectConfig:
         """Directorio de trabajo (solo para modo external)."""
         return self.datos.get("project", {}).get("working_dir")
 
+    def to_dict(self) -> dict:
+        """Return the full config as a plain dict (JSON-serializable).
+
+        Used by the MCP resource odev://project/config.
+
+        Returns:
+            Deep copy of the loaded and merged config data.
+        """
+        import copy
+
+        return copy.deepcopy(self.datos)
+
     def verificar_compatibilidad_version(self) -> bool:
         """Verifica si la version del CLI satisface la version minima del proyecto.
 

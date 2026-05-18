@@ -6,6 +6,13 @@ El formato esta basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 y este proyecto adhiere a [Versionado Semantico](https://semver.org/spec/v2.0.0.html).
 Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
 
+## [0.5.2] - 2026-05-17
+
+### Interno
+
+- Refactor (MCP prep): extraidos helpers `_execute_*` en 10 modulos de comandos (`status`, `sql`, `py`, `test`, `model_info`, `logs`, `modules`, `doctor`, `shell`, `context`). Cada helper retorna datos Python puros sin I/O, sin `typer.Exit`. Los `_run_*` existentes delegan a ellos y mantienen comportamiento CLI byte-identical. Seam necesario para el servidor MCP de PR2.
+- Nuevo: `ProjectConfig.to_dict()` en `core/project.py` — expone la configuracion como dict JSON-serializable para el recurso MCP `odev://project/config`.
+
 ## [0.5.1] - 2026-05-17
 
 ### Agregado

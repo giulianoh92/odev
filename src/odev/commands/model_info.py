@@ -56,6 +56,53 @@ print(_json.dumps(_payload))
 """
 
 
+def _execute_model_info(contexto, model: str) -> dict:
+    """Pure data-return. No I/O, no exits. MCP-callable.
+
+    Introspects an Odoo model via ORM and returns its schema as a dict.
+
+    Args:
+        contexto: Resolved ProjectContext.
+        model: Technical name of the Odoo model (e.g. res.partner).
+
+    Returns:
+        Dict with model/description/inherits/fields keys.
+
+    Raises:
+        ValueError: If the model is not found.
+        RuntimeError: If the stack is not running or an unexpected error occurs.
+        subprocess.CalledProcessError: If exec_cmd fails to start.
+    """
+    dc = obtener_docker(contexto)
+    script = _MODEL_SCRIPT_TEMPLATE % model
+
+    try:
+        result = dc.exec_cmd(
+            "web",
+            ["odoo", "shell", "--no-http", "-d", "odoo"],
+            stdin_data=script.encode("utf-8"),
+        )
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError("Stack not running or DB unavailable") from exc
+
+    if result.returncode != 0:
+        stderr_text = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+        if "Model not found" in stderr_text:
+            raise ValueError(f"Model not found: {model}")
+        raise RuntimeError("Stack not running or DB unavailable")
+
+    payload_line = _strip_banner(result.stdout)
+    if not payload_line:
+        raise RuntimeError("No output from Odoo shell")
+
+    try:
+        data = json.loads(payload_line)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Failed to parse model output: {exc}") from exc
+
+    return data
+
+
 def model_info(
     model: str = typer.Argument(
         ...,
@@ -84,53 +131,18 @@ def model_info(
     from odev.main import obtener_nombre_proyecto
 
     contexto = requerir_proyecto(obtener_nombre_proyecto())
-    dc = obtener_docker(contexto)
-
-    script = _MODEL_SCRIPT_TEMPLATE % model
 
     try:
-        result = dc.exec_cmd(
-            "web",
-            ["odoo", "shell", "--no-http", "-d", "odoo"],
-            stdin_data=script.encode("utf-8"),
-        )
+        data = _execute_model_info(contexto, model)
+    except ValueError as exc:
+        sys.stderr.write(json.dumps({"error": str(exc)}) + "\n")
+        raise typer.Exit(1) from exc
+    except RuntimeError as exc:
+        sys.stderr.write(json.dumps({"error": str(exc)}) + "\n")
+        raise typer.Exit(3) from exc
     except subprocess.CalledProcessError as exc:
         sys.stderr.write(
             json.dumps({"error": "Stack not running or DB unavailable"}) + "\n"
-        )
-        raise typer.Exit(3) from exc
-
-    if result.returncode != 0:
-        stderr_text = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
-        if "Model not found" in stderr_text:
-            # Forward the model-not-found JSON from the script's stderr
-            for line in stderr_text.splitlines():
-                line = line.strip()
-                if line.startswith("{") and "error" in line:
-                    sys.stderr.write(line + "\n")
-                    break
-            else:
-                sys.stderr.write(
-                    json.dumps({"error": f"Model not found: {model}"}) + "\n"
-                )
-            raise typer.Exit(1)
-        else:
-            sys.stderr.write(
-                json.dumps({"error": "Stack not running or DB unavailable"}) + "\n"
-            )
-            raise typer.Exit(3)
-
-    # Strip Odoo shell banner, extract the last non-banner line (our JSON payload)
-    payload_line = _strip_banner(result.stdout)
-    if not payload_line:
-        sys.stderr.write(json.dumps({"error": "No output from Odoo shell"}) + "\n")
-        raise typer.Exit(3)
-
-    try:
-        data = json.loads(payload_line)
-    except json.JSONDecodeError as exc:
-        sys.stderr.write(
-            json.dumps({"error": f"Failed to parse model output: {exc}"}) + "\n"
         )
         raise typer.Exit(3) from exc
 

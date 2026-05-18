@@ -44,6 +44,27 @@ def _parse_ports(publishers) -> list[int]:
     return ports
 
 
+def _execute_status(contexto) -> list[dict]:
+    """Pure data-return. No I/O, no exits. MCP-callable.
+
+    Args:
+        contexto: Resolved ProjectContext.
+
+    Returns:
+        List of {service, status, ports} dicts.
+    """
+    dc = obtener_docker(contexto)
+    servicios = dc.ps_parsed()
+    resultado = []
+    for svc in servicios:
+        nombre = svc.get("Service", svc.get("Name", "?"))
+        estado = svc.get("State", "?")
+        publishers = svc.get("Publishers", svc.get("Ports", []))
+        ports = _parse_ports(publishers)
+        resultado.append({"service": nombre, "status": estado, "ports": ports})
+    return resultado
+
+
 def status(
     json_output: bool = typer.Option(
         False,
@@ -73,17 +94,7 @@ def status(
             sys.stderr.write(json.dumps({"error": err_msg}) + "\n")
             raise
 
-        dc = obtener_docker(contexto)
-        servicios = dc.ps_parsed()
-
-        resultado = []
-        for svc in servicios:
-            nombre = svc.get("Service", svc.get("Name", "?"))
-            estado = svc.get("State", "?")
-            publishers = svc.get("Publishers", svc.get("Ports", []))
-            ports = _parse_ports(publishers)
-            resultado.append({"service": nombre, "status": estado, "ports": ports})
-
+        resultado = _execute_status(contexto)
         sys.stdout.write(json.dumps(resultado) + "\n")
         raise typer.Exit(0)
 
