@@ -6,6 +6,12 @@ El formato esta basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 y este proyecto adhiere a [Versionado Semantico](https://semver.org/spec/v2.0.0.html).
 Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
 
+## [0.6.2] - 2026-05-18
+
+### Corregido
+
+- `ODEV_PROJECT` ahora es respetado por todos los comandos CLI (no solo el servidor MCP). El lookup se movio a `obtener_nombre_proyecto()` en `odev.main`, donde lo consumen los comandos de Path B (`status`, `sql`, `py`, `modules`, `logs`, `test`, `context`, `shell`, `doctor --json`, `model-info`, etc.). Precedencia: flag `-p/--project` > env var `ODEV_PROJECT`.
+
 ## [0.6.1] - 2026-05-18
 
 ### Corregido

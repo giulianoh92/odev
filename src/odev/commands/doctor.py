@@ -113,7 +113,7 @@ def _execute_doctor(contexto: ProjectContext | None) -> dict:
 
     exit_code = 1 if summary["fail"] > 0 else 0
     return {
-        "version": "0.6.1",
+        "version": "0.6.2",
         "checks": resultados,
         "summary": summary,
         "exit_code": exit_code,
