@@ -102,6 +102,37 @@ Para configuracion manual, agregar a `~/.claude.json`:
 }
 ```
 
+#### Configuracion con proyecto fijo (ODEV_PROJECT)
+
+Cuando el servidor MCP arranca desde un directorio que no pertenece a ningun proyecto
+(por ejemplo, en la configuracion user-scope de Claude Code), la resolucion de contexto
+puede fallar porque no encuentra un `.odev.yaml` en el cwd.
+
+Para fijar el proyecto sin usar `--project` en el comando de arranque, usa la variable
+de entorno `ODEV_PROJECT`:
+
+```json
+{
+  "mcpServers": {
+    "odev": {
+      "command": "odev",
+      "args": ["mcp", "serve", "--transport", "stdio"],
+      "env": {
+        "ODEV_PROJECT": "sis-odoo"
+      }
+    }
+  }
+}
+```
+
+Orden de resolucion del proyecto (de mayor a menor prioridad):
+1. Flag `--project` en `odev mcp serve` (raramente usado en MCP)
+2. Variable de entorno `ODEV_PROJECT`
+3. Busqueda desde el cwd del servidor (comportamiento previo, sin cambios)
+
+Si `ODEV_PROJECT` no esta definido y el cwd no pertenece a ningun proyecto, los tools
+MCP retornan un error estructurado de tipo `"No odev project found"`.
+
 ### Configuracion en Cursor (HTTP transport)
 
 ```bash
@@ -184,7 +215,9 @@ odev --project mi-proyecto --debug status
 | `odev context` | Generar PROJECT_CONTEXT.md para IA |
 | `odev doctor` | Diagnosticar el entorno |
 | `odev tui` | Dashboard interactivo |
-| `odev projects` | Gestionar proyectos registrados |
+| `odev projects` | Listar proyectos registrados (tabla Rich) |
+| `odev projects list` | Listar proyectos registrados (subcomando explicito) |
+| `odev projects list --json` | Listar proyectos como JSON estructurado |
 | `odev migrate` | Migrar proyecto legacy |
 | `odev mcp serve` | Iniciar servidor MCP (requiere `[mcp]` extra) |
 | `odev model-info <model>` | Introspeccion ORM de un modelo (JSON) |
