@@ -124,7 +124,18 @@ def _build_server(FastMCP):
 
 
 def _resolve_contexto():
-    """Fetch project context; raise ValueError if missing (MCP-safe, no typer.Exit)."""
+    """Obtiene el contexto del proyecto; lanza ValueError si no se resuelve.
+
+    Orden de resolucion del nombre de proyecto:
+      1. Flag --project pasado al iniciar 'odev mcp serve' (via obtener_nombre_proyecto).
+      2. Variable de entorno ODEV_PROJECT (util para servidores MCP de larga vida).
+      3. Estrategias cwd-walk dentro de resolver_proyecto (comportamiento existente).
+
+    MCP-safe: no lanza typer.Exit; solo ValueError para que el framework MCP
+    devuelva un error estructurado al cliente.
+    """
+    import os  # noqa: PLC0415
+
     from odev.core.resolver import (  # noqa: PLC0415
         ProyectoAmbiguoError,
         ProyectoNoEncontradoError,
@@ -132,7 +143,7 @@ def _resolve_contexto():
     )
     from odev.main import obtener_nombre_proyecto  # noqa: PLC0415
 
-    nombre = obtener_nombre_proyecto()
+    nombre = obtener_nombre_proyecto() or os.environ.get("ODEV_PROJECT")
     try:
         return resolver_proyecto(nombre_proyecto=nombre)
     except (ProyectoNoEncontradoError, ProyectoAmbiguoError) as exc:

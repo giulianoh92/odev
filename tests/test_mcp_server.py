@@ -507,3 +507,62 @@ class TestStdoutDiscipline:
 
         captured = capsys.readouterr()
         assert captured.out == "", f"Unexpected stdout: {repr(captured.out)}"
+
+
+# ---------------------------------------------------------------------------
+# Group 2 (SDD 0.6.0): _resolve_contexto ODEV_PROJECT env-var fallback
+# ---------------------------------------------------------------------------
+
+
+class TestResolveContextoEnvVar:
+    """Verifica que _resolve_contexto respeta la variable de entorno ODEV_PROJECT."""
+
+    def test_resolve_contexto_uses_env_var(self, monkeypatch):
+        """ODEV_PROJECT es usado cuando obtener_nombre_proyecto retorna None."""
+        import odev.commands.mcp as mcp_module
+
+        fake_ctx = _make_contexto()
+
+        monkeypatch.setenv("ODEV_PROJECT", "sis-odoo")
+
+        with (
+            patch("odev.main.obtener_nombre_proyecto", return_value=None),
+            patch("odev.core.resolver.resolver_proyecto", return_value=fake_ctx) as mock_resolver,
+        ):
+            result = mcp_module._resolve_contexto()
+
+        mock_resolver.assert_called_once_with(nombre_proyecto="sis-odoo")
+        assert result is fake_ctx
+
+    def test_resolve_contexto_cli_flag_beats_env_var(self, monkeypatch):
+        """El flag --project (via obtener_nombre_proyecto) gana sobre ODEV_PROJECT."""
+        import odev.commands.mcp as mcp_module
+
+        fake_ctx = _make_contexto()
+
+        monkeypatch.setenv("ODEV_PROJECT", "env-project")
+
+        with (
+            patch("odev.main.obtener_nombre_proyecto", return_value="flag-project"),
+            patch("odev.core.resolver.resolver_proyecto", return_value=fake_ctx) as mock_resolver,
+        ):
+            mcp_module._resolve_contexto()
+
+        # Debe llamarse con el flag, no con la env var
+        mock_resolver.assert_called_once_with(nombre_proyecto="flag-project")
+
+    def test_resolve_contexto_no_env_no_flag_falls_through(self, monkeypatch):
+        """Sin flag ni env var, nombre_proyecto=None se pasa (cwd-walk activa)."""
+        import odev.commands.mcp as mcp_module
+
+        fake_ctx = _make_contexto()
+
+        monkeypatch.delenv("ODEV_PROJECT", raising=False)
+
+        with (
+            patch("odev.main.obtener_nombre_proyecto", return_value=None),
+            patch("odev.core.resolver.resolver_proyecto", return_value=fake_ctx) as mock_resolver,
+        ):
+            mcp_module._resolve_contexto()
+
+        mock_resolver.assert_called_once_with(nombre_proyecto=None)
