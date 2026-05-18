@@ -9,9 +9,44 @@ import logging
 
 from typer.testing import CliRunner
 
-from odev.main import app
+import odev.main as main_module
+from odev.main import app, obtener_nombre_proyecto
 
 runner = CliRunner()
+
+
+class TestObtenerNombreProyecto:
+    """Verifica precedencia: flag --project > ODEV_PROJECT > None (0.6.2)."""
+
+    def test_returns_flag_when_set(self, monkeypatch):
+        """El estado global _nombre_proyecto (poblado por el flag) tiene prioridad."""
+        monkeypatch.setattr(main_module, "_nombre_proyecto", "flag-project")
+        monkeypatch.delenv("ODEV_PROJECT", raising=False)
+        assert obtener_nombre_proyecto() == "flag-project"
+
+    def test_returns_env_var_when_flag_unset(self, monkeypatch):
+        """ODEV_PROJECT se usa cuando el flag no esta seteado."""
+        monkeypatch.setattr(main_module, "_nombre_proyecto", None)
+        monkeypatch.setenv("ODEV_PROJECT", "env-project")
+        assert obtener_nombre_proyecto() == "env-project"
+
+    def test_flag_beats_env_var(self, monkeypatch):
+        """Si ambos estan, gana el flag."""
+        monkeypatch.setattr(main_module, "_nombre_proyecto", "flag-project")
+        monkeypatch.setenv("ODEV_PROJECT", "env-project")
+        assert obtener_nombre_proyecto() == "flag-project"
+
+    def test_returns_none_when_neither_set(self, monkeypatch):
+        """Sin flag ni env var, retorna None (no string vacio)."""
+        monkeypatch.setattr(main_module, "_nombre_proyecto", None)
+        monkeypatch.delenv("ODEV_PROJECT", raising=False)
+        assert obtener_nombre_proyecto() is None
+
+    def test_empty_env_var_treated_as_unset(self, monkeypatch):
+        """ODEV_PROJECT='' (string vacio) se trata como ausente."""
+        monkeypatch.setattr(main_module, "_nombre_proyecto", None)
+        monkeypatch.setenv("ODEV_PROJECT", "")
+        assert obtener_nombre_proyecto() is None
 
 
 class TestDebugFlag:
@@ -25,9 +60,7 @@ class TestDebugFlag:
         """El flag --debug aparece en el help del CLI."""
         result = runner.invoke(app, ["--help"])
         assert result.exit_code == 0
-        assert "--debug" in result.output, (
-            "El flag --debug debe aparecer en el help de odev"
-        )
+        assert "--debug" in result.output, "El flag --debug debe aparecer en el help de odev"
 
     def test_debug_flag_activates_debug_level(self, caplog):
         """Con --debug, el root logger se configura a nivel DEBUG.
@@ -38,9 +71,7 @@ class TestDebugFlag:
         # pero solo nos importa que --debug sea reconocido)
         result = runner.invoke(app, ["--debug", "--help"])
         # Si --debug existe, el exit_code no sera 2 (error de uso)
-        assert result.exit_code != 2, (
-            f"--debug no fue reconocido. Salida: {result.output}"
-        )
+        assert result.exit_code != 2, f"--debug no fue reconocido. Salida: {result.output}"
 
     def test_without_debug_no_debug_logs(self):
         """Sin --debug, el nivel de logging no es DEBUG."""

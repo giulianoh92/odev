@@ -8,6 +8,7 @@ Este es el modulo referenciado por el entry point del paquete:
 from __future__ import annotations
 
 import logging
+import os
 
 import typer
 
@@ -97,12 +98,16 @@ def main(
 
 
 def obtener_nombre_proyecto() -> str | None:
-    """Retorna el nombre de proyecto global si fue especificado via --project.
+    """Retorna el nombre de proyecto resuelto via flag o variable de entorno.
+
+    Orden de precedencia:
+      1. Flag --project / -p pasado al CLI (estado global)
+      2. Variable de entorno ODEV_PROJECT (util para shells, direnv, MCP server)
 
     Returns:
-        Nombre del proyecto o None si no se especifico.
+        Nombre del proyecto o None si ni el flag ni la env var estan definidos.
     """
-    return _nombre_proyecto
+    return _nombre_proyecto or os.environ.get("ODEV_PROJECT") or None
 
 
 # --- Registro de comandos ---

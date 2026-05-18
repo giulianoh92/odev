@@ -45,7 +45,9 @@ class TestMcpLazyImport:
         for k in to_remove:
             del sys.modules[k]
 
-        original_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+        original_import = (
+            __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+        )
 
         def mock_import(name, *args, **kwargs):
             if name == "mcp.server.fastmcp":
@@ -202,7 +204,10 @@ class TestMcpTools:
         """odev_status calls _execute_status and returns list."""
         import odev.commands.mcp as mcp_module
 
-        with patch("odev.commands.status._execute_status", return_value=[{"service": "web", "status": "running", "ports": []}]):
+        with patch(
+            "odev.commands.status._execute_status",
+            return_value=[{"service": "web", "status": "running", "ports": []}],
+        ):
             with patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()):
                 server = self._build_server()
                 content, _ = self._call_tool(server, "odev_status")
@@ -216,7 +221,9 @@ class TestMcpTools:
         with patch("odev.commands.shell._execute_shell", return_value=ret):
             with patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()):
                 server = self._build_server()
-                result = self._call_tool(server, "odev_shell", {"service": "web", "command": "echo hello"})
+                result = self._call_tool(
+                    server, "odev_shell", {"service": "web", "command": "echo hello"}
+                )
                 content = result[0] if isinstance(result, tuple) else result
                 assert len(content) > 0
 
@@ -244,9 +251,17 @@ class TestMcpTools:
         """odev_test calls _execute_test and returns TestResult dict."""
         import odev.commands.mcp as mcp_module
 
-        ret = {"total": 1, "passed": 1, "failed": 0, "errors": 0, "duration": 0.1,
-               "parse_failed": False, "raw_summary_line": "OK", "fallback_counters_used": False,
-               "failures": []}
+        ret = {
+            "total": 1,
+            "passed": 1,
+            "failed": 0,
+            "errors": 0,
+            "duration": 0.1,
+            "parse_failed": False,
+            "raw_summary_line": "OK",
+            "fallback_counters_used": False,
+            "failures": [],
+        }
         with patch("odev.commands.test._execute_test", return_value=ret):
             with patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()):
                 server = self._build_server()
@@ -258,7 +273,10 @@ class TestMcpTools:
         """odev_logs calls _execute_logs and returns list."""
         import odev.commands.mcp as mcp_module
 
-        with patch("odev.commands.logs._execute_logs", return_value=[{"service": "web", "timestamp": "now", "level": "INFO", "message": "ok"}]):
+        with patch(
+            "odev.commands.logs._execute_logs",
+            return_value=[{"service": "web", "timestamp": "now", "level": "INFO", "message": "ok"}],
+        ):
             with patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()):
                 server = self._build_server()
                 content, _ = self._call_tool(server, "odev_logs", {"service": "web"})
@@ -279,7 +297,10 @@ class TestMcpTools:
         """odev_model_info calls _execute_model_info and returns dict."""
         import odev.commands.mcp as mcp_module
 
-        with patch("odev.commands.model_info._execute_model_info", return_value={"model": "res.partner", "fields": []}):
+        with patch(
+            "odev.commands.model_info._execute_model_info",
+            return_value={"model": "res.partner", "fields": []},
+        ):
             with patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()):
                 server = self._build_server()
                 result = self._call_tool(server, "odev_model_info", {"model": "res.partner"})
@@ -290,7 +311,10 @@ class TestMcpTools:
         """odev_modules calls _execute_modules and returns list."""
         import odev.commands.mcp as mcp_module
 
-        with patch("odev.commands.modules._execute_modules", return_value=[{"name": "sale", "state": "installed", "version": "1.0"}]):
+        with patch(
+            "odev.commands.modules._execute_modules",
+            return_value=[{"name": "sale", "state": "installed", "version": "1.0"}],
+        ):
             with patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()):
                 server = self._build_server()
                 content, _ = self._call_tool(server, "odev_modules")
@@ -300,7 +324,9 @@ class TestMcpTools:
         """When _execute_status raises RuntimeError, tool raises (server keeps running)."""
         import odev.commands.mcp as mcp_module
 
-        with patch("odev.commands.status._execute_status", side_effect=RuntimeError("Docker not running")):
+        with patch(
+            "odev.commands.status._execute_status", side_effect=RuntimeError("Docker not running")
+        ):
             with patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()):
                 server = self._build_server()
                 with pytest.raises(Exception):
@@ -316,6 +342,7 @@ class TestMcpTools:
                 self._call_tool(server, "odev_status")
             # Must not be typer.Exit
             import typer
+
             assert not isinstance(exc.value, typer.Exit)
 
 
@@ -359,7 +386,10 @@ class TestMcpResources:
 
         with patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()):
             with patch("odev.core.project.ProjectConfig.__init__", return_value=None):
-                with patch("odev.core.project.ProjectConfig.to_dict", return_value={"odoo": {"version": "19.0"}}):
+                with patch(
+                    "odev.core.project.ProjectConfig.to_dict",
+                    return_value={"odoo": {"version": "19.0"}},
+                ):
                     server = self._build_server()
                     results = self._read_resource(server, "odev://project/config")
                     assert len(results) > 0
@@ -412,6 +442,7 @@ class TestMcpResources:
             with pytest.raises(Exception) as exc:
                 self._read_resource(server, "odev://project/context")
             import typer
+
             assert not isinstance(exc.value, typer.Exit)
 
 
@@ -482,10 +513,26 @@ class TestStdoutDiscipline:
 
         patches = [
             patch("odev.commands.status._execute_status", return_value=[]),
-            patch("odev.commands.shell._execute_shell", return_value={"stdout": "", "stderr": "", "returncode": 0}),
+            patch(
+                "odev.commands.shell._execute_shell",
+                return_value={"stdout": "", "stderr": "", "returncode": 0},
+            ),
             patch("odev.commands.sql._execute_sql", return_value=[]),
             patch("odev.commands.py._execute_py", return_value=""),
-            patch("odev.commands.test._execute_test", return_value={"total": 0, "passed": 0, "failed": 0, "errors": 0, "duration": 0.0, "parse_failed": False, "raw_summary_line": "", "fallback_counters_used": False, "failures": []}),
+            patch(
+                "odev.commands.test._execute_test",
+                return_value={
+                    "total": 0,
+                    "passed": 0,
+                    "failed": 0,
+                    "errors": 0,
+                    "duration": 0.0,
+                    "parse_failed": False,
+                    "raw_summary_line": "",
+                    "fallback_counters_used": False,
+                    "failures": [],
+                },
+            ),
             patch("odev.commands.logs._execute_logs", return_value=[]),
             patch("odev.commands.doctor._execute_doctor", return_value={}),
             patch("odev.commands.model_info._execute_model_info", return_value={}),
@@ -493,7 +540,18 @@ class TestStdoutDiscipline:
             patch.object(mcp_module, "_resolve_contexto", return_value=ctx),
         ]
 
-        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7], patches[8], patches[9]:
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patches[5],
+            patches[6],
+            patches[7],
+            patches[8],
+            patches[9],
+        ):
             server = self._build_server()
             self._call_tool(server, "odev_status")
             self._call_tool(server, "odev_shell", {"service": "web", "command": "echo hi"})
@@ -515,54 +573,54 @@ class TestStdoutDiscipline:
 
 
 class TestResolveContextoEnvVar:
-    """Verifica que _resolve_contexto respeta la variable de entorno ODEV_PROJECT."""
+    """Verifica que _resolve_contexto respeta la variable de entorno ODEV_PROJECT.
+
+    Desde 0.6.2 el lookup vive en `odev.main.obtener_nombre_proyecto`, por lo
+    que estos tests ejercitan la integracion real (sin patchear esa funcion).
+    """
 
     def test_resolve_contexto_uses_env_var(self, monkeypatch):
-        """ODEV_PROJECT es usado cuando obtener_nombre_proyecto retorna None."""
+        """ODEV_PROJECT es usado cuando no hay flag --project."""
         import odev.commands.mcp as mcp_module
+        import odev.main as main_module
 
         fake_ctx = _make_contexto()
 
+        monkeypatch.setattr(main_module, "_nombre_proyecto", None)
         monkeypatch.setenv("ODEV_PROJECT", "sis-odoo")
 
-        with (
-            patch("odev.main.obtener_nombre_proyecto", return_value=None),
-            patch("odev.core.resolver.resolver_proyecto", return_value=fake_ctx) as mock_resolver,
-        ):
+        with patch("odev.core.resolver.resolver_proyecto", return_value=fake_ctx) as mock_resolver:
             result = mcp_module._resolve_contexto()
 
         mock_resolver.assert_called_once_with(nombre_proyecto="sis-odoo")
         assert result is fake_ctx
 
     def test_resolve_contexto_cli_flag_beats_env_var(self, monkeypatch):
-        """El flag --project (via obtener_nombre_proyecto) gana sobre ODEV_PROJECT."""
+        """El flag --project (estado global) gana sobre ODEV_PROJECT."""
         import odev.commands.mcp as mcp_module
+        import odev.main as main_module
 
         fake_ctx = _make_contexto()
 
+        monkeypatch.setattr(main_module, "_nombre_proyecto", "flag-project")
         monkeypatch.setenv("ODEV_PROJECT", "env-project")
 
-        with (
-            patch("odev.main.obtener_nombre_proyecto", return_value="flag-project"),
-            patch("odev.core.resolver.resolver_proyecto", return_value=fake_ctx) as mock_resolver,
-        ):
+        with patch("odev.core.resolver.resolver_proyecto", return_value=fake_ctx) as mock_resolver:
             mcp_module._resolve_contexto()
 
-        # Debe llamarse con el flag, no con la env var
         mock_resolver.assert_called_once_with(nombre_proyecto="flag-project")
 
     def test_resolve_contexto_no_env_no_flag_falls_through(self, monkeypatch):
         """Sin flag ni env var, nombre_proyecto=None se pasa (cwd-walk activa)."""
         import odev.commands.mcp as mcp_module
+        import odev.main as main_module
 
         fake_ctx = _make_contexto()
 
+        monkeypatch.setattr(main_module, "_nombre_proyecto", None)
         monkeypatch.delenv("ODEV_PROJECT", raising=False)
 
-        with (
-            patch("odev.main.obtener_nombre_proyecto", return_value=None),
-            patch("odev.core.resolver.resolver_proyecto", return_value=fake_ctx) as mock_resolver,
-        ):
+        with patch("odev.core.resolver.resolver_proyecto", return_value=fake_ctx) as mock_resolver:
             mcp_module._resolve_contexto()
 
         mock_resolver.assert_called_once_with(nombre_proyecto=None)
