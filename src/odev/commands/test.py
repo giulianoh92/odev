@@ -218,7 +218,9 @@ def render_json(result: TestResult) -> None:
     sys.stdout.write(json.dumps(payload) + "\n")
 
 
-def _execute_test(contexto, module: str, tags: Optional[str] = None) -> dict:
+def _execute_test(
+    contexto, module: str, tags: Optional[str] = None, no_validate: bool = False
+) -> dict:
     """Pure data-return. No I/O, no exits. MCP-callable.
 
     Runs Odoo tests for a module and returns the parsed TestResult as a dict.
@@ -227,6 +229,7 @@ def _execute_test(contexto, module: str, tags: Optional[str] = None) -> dict:
         contexto: Resolved ProjectContext.
         module: Module name(s) to test (CSV supported, or 'all').
         tags: Optional Odoo test-tags expression.
+        no_validate: If True, skip addons-path validation.
 
     Returns:
         Dict matching the TestResult JSON schema:
@@ -238,7 +241,7 @@ def _execute_test(contexto, module: str, tags: Optional[str] = None) -> dict:
     """
     module_name, shorthand_tag = _parse_test_target(module)
     modulos = parsear_modulos_csv(module_name)
-    validar_modulos(modulos, contexto, no_validate=False)
+    validar_modulos(modulos, contexto, no_validate=no_validate)
 
     rutas = obtener_rutas(contexto)
     valores_env = load_env(rutas.env_file)

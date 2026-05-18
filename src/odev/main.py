@@ -142,6 +142,10 @@ app.command(name="self-update", epilog=EPILOG_EXIT_CODES)(self_update.self_updat
 # --- Registro de subgrupos ---
 app.add_typer(db.app, name="db", rich_help_panel="Subgrupos")
 
+from odev.commands.mcp import mcp_app  # noqa: E402
+
+app.add_typer(mcp_app, name="mcp", rich_help_panel="Subgrupos")
+
 # --- Comandos nuevos (a implementar en Batch 5) ---
 try:
     from odev.commands.adopt import adopt

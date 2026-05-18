@@ -8,6 +8,14 @@ Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
 
 ## [0.5.2] - 2026-05-17
 
+### Agregado
+
+- `odev mcp serve` — nuevo subcomando que expone odev como servidor MCP (Model Context Protocol). Arranca un servidor FastMCP sobre transporte `stdio` (default) o `http --port N`. Requiere el extra opcional `[mcp]`: `pipx install 'odev[mcp]'`. Sin el extra, el comando sale con exit 2 y muestra el hint de instalacion en stderr.
+- 9 herramientas MCP: `odev_status`, `odev_shell`, `odev_sql`, `odev_py`, `odev_test`, `odev_logs`, `odev_doctor`, `odev_model_info`, `odev_modules`. Cada una delega al helper `_execute_*` correspondiente y retorna datos estructurados JSON-RPC.
+- 4 recursos MCP: `odev://project/context` (markdown), `odev://project/config` (JSON), `odev://db/schema` (pg_dump --schema-only), `odev://modules/{name}/manifest` (JSON del manifiesto).
+- 3 prompts MCP: `diagnose_failing_test`, `explain_module`, `generate_migration` — templates estaticos con interpolacion de argumentos.
+- `[project.optional-dependencies] mcp = ["mcp>=1.0.0"]` en `pyproject.toml`. Instalacion base sin el extra permanece identica a 0.5.1.
+
 ### Interno
 
 - Refactor (MCP prep): extraidos helpers `_execute_*` en 10 modulos de comandos (`status`, `sql`, `py`, `test`, `model_info`, `logs`, `modules`, `doctor`, `shell`, `context`). Cada helper retorna datos Python puros sin I/O, sin `typer.Exit`. Los `_run_*` existentes delegan a ellos y mantienen comportamiento CLI byte-identical. Seam necesario para el servidor MCP de PR2.
