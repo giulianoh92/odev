@@ -6,6 +6,13 @@ El formato esta basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 y este proyecto adhiere a [Versionado Semantico](https://semver.org/spec/v2.0.0.html).
 Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
 
+## [0.6.1] - 2026-05-18
+
+### Corregido
+
+- `odev doctor`: chequeos de archivos (.env, docker-compose.yml, config/odoo.conf, puertos, version) ahora usan `directorio_config` en lugar de `directorio_trabajo`, corrigiendo falso negativo en proyectos `mode: external`.
+- `odev model-info`: invocacion de `odoo shell` ahora usa `--config=/etc/odoo/odoo.conf` y lee `DB_NAME` del `.env` del proyecto (antes hardcoded "odoo"), corrigiendo "Stack not running or DB unavailable" en proyectos con DB no llamada `odoo`.
+
 ## [0.6.0] - 2026-05-18
 
 ### Agregado
