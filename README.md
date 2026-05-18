@@ -59,7 +59,83 @@ El comando `adopt` detecta automaticamente el layout del repositorio (modulo uni
 - **Generacion de contexto del proyecto** -- Genera un `PROJECT_CONTEXT.md` con analisis de modulos para asistentes de IA
 - **Migracion legacy** -- Migra del layout viejo `odoo-dev-env` a proyectos independientes
 - **Diagnostico del entorno** -- `odev doctor` verifica Docker, Compose, puertos, archivos de configuracion y compatibilidad de versiones
+- **MCP server (0.5.2+)** -- `odev mcp serve` expone odev como servidor MCP consumible por Claude Code, Cursor y otros clientes. 9 tools, 4 resources, 3 prompts. Install via `pipx install 'odev[mcp]'`. Ver seccion [Servidor MCP](#servidor-mcp).
+- **Salida JSON estructurada (0.5.0+)** -- Todos los comandos agent-relevant (`status`, `doctor`, `logs`, `modules`, `sql`, `model-info`, `test`, `py`, `context`) emiten JSON con `--json` para parsing programatico.
 - **Auto-actualizacion** -- `odev self-update` actualiza a la ultima version via pip
+
+## Servidor MCP
+
+Desde 0.5.2, odev expone todas sus operaciones agent-relevant como servidor MCP (Model Context Protocol). Esto permite que Claude Code, Cursor y otros clientes MCP invoquen odev sin parsear salida CLI.
+
+### Instalacion
+
+El servidor MCP es una dependencia opcional. Instalalo con el extra `[mcp]`:
+
+```bash
+# Local editable install con MCP
+pipx install --force '/path/to/odev[mcp]'
+
+# Desde git con MCP
+pipx install 'odev[mcp] @ git+https://github.com/giulianoh92/odev.git'
+```
+
+Sin el extra, `odev mcp serve` sale con exit 2 y muestra el hint de instalacion.
+
+### Configuracion en Claude Code
+
+```bash
+claude mcp add -s user odev -- odev mcp serve --transport stdio
+```
+
+Esto registra el servidor user-scope (disponible en cualquier proyecto). `claude mcp list` debe mostrar `odev: ... - ✓ Connected`.
+
+Para configuracion manual, agregar a `~/.claude.json`:
+
+```json
+{
+  "mcpServers": {
+    "odev": {
+      "command": "odev",
+      "args": ["mcp", "serve", "--transport", "stdio"]
+    }
+  }
+}
+```
+
+### Configuracion en Cursor (HTTP transport)
+
+```bash
+odev mcp serve --transport http --port 3333
+```
+
+### Tools expuestos (9)
+
+| Tool | Equivale a |
+|---|---|
+| `odev_status` | `odev status --json` |
+| `odev_shell` | `odev shell <svc> -c "<cmd>"` |
+| `odev_sql` | `odev sql --json "<query>"` |
+| `odev_py` | `odev py "<expr>"` (banner stripped) |
+| `odev_test` | `odev test <m1,m2> --json` |
+| `odev_logs` | `odev logs <svc> --json` (snapshot) |
+| `odev_doctor` | `odev doctor --json` |
+| `odev_model_info` | `odev model-info <model>` |
+| `odev_modules` | `odev modules --json` |
+
+### Resources expuestos (4)
+
+| URI | Contenido |
+|---|---|
+| `odev://project/context` | Markdown auto-generado del contexto del proyecto |
+| `odev://project/config` | `.odev.yaml` parseado como JSON |
+| `odev://db/schema` | Snapshot de `pg_dump --schema-only` |
+| `odev://modules/{name}/manifest` | Manifest del modulo parseado |
+
+### Prompts pre-armados (3)
+
+- `diagnose_failing_test` — Template para diagnosticar tests fallando
+- `explain_module` — Template para explicar un modulo Odoo
+- `generate_migration` — Template para generar migracion ORM
 
 ## Opciones Globales
 
@@ -110,6 +186,9 @@ odev --project mi-proyecto --debug status
 | `odev tui` | Dashboard interactivo |
 | `odev projects` | Gestionar proyectos registrados |
 | `odev migrate` | Migrar proyecto legacy |
+| `odev mcp serve` | Iniciar servidor MCP (requiere `[mcp]` extra) |
+| `odev model-info <model>` | Introspeccion ORM de un modelo (JSON) |
+| `odev modules` | Listar modulos instalados (JSON) |
 | `odev self-update` | Actualizar odev |
 
 ### Comandos Principales
@@ -224,7 +303,7 @@ odev py "env['product.template'].search_count([('active', '=', True)])"
 ```
 
 Caveats:
-- El banner de Odoo puede aparecer en stdout (v1 — passthrough raw).
+- El banner de Odoo se elimina automaticamente del stdout desde 0.5.0. Usar `--keep-banner` para conservar la salida raw (debug).
 - Side-effects ORM (`.create()`, `.write()`) se commitean. Usar `env.cr.rollback()` si se necesita dry-run.
 
 Codigos de salida: `0` exito, `1` error en odoo shell, `2` expresion vacia.
@@ -489,8 +568,11 @@ odev db snapshot instalacion-limpia
 
 # Hacer cambios, experimentar, romper cosas...
 
-# Restaurar al estado guardado
+# Restaurar al estado guardado (prompt interactivo)
 odev db restore instalacion-limpia
+
+# Restaurar sin confirmacion (agentes IA / CI)
+odev db restore instalacion-limpia --yes
 
 # Listar todos los snapshots disponibles
 odev db list
@@ -593,11 +675,23 @@ Los cambios en XML y JS se detectan automaticamente gracias al modo dev de Odoo 
 # Testear un modulo especifico
 odev test mi_modulo
 
+# Output JSON estructurado para agentes / CI
+odev test mi_modulo --json
+
+# Shorthand para test especifico (0.5.0+)
+odev test mi_modulo:TestFoo.test_bar
+
 # Testear con un nivel de log especifico
 odev test mi_modulo --log-level debug
 
 # Ejecutar todos los tests (puede llevar mucho tiempo)
 odev test all
+
+# Solo mostrar failures con tracebacks
+odev test mi_modulo --failures
+
+# Guardar log crudo a archivo
+odev test mi_modulo --save-log /tmp/test.log
 ```
 
 ## Migracion desde odoo-dev-env

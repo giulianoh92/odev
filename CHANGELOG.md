@@ -6,6 +6,19 @@ El formato esta basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 y este proyecto adhiere a [Versionado Semantico](https://semver.org/spec/v2.0.0.html).
 Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
 
+## [0.5.3] - 2026-05-17
+
+### Documentacion
+
+- README extendido con seccion "Servidor MCP" (instalacion, configuracion Claude Code/Cursor, tabla de 9 tools, 4 resources, 3 prompts).
+- README agrega items "MCP server (0.5.2+)" y "Salida JSON estructurada (0.5.0+)" a Funcionalidades.
+- README incluye `odev mcp serve`, `odev model-info`, `odev modules` en Referencia Rapida.
+- Caveat de `odev py` actualizado: el banner de Odoo se elimina automaticamente desde 0.5.0 (`--keep-banner` para raw).
+- Seccion Testing expandida con `--json`, `mod:Class.method` shorthand, `--failures`, `--save-log`.
+- Snapshot section menciona `db restore --yes` para uso no-interactivo (agentes IA / CI).
+
+Sin cambios de codigo. Pure docs release.
+
 ## [0.5.2] - 2026-05-17
 
 ### Agregado
