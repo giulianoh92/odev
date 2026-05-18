@@ -6,6 +6,20 @@ El formato esta basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 y este proyecto adhiere a [Versionado Semantico](https://semver.org/spec/v2.0.0.html).
 Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
 
+## [0.6.0] - 2026-05-18
+
+### Agregado
+
+- `odev projects list` — nuevo subcomando explicito para listar proyectos registrados. Equivalente a `odev projects` (backward compat mantenida).
+- Flag `--json/-j` en `odev projects list` (y `odev projects --json`) — emite la lista de proyectos como JSON estructurado: `{"projects": [...]}` con campos `name`, `path`, `modo`, `odoo_version`, `puerto_odoo`, `directorio_trabajo`, `directorio_config`, `exists`.
+- Variable de entorno `ODEV_PROJECT` en servidor MCP — permite indicar el proyecto activo cuando el servidor MCP corre desde un directorio que no pertenece a ningun proyecto (ej. configuracion de Claude Code con `"env": {"ODEV_PROJECT": "<nombre>"}`).
+
+### Corregido
+
+- `odev doctor --json` ahora respeta el flag `-p/--project` y la variable `ODEV_PROJECT`; ya no falla cuando el cwd no pertenece a ningun proyecto y se paso el nombre via flag.
+- Los helpers internos `_verificar_*` de doctor ya no ignoran el proyecto resuelto; el contexto fluye desde `_execute_doctor(contexto)` hacia cada verificacion.
+- Las 9 herramientas MCP (`odev_model_info`, `odev_status`, etc.) resuelven el proyecto correctamente cuando el servidor arranca desde un cwd arbitrario y `ODEV_PROJECT` esta configurado.
+
 ## [0.5.3] - 2026-05-17
 
 ### Documentacion
