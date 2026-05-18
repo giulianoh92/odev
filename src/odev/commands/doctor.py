@@ -113,7 +113,7 @@ def _execute_doctor(contexto: ProjectContext | None) -> dict:
 
     exit_code = 1 if summary["fail"] > 0 else 0
     return {
-        "version": "0.6.0",
+        "version": "0.6.1",
         "checks": resultados,
         "summary": summary,
         "exit_code": exit_code,
@@ -425,7 +425,7 @@ def _verificar_env(contexto: ProjectContext | None = None) -> CheckResult:
         msg = ".env: no se puede verificar sin un proyecto detectado."
         return {"name": "env", "status": "info", "message": msg, "hint": None}
 
-    raiz = contexto.directorio_trabajo
+    raiz = contexto.directorio_config
     ruta_env = raiz / ".env"
     if ruta_env.exists():
         return {"name": "env", "status": "ok", "message": ".env existe", "hint": None}
@@ -447,7 +447,7 @@ def _verificar_docker_compose_file(contexto: ProjectContext | None = None) -> Ch
         msg = "docker-compose.yml: no se puede verificar sin un proyecto detectado."
         return {"name": "compose-file", "status": "info", "message": msg, "hint": None}
 
-    raiz = contexto.directorio_trabajo
+    raiz = contexto.directorio_config
     ruta_compose = raiz / "docker-compose.yml"
     if ruta_compose.exists():
         return {
@@ -479,7 +479,7 @@ def _verificar_odoo_conf(contexto: ProjectContext | None = None) -> CheckResult:
         msg = "config/odoo.conf: no se puede verificar sin un proyecto detectado."
         return {"name": "odoo-conf", "status": "info", "message": msg, "hint": None}
 
-    raiz = contexto.directorio_trabajo
+    raiz = contexto.directorio_config
     ruta_conf = raiz / "config" / "odoo.conf"
     if ruta_conf.exists():
         return {
@@ -556,7 +556,7 @@ def _verificar_puertos(contexto: ProjectContext | None = None) -> CheckResult:
         msg = "Puertos: no se puede verificar sin un proyecto detectado."
         return {"name": "puertos", "status": "info", "message": msg, "hint": None}
 
-    raiz = contexto.directorio_trabajo
+    raiz = contexto.directorio_config
     # Intentar leer puertos del .env
     ruta_env = raiz / ".env"
     if not ruta_env.exists():
@@ -642,14 +642,14 @@ def _verificar_registry_puertos(registry=None) -> dict:
         if entry.ports is not None:
             continue  # ya tiene puertos asignados
 
-        ruta_env = entry.directorio_trabajo / ".env"
+        ruta_env = entry.directorio_config / ".env"
         if not ruta_env.exists():
             # W2: do not call _imprimir_warn (leaks Rich to stdout in JSON mode).
             # These are internal backfill diagnostics; log at WARNING level instead.
             _logger.warning(
                 "Proyecto '%s': no se puede hacer backfill (.env no encontrado en %s)",
                 entry.nombre,
-                entry.directorio_trabajo,
+                entry.directorio_config,
             )
             continue
 
@@ -734,9 +734,11 @@ def _verificar_version_compatible(contexto: ProjectContext | None = None) -> Che
         msg = f"odev version {__version__} (proyecto legacy, sin verificacion de version)"
         return {"name": "version", "status": "info", "message": msg, "hint": None}
 
-    raiz = contexto.directorio_trabajo
-    # Intentar leer la version minima del .odev.yaml
+    raiz = contexto.directorio_config
+    # Intentar leer la version minima del .odev.yaml o odev.yaml (external mode usa sin dot)
     ruta_yaml = raiz / ".odev.yaml"
+    if not ruta_yaml.exists():
+        ruta_yaml = raiz / "odev.yaml"
     if not ruta_yaml.exists():
         msg = f"odev version {__version__} (sin .odev.yaml para verificar)"
         return {"name": "version", "status": "info", "message": msg, "hint": None}

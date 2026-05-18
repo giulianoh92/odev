@@ -200,7 +200,7 @@ class TestVerificarPuertosMailhog:
         )
 
         fake_ctx = MagicMock()
-        fake_ctx.directorio_trabajo = tmp_path
+        fake_ctx.directorio_config = tmp_path
 
         with patch("odev.commands.doctor.puerto_disponible", return_value=True):
             resultado = _verificar_puertos(fake_ctx)
@@ -238,7 +238,7 @@ class TestVerificarPuertosMailhog:
         env_file.write_text("MAILHOG_PORT=8025\n")
 
         fake_ctx = MagicMock()
-        fake_ctx.directorio_trabajo = tmp_path
+        fake_ctx.directorio_config = tmp_path
 
         def mock_puerto_disponible(puerto: int) -> bool:
             return puerto != 8025  # MAILHOG_PORT ocupado
@@ -751,14 +751,14 @@ class TestDoctorProjectResolutionRefactor:
         mock_detect.assert_not_called()
 
     def test_verificar_env_with_contexto(self, tmp_path):
-        """_verificar_env(contexto) con directorio_trabajo que tiene .env -> status ok."""
+        """_verificar_env(contexto) con directorio_config que tiene .env -> status ok."""
         from unittest.mock import MagicMock
 
         env_file = tmp_path / ".env"
         env_file.write_text("WEB_PORT=8069\n")
 
         fake_ctx = MagicMock()
-        fake_ctx.directorio_trabajo = tmp_path
+        fake_ctx.directorio_config = tmp_path
 
         from odev.commands.doctor import _verificar_env
 
@@ -774,3 +774,96 @@ class TestDoctorProjectResolutionRefactor:
 
         assert result["status"] == "info"
         assert "sin un proyecto detectado" in result["message"]
+
+
+# ── External mode tests (0.6.1 hotfix) ─────────────────────────────────────
+
+
+class TestExternalModeFileChecks:
+    """Verifica que los checks de archivos usan directorio_config en modo external.
+
+    En proyectos mode:external, .env y docker-compose.yml viven en
+    directorio_config (~/.odev/projects/<nombre>/), NO en directorio_trabajo.
+    """
+
+    def test_external_mode_verificar_env_uses_directorio_config(
+        self, tmp_path: Path
+    ) -> None:
+        """_verificar_env usa directorio_config; directorio_trabajo vacio -> ok.
+
+        Simula un proyecto external donde directorio_trabajo NO tiene .env
+        pero directorio_config SI lo tiene.
+        """
+        from unittest.mock import MagicMock
+
+        from odev.commands.doctor import _verificar_env
+
+        trabajo_dir = tmp_path / "source"
+        config_dir = tmp_path / "config"
+        trabajo_dir.mkdir()
+        config_dir.mkdir()
+
+        # Solo config_dir tiene .env; trabajo_dir NO
+        (config_dir / ".env").write_text("DB_NAME=mi_db\nWEB_PORT=8069\n")
+
+        fake_ctx = MagicMock()
+        fake_ctx.directorio_trabajo = trabajo_dir
+        fake_ctx.directorio_config = config_dir
+
+        result = _verificar_env(fake_ctx)
+
+        assert result["status"] == "ok", (
+            f"Expected ok — .env esta en directorio_config, got: {result}"
+        )
+
+    def test_external_mode_verificar_compose_uses_directorio_config(
+        self, tmp_path: Path
+    ) -> None:
+        """_verificar_docker_compose_file usa directorio_config; directorio_trabajo vacio -> ok.
+
+        Simula un proyecto external donde directorio_trabajo NO tiene docker-compose.yml
+        pero directorio_config SI lo tiene.
+        """
+        from unittest.mock import MagicMock
+
+        from odev.commands.doctor import _verificar_docker_compose_file
+
+        trabajo_dir = tmp_path / "source"
+        config_dir = tmp_path / "config"
+        trabajo_dir.mkdir()
+        config_dir.mkdir()
+
+        # Solo config_dir tiene docker-compose.yml; trabajo_dir NO
+        (config_dir / "docker-compose.yml").write_text("version: '3'\n")
+
+        fake_ctx = MagicMock()
+        fake_ctx.directorio_trabajo = trabajo_dir
+        fake_ctx.directorio_config = config_dir
+
+        result = _verificar_docker_compose_file(fake_ctx)
+
+        assert result["status"] == "ok", (
+            f"Expected ok — docker-compose.yml esta en directorio_config, got: {result}"
+        )
+
+    def test_external_mode_verificar_env_fail_when_config_missing(
+        self, tmp_path: Path
+    ) -> None:
+        """_verificar_env retorna fail cuando directorio_config no tiene .env."""
+        from unittest.mock import MagicMock
+
+        from odev.commands.doctor import _verificar_env
+
+        trabajo_dir = tmp_path / "source"
+        config_dir = tmp_path / "config"
+        trabajo_dir.mkdir()
+        config_dir.mkdir()
+        # Ningun .env en ninguno de los dos
+
+        fake_ctx = MagicMock()
+        fake_ctx.directorio_trabajo = trabajo_dir
+        fake_ctx.directorio_config = config_dir
+
+        result = _verificar_env(fake_ctx)
+
+        assert result["status"] == "fail"
