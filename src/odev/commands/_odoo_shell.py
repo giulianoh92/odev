@@ -44,9 +44,7 @@ def _strip_banner(raw: bytes) -> str:
     """
     text = raw.decode("utf-8", errors="replace")
     non_banner = [
-        line
-        for line in text.splitlines()
-        if line.strip() and not _BANNER_LINE_RE.match(line)
+        line for line in text.splitlines() if line.strip() and not _BANNER_LINE_RE.match(line)
     ]
     if not non_banner:
         return ""

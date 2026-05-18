@@ -106,5 +106,3 @@ def allocate_ports(project_name: str, registry: Registry) -> dict[str, int]:
         "No hay puertos libres tras 100 offsets. "
         "Ejecuta 'odev doctor' para liberar entradas huerfanas."
     )
-
-

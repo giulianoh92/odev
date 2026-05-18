@@ -20,9 +20,7 @@ from odev.commands._helpers import obtener_docker, requerir_proyecto
 
 # Regex para parsear lineas de docker compose logs con timestamps:
 #   "web  | 2024-01-01T00:00:00.000000000Z <rest>"
-LINE_RE = re.compile(
-    r"^(?P<svc>[^|]+?)\s*\|\s*(?P<ts>\S+)\s+(?P<rest>.*)$"
-)
+LINE_RE = re.compile(r"^(?P<svc>[^|]+?)\s*\|\s*(?P<ts>\S+)\s+(?P<rest>.*)$")
 
 # Regex para extraer nivel de log de Odoo:
 #   "<pid> <uid> INFO <logger> <message>"
@@ -133,9 +131,7 @@ def logs(
 
     # Mutual exclusion: --json + --follow -> exit 2
     if json_output and follow:
-        sys.stderr.write(
-            json.dumps({"error": "--json and --follow are mutually exclusive"}) + "\n"
-        )
+        sys.stderr.write(json.dumps({"error": "--json and --follow are mutually exclusive"}) + "\n")
         raise typer.Exit(2)
 
     contexto = requerir_proyecto(obtener_nombre_proyecto())
@@ -145,9 +141,7 @@ def logs(
         # Validate service exists (service="all" is not valid in JSON mode)
         servicios_conocidos = {s.get("Service") for s in dc.ps_parsed()}
         if service not in servicios_conocidos:
-            sys.stderr.write(
-                json.dumps({"error": f"Unknown service: {service}"}) + "\n"
-            )
+            sys.stderr.write(json.dumps({"error": f"Unknown service: {service}"}) + "\n")
             raise typer.Exit(2)
 
         entries = _execute_logs(contexto, service, tail)

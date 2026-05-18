@@ -28,9 +28,7 @@ def _execute_shell(contexto, service: str, command: str) -> dict:
         Dict with {stdout: str, stderr: str, returncode: int}.
     """
     dc = obtener_docker(contexto)
-    stdout_bytes, stderr_bytes, returncode = dc.exec_capture(
-        service, ["bash", "-c", command]
-    )
+    stdout_bytes, stderr_bytes, returncode = dc.exec_capture(service, ["bash", "-c", command])
     return {
         "stdout": stdout_bytes.decode("utf-8", errors="replace"),
         "stderr": stderr_bytes.decode("utf-8", errors="replace"),

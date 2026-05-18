@@ -85,9 +85,12 @@ def _execute_sql(contexto, query: str) -> list[dict]:
 
     args = [
         "psql",
-        "-U", usuario_bd,
-        "-d", nombre_bd,
-        "-c", query,
+        "-U",
+        usuario_bd,
+        "-d",
+        nombre_bd,
+        "-c",
+        query,
         "--no-align",
         f"--field-separator={_FIELD_SEP}",
         "--pset=footer=off",

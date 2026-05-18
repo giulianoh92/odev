@@ -168,8 +168,7 @@ def doctor(
     except typer.Exit:
         rich_contexto = None
         _imprimir_warn(
-            "No se detecto proyecto odev (registry/cwd). "
-            "Solo se ejecutaran chequeos de entorno."
+            "No se detecto proyecto odev (registry/cwd). Solo se ejecutaran chequeos de entorno."
         )
 
     console.print()

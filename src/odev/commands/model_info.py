@@ -141,9 +141,7 @@ def model_info(
         sys.stderr.write(json.dumps({"error": str(exc)}) + "\n")
         raise typer.Exit(3) from exc
     except subprocess.CalledProcessError as exc:
-        sys.stderr.write(
-            json.dumps({"error": "Stack not running or DB unavailable"}) + "\n"
-        )
+        sys.stderr.write(json.dumps({"error": "Stack not running or DB unavailable"}) + "\n")
         raise typer.Exit(3) from exc
 
     if pretty:

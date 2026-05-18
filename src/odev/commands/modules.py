@@ -57,17 +57,21 @@ def _parse_modules_output(raw: bytes) -> list[dict[str, str]]:
             continue
         parts = line.split(_FIELD_SEP)
         if len(parts) >= 3:
-            rows.append({
-                "name": parts[0],
-                "state": parts[1],
-                "version": parts[2],
-            })
+            rows.append(
+                {
+                    "name": parts[0],
+                    "state": parts[1],
+                    "version": parts[2],
+                }
+            )
         elif len(parts) == 2:
-            rows.append({
-                "name": parts[0],
-                "state": parts[1],
-                "version": "",
-            })
+            rows.append(
+                {
+                    "name": parts[0],
+                    "state": parts[1],
+                    "version": "",
+                }
+            )
     return rows
 
 
@@ -92,12 +96,15 @@ def _execute_modules(contexto) -> list[dict]:
 
     args = [
         "psql",
-        "-U", usuario_bd,
-        "-d", nombre_bd,
+        "-U",
+        usuario_bd,
+        "-d",
+        nombre_bd,
         "-t",
         "-A",
         f"-F{_FIELD_SEP}",
-        "-c", _SQL_MODULES,
+        "-c",
+        _SQL_MODULES,
     ]
 
     dc = obtener_docker(contexto)
@@ -117,8 +124,7 @@ def modules(
         "--json",
         "-j",
         help=(
-            "Emite JSON a stdout (default en 0.5.0). "
-            "Output human-readable planificado para 0.6.0."
+            "Emite JSON a stdout (default en 0.5.0). Output human-readable planificado para 0.6.0."
         ),
     ),
 ) -> None:

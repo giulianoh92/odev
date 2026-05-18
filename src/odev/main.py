@@ -116,8 +116,7 @@ app.command(name="shell", epilog=EPILOG_EXIT_CODES)(shell.shell)
 app.command(
     name="test",
     epilog=(
-        EPILOG_EXIT_CODES
-        + "\nFormato de --tags (Odoo --test-tags):\n"
+        EPILOG_EXIT_CODES + "\nFormato de --tags (Odoo --test-tags):\n"
         "  /modulo:Clase           filtrar por clase\n"
         "  /modulo:Clase.metodo   filtrar por metodo\n"
         "  :metodo                 metodo en cualquier clase\n"
