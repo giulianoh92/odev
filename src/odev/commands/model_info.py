@@ -25,6 +25,7 @@ import typer
 
 from odev.commands._helpers import obtener_docker, requerir_proyecto
 from odev.commands._odoo_shell import _strip_banner
+from odev.core.config import load_env
 
 # Python script template ejecutado en odoo shell.
 # %r escapa el nombre del modelo de forma segura (string Python literal).
@@ -73,13 +74,19 @@ def _execute_model_info(contexto, model: str) -> dict:
         RuntimeError: If the stack is not running or an unexpected error occurs.
         subprocess.CalledProcessError: If exec_cmd fails to start.
     """
+    ruta_env = contexto.directorio_config / ".env"
+    if not ruta_env.exists():
+        raise RuntimeError("Project .env not found")
+    valores_env = load_env(ruta_env)
+    nombre_bd = valores_env.get("DB_NAME", "odoo_db")
+
     dc = obtener_docker(contexto)
     script = _MODEL_SCRIPT_TEMPLATE % model
 
     try:
         result = dc.exec_cmd(
             "web",
-            ["odoo", "shell", "--no-http", "-d", "odoo"],
+            ["odoo", "shell", "--config=/etc/odoo/odoo.conf", "-d", nombre_bd, "--no-http"],
             stdin_data=script.encode("utf-8"),
         )
     except subprocess.CalledProcessError as exc:
