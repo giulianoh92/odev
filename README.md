@@ -13,7 +13,7 @@ odev es un toolkit de linea de comandos que provee un entorno de desarrollo Odoo
 ## Inicio Rapido
 
 ```bash
-pip install git+https://github.com/relexsrl/odev
+pip install git+https://github.com/giulianoh92/odev
 ```
 
 ### Proyecto nuevo
