@@ -401,6 +401,13 @@ def _run_test(
             error("Puerto ocupado durante la ejecucion de Odoo (revisar test)")
             returncode = 3
 
+    # Contrato de exit codes: Odoo 19 con --test-enable --stop-after-init
+    # devuelve 0 aunque haya tests fallidos. Si el proceso salio con 0,
+    # el codigo final se deriva del resultado parseado (returncode_hint:
+    # 1 si hay failures/errors/parse_failed). Un returncode != 0 del
+    # proceso siempre manda (incluye el caso puerto ocupado → 3).
+    returncode = returncode if returncode != 0 else result.returncode_hint
+
     if json_out:
         # D1: --json + --failures son composables.
         # failures[] ya contiene solo fallos/errores (no passing tests)

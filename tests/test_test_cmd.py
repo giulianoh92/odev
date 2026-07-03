@@ -89,6 +89,19 @@ _FIXTURE_PORT_CONFLICT = """\
 Port 8069 is in use by another program.
 """
 
+# Fixture con un test en ERROR (excepcion no capturada, no assertion failure)
+_FIXTURE_ONE_ERROR = """\
+2024-01-15 10:00:01,000 1234 ERROR odoo.addons.sale.tests.test_sale_order ERROR: TestSaleOrder.test_boom
+Traceback (most recent call last):
+  File "/odoo/addons/sale/tests/test_sale_order.py", line 55, in test_boom
+    order.explode()
+ValueError: boom
+2024-01-15 10:00:01,200 1234 INFO odoo.addons.sale.tests.test_sale_order TestSaleOrder.test_cancel: Finished
+Ran 2 tests in 1.200s
+
+FAILED (errors=1)
+"""
+
 
 # ---------------------------------------------------------------------------
 # Helper: contexto mock y patches compartidos
@@ -478,6 +491,121 @@ class TestExitCodePropagation:
             except (SystemExit, typer.Exit) as e:
                 code = e.code if isinstance(e, SystemExit) else e.exit_code
                 assert code == 0
+
+
+# ---------------------------------------------------------------------------
+# T8b — Contrato de exit codes: Odoo 19 devuelve 0 aunque haya tests fallidos
+# ---------------------------------------------------------------------------
+
+
+class TestExitCodeContrato:
+    """T8b: el exit code combina returncode del proceso con el resultado parseado.
+
+    Odoo 19 con --test-enable --stop-after-init sale con returncode 0 aunque
+    haya failures/errors. El contrato documentado (0=pass, 1=fail/error,
+    2=uso, 3=entorno) exige que odev derive el codigo del resultado parseado
+    cuando el proceso devuelve 0.
+    """
+
+    @staticmethod
+    def _codigo(exc) -> int:
+        assert exc is not None, "Se esperaba typer.Exit/SystemExit con exit code"
+        return exc.code if isinstance(exc, SystemExit) else exc.exit_code
+
+    def test_fallo_con_returncode_cero_sale_1(self, tmp_path: Path, monkeypatch) -> None:
+        """Tests con FAIL + proceso Odoo returncode=0 → exit 1."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+
+        fake_popen = FakePopen(_FIXTURE_ONE_FAIL, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        exc = _call_run_test(tmp_path, mock_dc)
+
+        assert self._codigo(exc) == 1
+
+    def test_error_con_returncode_cero_sale_1(self, tmp_path: Path, monkeypatch) -> None:
+        """Tests con ERROR (no failure) + proceso returncode=0 → exit 1."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+
+        fake_popen = FakePopen(_FIXTURE_ONE_ERROR, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        exc = _call_run_test(tmp_path, mock_dc)
+
+        assert self._codigo(exc) == 1
+
+    def test_salida_no_parseable_con_returncode_cero_sale_1(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """Salida no parseable (parse_failed) + proceso returncode=0 → exit 1."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+
+        fake_popen = FakePopen(_FIXTURE_MALFORMED, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        exc = _call_run_test(tmp_path, mock_dc)
+
+        assert self._codigo(exc) == 1
+
+    def test_todos_pasan_con_returncode_cero_sale_0(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """Todos los tests pasan + returncode=0 → exit 0 (no regresion)."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        exc = _call_run_test(tmp_path, mock_dc)
+
+        assert self._codigo(exc) == 0
+
+    def test_proceso_no_cero_manda_aunque_tests_pasen(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """returncode=1 del proceso con ALL_PASS → exit 1 (proceso manda si ≠0)."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=1)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        exc = _call_run_test(tmp_path, mock_dc)
+
+        assert self._codigo(exc) == 1
+
+    def test_puerto_ocupado_sigue_saliendo_3(self, tmp_path: Path, monkeypatch) -> None:
+        """'Address already in use' + returncode=0 sigue devolviendo 3 (no 1)."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+
+        fake_popen = FakePopen(_FIXTURE_PORT_CONFLICT, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        exc = _call_run_test(tmp_path, mock_dc)
+
+        assert self._codigo(exc) == 3
+
+    def test_json_se_emite_antes_del_exit_1(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """--json con fallos y returncode=0: emite JSON valido Y sale con 1."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+
+        fake_popen = FakePopen(_FIXTURE_ONE_FAIL, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        exc = _call_run_test(tmp_path, mock_dc, json_out=True)
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["failed"] == 1
+        assert self._codigo(exc) == 1
 
 
 # ---------------------------------------------------------------------------
