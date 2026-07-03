@@ -8,7 +8,7 @@ from typing import NoReturn
 
 import typer
 
-from odev.core.console import error, warning
+from odev.core.console import error, info, warning
 from odev.core.detect import detectar_layout
 from odev.core.docker import DockerCompose
 from odev.core.paths import ProjectPaths
@@ -258,6 +258,47 @@ def ejecutar_passthrough(
     sys.stdout.buffer.write(result.stdout or b"")
     sys.stderr.buffer.write(result.stderr or b"")
     raise typer.Exit(result.returncode)
+
+
+def ejecutar_odoo_compacto(
+    dc: DockerCompose,
+    service: str,
+    comando: list[str],
+    cantidad_modulos: int,
+) -> int:
+    """Ejecuta un comando Odoo capturando el log y mostrando solo lo relevante.
+
+    Modo compacto (0.7.0) para update/addon-install: captura el output via
+    exec_capture (Odoo loguea a stderr), lo pasa por filter_odoo_log y emite:
+
+      - lineas WARNING/ERROR/CRITICAL + bloques de traceback completos,
+      - la linea final de exito de Odoo ("Modules loaded."),
+      - resumen de una linea: modulos procesados + exit code del proceso.
+
+    Argumentos:
+        dc:               Instancia DockerCompose ya resuelta.
+        service:          Servicio destino (ej: 'web').
+        comando:          Argv del comando Odoo dentro del contenedor.
+        cantidad_modulos: Cantidad de modulos procesados (para el resumen).
+
+    Retorna:
+        Codigo de salida final: el del proceso si es != 0; si el proceso
+        salio con 0 pero el log contiene Traceback/CRITICAL, 1 (misma
+        filosofia que el contrato de exit codes de 'odev test').
+    """
+    from odev.core.odoo_log_filter import filter_odoo_log
+
+    stdout_bytes, stderr_bytes, returncode = dc.exec_capture(service, comando)
+    texto = (stdout_bytes + stderr_bytes).decode("utf-8", errors="replace")
+    filtrado = filter_odoo_log(texto.splitlines())
+
+    for linea in filtrado.relevant_lines:
+        sys.stdout.write(linea + "\n")
+    if filtrado.success_line is not None:
+        sys.stdout.write(filtrado.success_line + "\n")
+
+    info(f"{cantidad_modulos} modulo(s) procesado(s) — exit code del proceso: {returncode}")
+    return returncode if returncode != 0 else filtrado.returncode_hint
 
 
 def validar_modulo_existe(nombre: str, contexto: ProjectContext) -> None:
