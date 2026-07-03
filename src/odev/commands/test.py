@@ -7,12 +7,14 @@ de salida para consumo por agentes IA y pipelines CI.
 Modos de salida:
 | Flag          | Comportamiento                                          |
 |---------------|---------------------------------------------------------|
-| (ninguno+tty) | Stream crudo interactivo (comportamiento original)      |
-| (ninguno-tty) | Auto-summary: conteo + duracion                         |
-| --summary/-s  | Summary: conteo + nombres + duracion                    |
+| (ninguno)     | Summary compacto: conteo + duracion (default, TTY o no) |
+| --verbose/-v  | Stream crudo en vivo (comportamiento pre-0.7.0)         |
+| --summary/-s  | Alias explicito del default (compat retro)              |
 | --failures/-f | Solo bloques FAIL/ERROR con tracebacks                  |
 | --json        | JSON estructurado en stdout (sin Rich)                  |
 | --save-log    | Log crudo a archivo + summary en stdout                 |
+
+--verbose es incompatible con --json/--summary/--failures (exit 2).
 """
 
 from __future__ import annotations
@@ -92,12 +94,15 @@ def _parse_test_target(raw: str) -> tuple[str, str | None]:
 def _stream_and_collect(
     popen: subprocess.Popen,
     save_log_path: Optional[Path] = None,
+    echo: bool = False,
 ) -> tuple[list[str], int]:
     """Drena stdout de un Popen activo, opcionalmente guardando a archivo.
 
     Argumentos:
         popen:         Proceso Popen con stdout=PIPE.
         save_log_path: Si se provee, escribe el log crudo a este archivo.
+        echo:          Si True, re-emite cada linea a stdout en vivo
+                       (modo --verbose con captura).
 
     Retorna:
         Tupla (lineas_capturadas, returncode).
@@ -116,6 +121,8 @@ def _stream_and_collect(
             for raw_line in popen.stdout:
                 line = raw_line.decode("utf-8", errors="replace")
                 lines.append(line)
+                if echo:
+                    sys.stdout.write(line)
                 if log_file is not None:
                     log_file.write(line)
         except KeyboardInterrupt:
@@ -306,6 +313,7 @@ def _run_test(
     tags: Optional[str],
     save_log: Optional[Path],
     no_validate: bool = False,
+    verbose: bool = False,
 ) -> None:
     """Implementacion principal del comando test.
 
@@ -314,14 +322,24 @@ def _run_test(
     Argumentos:
         module:        Nombre(s) del modulo a testear, o 'all'. CSV soportado.
         log_level:     Nivel de log de Odoo.
-        summary:       Si True, imprime resumen estructurado.
+        summary:       Si True, imprime resumen estructurado (alias del default).
         failures_only: Si True, imprime solo bloques FAIL/ERROR.
         json_out:      Si True, emite JSON estructurado.
         tags:          Expresion de tags para --test-tags de Odoo (override/append).
         save_log:      Ruta donde guardar el log crudo.
         no_validate:   Si True, omite validacion contra addons-path.
+        verbose:       Si True, emite el stream crudo en vivo (pre-0.7.0).
+                       Incompatible con json_out/summary/failures_only.
     """
     from odev.main import obtener_nombre_proyecto
+
+    # --verbose contradice los modos parseados/compactos: rechazar temprano.
+    if verbose and (json_out or summary or failures_only):
+        error(
+            "--verbose es incompatible con --json/--summary/--failures: "
+            "el stream crudo no se parsea. Usa --verbose solo, o quita el flag."
+        )
+        raise typer.Exit(2)
 
     contexto = requerir_proyecto(obtener_nombre_proyecto())
 
@@ -373,13 +391,10 @@ def _run_test(
 
     dc = obtener_docker(contexto)
 
-    # Determinar si usar modo stream o modo interactivo legacy
-    use_stream = (
-        json_out or failures_only or summary or save_log is not None or not sys.stdout.isatty()
-    )
-
-    if not use_stream:
-        # Ruta legacy — interactiva, sin captura (comportamiento original)
+    # Desde 0.7.0 el summary compacto es el default SIEMPRE (TTY o no).
+    # --verbose restaura el stream crudo: sin --save-log usa la ruta
+    # interactiva original; con --save-log streamea con echo + captura.
+    if verbose and save_log is None:
         if module != "all":
             info(f"Ejecutando tests del modulo: {module}")
         else:
@@ -389,7 +404,7 @@ def _run_test(
 
     # Ruta con stream y parseo
     popen = dc.exec_cmd_stream("web", comando)
-    lines, returncode = _stream_and_collect(popen, save_log_path=save_log)
+    lines, returncode = _stream_and_collect(popen, save_log_path=save_log, echo=verbose)
     result = parse_odoo_test_output(lines)
 
     # Defensa en profundidad: si Odoo saly con 0 pero el parseo fallo
@@ -415,9 +430,10 @@ def _run_test(
         render_json(result)
     elif failures_only:
         render_failures(result)
-    else:
-        # --summary explicito o auto-summary (no-tty sin flags)
+    elif not verbose:
+        # --summary explicito o summary compacto default (0.7.0)
         render_summary(result)
+    # verbose + save_log: el log crudo ya se emitio en vivo via echo
 
     raise typer.Exit(returncode)
 
@@ -436,11 +452,23 @@ def test(
         "-l",
         help="Nivel de log (test, debug, info, warn, error).",
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help=(
+            "Emite el stream crudo de Odoo en vivo (comportamiento pre-0.7.0). "
+            "Incompatible con --json/--summary/--failures."
+        ),
+    ),
     summary: bool = typer.Option(
         False,
         "--summary",
         "-s",
-        help="Imprime resumen con conteo, nombres y duracion. Suprime el log crudo.",
+        help=(
+            "Imprime resumen con conteo y duracion. Desde 0.7.0 es el "
+            "comportamiento default; el flag se mantiene por compatibilidad."
+        ),
     ),
     failures_only: bool = typer.Option(
         False,
@@ -479,6 +507,9 @@ def test(
     de tests de Odoo. Usa 'all' para ejecutar todos los tests
     disponibles (puede tomar bastante tiempo).
 
+    Por default imprime un resumen compacto (conteo + duracion).
+    Usa --verbose/-v para ver el log crudo de Odoo en vivo.
+
     Codigos de salida:
 
       0  Tests pasaron sin failures ni errores
@@ -508,4 +539,5 @@ def test(
         tags=tags,
         save_log=save_log,
         no_validate=no_validate,
+        verbose=verbose,
     )

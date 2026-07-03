@@ -164,45 +164,130 @@ def _call_run_test(tmp_path: Path, mock_dc: MagicMock, **overrides):
 
 
 # ---------------------------------------------------------------------------
-# T1 — TTY=True, sin flags → exec_cmd con interactive=True
+# T1 — TTY=True, sin flags → summary compacto default (0.7.0)
 # ---------------------------------------------------------------------------
 
 
-class TestTtyPathInteractive:
-    """T1: stdout es TTY, sin flags → ruta legacy exec_cmd interactive."""
+class TestTtyCompactDefault:
+    """T1 (0.7.0): stdout es TTY, sin flags → summary compacto, NO stream crudo.
 
-    def test_tty_sin_flags_llama_exec_cmd_interactivo(
+    Antes de 0.7.0 el TTY sin flags usaba exec_cmd(interactive=True) con el
+    log crudo de Odoo. Ahora el summary compacto es el default SIEMPRE;
+    el stream crudo requiere --verbose explicito.
+    """
+
+    def test_tty_sin_flags_renderiza_summary(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """Con TTY activo y sin flags, se imprime el resumen compacto."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        _call_run_test(tmp_path, mock_dc)
+
+        mock_dc.exec_cmd_stream.assert_called_once()
+        captured = capsys.readouterr()
+        output = (captured.out + captured.err).lower()
+        assert "passed" in output
+
+    def test_tty_sin_flags_no_emite_log_crudo(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """Con TTY activo y sin flags, el log crudo de Odoo NO va a stdout."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        _call_run_test(tmp_path, mock_dc)
+
+        mock_dc.exec_cmd.assert_not_called()
+        captured = capsys.readouterr()
+        assert "odoo.addons.sale.tests" not in captured.out
+
+
+# ---------------------------------------------------------------------------
+# T1b — --verbose restaura el stream crudo interactivo
+# ---------------------------------------------------------------------------
+
+
+class TestVerboseFlag:
+    """T1b (0.7.0): --verbose restaura el stream crudo en vivo."""
+
+    def test_verbose_en_tty_llama_exec_cmd_interactivo(
         self, tmp_path: Path, monkeypatch
     ) -> None:
-        """Con TTY activo y sin flags, se llama exec_cmd(interactive=True)."""
+        """--verbose en TTY → exec_cmd(interactive=True), sin stream/parseo."""
         monkeypatch.setattr("sys.stdout.isatty", lambda: True)
 
         mock_dc = MagicMock()
         mock_dc.exec_cmd = MagicMock()
         mock_dc.exec_cmd_stream = MagicMock()
 
-        _call_run_test(tmp_path, mock_dc)
+        _call_run_test(tmp_path, mock_dc, verbose=True)
 
         mock_dc.exec_cmd.assert_called_once()
         call_args = mock_dc.exec_cmd.call_args
-        # interactive=True puede ser posicional (arg[2]) o keyword
         interactive_value = call_args[1].get("interactive") or (
             len(call_args[0]) > 2 and call_args[0][2]
         )
         assert interactive_value is True
         mock_dc.exec_cmd_stream.assert_not_called()
 
-    def test_tty_sin_flags_no_llama_stream(self, tmp_path: Path, monkeypatch) -> None:
-        """Con TTY activo, exec_cmd_stream NO es llamado."""
+    def test_verbose_con_json_exit_2(self, tmp_path: Path, monkeypatch) -> None:
+        """--verbose --json es contradictorio → exit 2, sin llamar docker."""
         monkeypatch.setattr("sys.stdout.isatty", lambda: True)
 
         mock_dc = MagicMock()
-        mock_dc.exec_cmd = MagicMock()
-        mock_dc.exec_cmd_stream = MagicMock()
+        exc = _call_run_test(tmp_path, mock_dc, verbose=True, json_out=True)
 
-        _call_run_test(tmp_path, mock_dc)
-
+        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
+        assert code == 2
+        mock_dc.exec_cmd.assert_not_called()
         mock_dc.exec_cmd_stream.assert_not_called()
+
+    def test_verbose_con_summary_exit_2(self, tmp_path: Path, monkeypatch) -> None:
+        """--verbose --summary es contradictorio → exit 2."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+
+        mock_dc = MagicMock()
+        exc = _call_run_test(tmp_path, mock_dc, verbose=True, summary=True)
+
+        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
+        assert code == 2
+
+    def test_verbose_con_failures_exit_2(self, tmp_path: Path, monkeypatch) -> None:
+        """--verbose --failures es contradictorio → exit 2."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+
+        mock_dc = MagicMock()
+        exc = _call_run_test(tmp_path, mock_dc, verbose=True, failures_only=True)
+
+        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
+        assert code == 2
+
+    def test_verbose_con_save_log_captura_y_streamea(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """--verbose --save-log guarda el log crudo Y lo emite en vivo a stdout."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        log_file = tmp_path / "verbose.log"
+        _call_run_test(tmp_path, mock_dc, verbose=True, save_log=log_file)
+
+        assert log_file.exists()
+        assert "Ran 2 tests" in log_file.read_text()
+        captured = capsys.readouterr()
+        # El log crudo se streamea a stdout (modo verbose)
+        assert "odoo.addons.sale.tests" in captured.out
 
 
 # ---------------------------------------------------------------------------
