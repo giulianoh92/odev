@@ -6,6 +6,22 @@ El formato esta basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 y este proyecto adhiere a [Versionado Semantico](https://semver.org/spec/v2.0.0.html).
 Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
 
+## [0.7.0] - 2026-07-03
+
+### Agregado
+
+- Flag `--verbose/-v` en `odev test`, `odev update` y `odev addon-install` — restaura el stream crudo de Odoo en vivo (comportamiento pre-0.7.0). En `test` es incompatible con `--json`/`--summary`/`--failures` (exit 2); combinado con `--save-log` streamea en vivo y guarda el log.
+- Modo compacto en `update`/`addon-install`: se muestran solo lineas WARNING/ERROR/CRITICAL, bloques de traceback completos, la linea de exito de Odoo ("Modules loaded.") y un resumen de una linea (modulos procesados + exit code del proceso). Filtro implementado como funcion pura en `odev.core.odoo_log_filter`.
+
+### Cambiado
+
+- **BREAKING (comportamiento default)**: `odev test` sin flags imprime el summary compacto SIEMPRE (TTY o no); el log crudo interactivo requiere `--verbose`. `--summary/-s` queda como no-op retro-compatible.
+- **BREAKING (comportamiento default)**: `odev update` y `odev addon-install` ya no vuelcan el log crudo completo de Odoo; usan el modo compacto por default (`--verbose` restaura el anterior). Ademas ahora propagan exit code: el del proceso Odoo si es != 0, y 1 si el proceso salio 0 pero el log contiene Traceback/CRITICAL.
+
+### Corregido
+
+- `odev test` salia con exit code 0 cuando los tests fallaban pero el proceso Odoo devolvia 0 (comportamiento real de Odoo 19 con `--test-enable --stop-after-init`). Ahora el codigo final combina el returncode del proceso con el resultado parseado (`TestResult.returncode_hint`): el proceso manda si sale != 0 (incluye puerto ocupado → 3); con 0 decide el parser (1 si hay failures/errors/parse_failed). Restaura el contrato documentado 0/1/2/3.
+
 ## [0.6.2] - 2026-05-18
 
 ### Corregido
