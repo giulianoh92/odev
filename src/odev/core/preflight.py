@@ -65,6 +65,35 @@ class PreflightResult:
         return [s for s in self.statuses if s.estado in ("foreign_known", "foreign_unknown")]
 
 
+def _proyecto_del_contenedor(container: dict) -> str:
+    """Extrae el nombre de proyecto compose de un contenedor de ps_parsed.
+
+    docker compose ps --format json expone el proyecto de dos formas segun
+    la version: la clave de primer nivel "Project", y la label
+    com.docker.compose.project dentro de "Labels" — que llega como string
+    "clave=valor,clave=valor" (no como dict) en las versiones actuales.
+
+    Argumentos:
+        container: Diccionario de docker compose ps_parsed para un servicio.
+
+    Retorna:
+        Nombre del proyecto compose, o cadena vacia si no se encuentra.
+    """
+    proyecto = container.get("Project")
+    if proyecto:
+        return str(proyecto)
+
+    labels = container.get("Labels") or {}
+    if isinstance(labels, dict):
+        return labels.get("com.docker.compose.project", "")
+    if isinstance(labels, str):
+        for par in labels.split(","):
+            clave, _, valor = par.partition("=")
+            if clave == "com.docker.compose.project":
+                return valor
+    return ""
+
+
 def _container_binds_port(container: dict, puerto: int, project_name: str) -> bool:
     """Verifica si un contenedor del proyecto actual publica el puerto dado.
 
@@ -76,13 +105,7 @@ def _container_binds_port(container: dict, puerto: int, project_name: str) -> bo
     Retorna:
         True si el contenedor pertenece al proyecto y publica el puerto.
     """
-    labels = container.get("Labels") or {}
-    if isinstance(labels, dict):
-        compose_project = labels.get("com.docker.compose.project", "")
-    else:
-        compose_project = ""
-
-    if compose_project != project_name:
+    if _proyecto_del_contenedor(container) != project_name:
         return False
 
     publishers = container.get("Publishers") or []

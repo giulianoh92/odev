@@ -169,6 +169,61 @@ class TestVerificarPuertosPreUp:
         assert resultado.has_fail is False
         assert resultado.statuses[0].estado == "own_running"
 
+    def test_own_container_con_labels_string_classifies_own_running(
+        self, registry_tmp: Registry
+    ) -> None:
+        """Reconoce contenedores propios con Labels en formato string real.
+
+        docker compose ps --format json emite Labels como string
+        "clave=valor,clave=valor", no como dict. Regresion: el preflight
+        clasificaba los contenedores propios como foreign_unknown y
+        bloqueaba 'odev up' con el stack propio corriendo.
+        """
+        contexto = _mock_contexto("mi-proyecto")
+        contenedores = [
+            {
+                "Service": "web",
+                "State": "running",
+                "Publishers": [{"PublishedPort": 8069, "URL": "0.0.0.0"}],
+                "Labels": (
+                    "com.docker.compose.container-number=1,"
+                    "com.docker.compose.project=mi-proyecto,"
+                    "com.docker.compose.service=web"
+                ),
+            }
+        ]
+        dc = _mock_dc(contenedores)
+        puertos = {"WEB_PORT": 8069}
+
+        with patch("odev.core.preflight.puerto_disponible", return_value=False):
+            resultado = verificar_puertos_pre_up(contexto, dc, registry_tmp, puertos)
+
+        assert resultado.has_fail is False
+        assert resultado.statuses[0].estado == "own_running"
+
+    def test_own_container_con_clave_project_classifies_own_running(
+        self, registry_tmp: Registry
+    ) -> None:
+        """Reconoce contenedores propios via la clave de primer nivel Project."""
+        contexto = _mock_contexto("mi-proyecto")
+        contenedores = [
+            {
+                "Service": "web",
+                "State": "running",
+                "Publishers": [{"PublishedPort": 8069, "URL": "0.0.0.0"}],
+                "Project": "mi-proyecto",
+                "Labels": "",
+            }
+        ]
+        dc = _mock_dc(contenedores)
+        puertos = {"WEB_PORT": 8069}
+
+        with patch("odev.core.preflight.puerto_disponible", return_value=False):
+            resultado = verificar_puertos_pre_up(contexto, dc, registry_tmp, puertos)
+
+        assert resultado.has_fail is False
+        assert resultado.statuses[0].estado == "own_running"
+
     def test_foreign_process_classifies_foreign_unknown(
         self, registry_tmp: Registry
     ) -> None:
