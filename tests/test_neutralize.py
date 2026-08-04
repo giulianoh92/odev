@@ -128,7 +128,7 @@ class TestConfigurarParametrosDesarrollo:
         configurar_parametros_desarrollo(dc_mock, "odoo_db", "odoo", "9090")
 
         sql = dc_mock.exec_cmd.call_args[0][1][-1]
-        assert "http://localhost:9090" in sql
+        assert "('web.base.url', 'http://localhost:9090'" in sql
 
     def test_puerto_por_defecto_es_8069(self, dc_mock):
         """El puerto por defecto es 8069 si no se especifica."""
@@ -136,6 +136,20 @@ class TestConfigurarParametrosDesarrollo:
 
         sql = dc_mock.exec_cmd.call_args[0][1][-1]
         assert "http://localhost:8069" in sql
+
+    def test_report_url_usa_puerto_interno_del_contenedor(self, dc_mock):
+        """report.url apunta al 8069 interno sin importar el puerto del host.
+
+        wkhtmltopdf corre dentro del contenedor web: si report.url usa el
+        puerto publicado en el host, no puede bajar los bundles CSS y los
+        PDF salen sin estilos (regresion observada con WEB_PORT=8070).
+        """
+        configurar_parametros_desarrollo(dc_mock, "odoo_db", "odoo", "8070")
+
+        sql = dc_mock.exec_cmd.call_args[0][1][-1]
+        assert "('report.url', 'http://127.0.0.1:8069'" in sql
+        assert "('web.base.url', 'http://localhost:8070'" in sql
+        assert "('report.url', 'http://localhost:8070'" not in sql
 
     def test_sql_usa_upsert(self, dc_mock):
         """El SQL usa INSERT ... ON CONFLICT para ser idempotente."""

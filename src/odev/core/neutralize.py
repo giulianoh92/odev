@@ -133,25 +133,31 @@ def configurar_parametros_desarrollo(
 ) -> None:
     """Configura parametros del sistema para entorno de desarrollo.
 
-    Establece web.base.url y report.url apuntando a localhost,
-    y desactiva web.base.url.freeze para evitar que Odoo sobreescriba
-    la URL base con un dominio de produccion.
+    Establece web.base.url apuntando a localhost en el puerto publicado del
+    host, report.url apuntando al puerto interno del contenedor, y desactiva
+    web.base.url.freeze para evitar que Odoo sobreescriba la URL base con un
+    dominio de produccion.
 
     Argumentos:
         dc: Instancia de DockerCompose configurada para el proyecto.
         nombre_bd: Nombre de la base de datos.
         usuario_bd: Usuario de la base de datos.
-        puerto_web: Puerto web local (por defecto 8069).
+        puerto_web: Puerto web publicado en el host (por defecto 8069).
     """
     _validar_nombre_bd(nombre_bd)
     _validar_puerto(puerto_web)
     url_local = f"http://localhost:{puerto_web}"
+    # report.url la consume wkhtmltopdf DENTRO del contenedor web, donde Odoo
+    # escucha siempre en el 8069 interno (el compose publica ${WEB_PORT}:8069).
+    # Con el puerto del host los PDF salen sin estilos cuando WEB_PORT != 8069:
+    # wkhtmltopdf no puede bajar los bundles CSS (ConnectionRefusedError).
+    url_reportes = "http://127.0.0.1:8069"
     sql = (
         "INSERT INTO ir_config_parameter "
         "(key, value, create_uid, create_date, write_uid, write_date) "
         "VALUES "
         f"('web.base.url', '{url_local}', 1, NOW(), 1, NOW()), "
-        f"('report.url', '{url_local}', 1, NOW(), 1, NOW()), "
+        f"('report.url', '{url_reportes}', 1, NOW(), 1, NOW()), "
         "('web.base.url.freeze', 'False', 1, NOW(), 1, NOW()) "
         "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, write_date = NOW();"
     )
