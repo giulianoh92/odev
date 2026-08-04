@@ -15,6 +15,7 @@ from odev.core.config import load_env
 from odev.core.console import info, success, warning
 from odev.core.neutralize import (
     configurar_parametros_desarrollo,
+    configurar_servidor_correo_mailhog,
     neutralizar_base_datos,
     resetear_credenciales_admin,
 )
@@ -89,6 +90,7 @@ def reset_db(
         neutralizar_base_datos(dc, nombre_bd, usuario_bd)
         resetear_credenciales_admin(dc, nombre_bd, usuario_bd)
         configurar_parametros_desarrollo(dc, nombre_bd, usuario_bd, puerto_web)
+        configurar_servidor_correo_mailhog(dc, nombre_bd, usuario_bd)
 
         info("Reiniciando servicios tras neutralizacion...")
         dc.restart("web")

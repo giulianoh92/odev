@@ -18,6 +18,7 @@ from odev.core.config import load_env
 from odev.core.console import error, info, success, warning
 from odev.core.neutralize import (
     configurar_parametros_desarrollo,
+    configurar_servidor_correo_mailhog,
     neutralizar_base_datos,
     resetear_credenciales_admin,
 )
@@ -274,6 +275,7 @@ def load_backup(
     # -- Configurar parametros de desarrollo ----------------------------------
     puerto_web = valores_env.get("WEB_PORT", "8069")
     configurar_parametros_desarrollo(dc, nombre_bd, usuario_bd, puerto_web)
+    configurar_servidor_correo_mailhog(dc, nombre_bd, usuario_bd)
 
     # -- Reiniciar todo -------------------------------------------------------
     info("Reiniciando servicios...")

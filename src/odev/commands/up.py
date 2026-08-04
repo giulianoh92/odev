@@ -101,10 +101,40 @@ def up(
     valores_env = load_env(rutas.env_file)
     puerto_web = valores_env.get("WEB_PORT", "8069")
     puerto_pgweb = valores_env.get("PGWEB_PORT", "8081")
+
+    _asegurar_parametros_desarrollo(dc, valores_env, puerto_web)
+
     success("Entorno iniciado correctamente.")
     info(f"  Odoo:  http://localhost:{puerto_web}")
     if contexto.config and contexto.config.pgweb_habilitado:
         info(f"  pgweb: http://localhost:{puerto_pgweb}")
+
+
+def _asegurar_parametros_desarrollo(
+    dc: "DockerCompose",  # noqa: F821
+    valores_env: dict,
+    puerto_web: str,
+) -> None:
+    """Garantiza parametros de desarrollo y MailHog sobre la base existente.
+
+    Solo escribe si algo difiere del estado esperado (para no invalidar
+    caches de Odoo en cada up); en ese caso reinicia web para que los
+    workers no sirvan valores viejos desde el ormcache. Si la base no
+    esta inicializada todavia se omite en silencio: reset-db y
+    load-backup ya configuran esto al crear la base.
+    """
+    from odev.core.neutralize import asegurar_entorno_desarrollo
+
+    nombre_bd = valores_env.get("DB_NAME", "odoo_db")
+    usuario_bd = valores_env.get("DB_USER", "odoo")
+    try:
+        resultado = asegurar_entorno_desarrollo(dc, nombre_bd, usuario_bd, puerto_web)
+    except (OSError, ValueError) as exc:
+        warning(f"No se pudieron verificar los parametros de desarrollo: {exc}")
+        return
+    if resultado == "aplicado":
+        info("Parametros de desarrollo actualizados — reiniciando web...")
+        dc.restart("web")
 
 
 # ── Preflight helper ──────────────────────────────────────────────────────────

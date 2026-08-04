@@ -10,9 +10,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from odev.core.neutralize import (
+    URL_REPORTES_INTERNA,
     _validar_nombre_bd,
     _validar_puerto,
+    asegurar_entorno_desarrollo,
     configurar_parametros_desarrollo,
+    configurar_servidor_correo_mailhog,
     neutralizar_base_datos,
     resetear_credenciales_admin,
 )
@@ -159,6 +162,92 @@ class TestConfigurarParametrosDesarrollo:
         assert "INSERT INTO ir_config_parameter" in sql
         assert "ON CONFLICT" in sql
         assert "DO UPDATE" in sql
+
+
+class TestConfigurarServidorCorreoMailhog:
+    """Grupo de tests para configurar_servidor_correo_mailhog()."""
+
+    def test_ejecuta_sql_en_servicio_db(self, dc_mock):
+        """Ejecuta psql contra el servicio db con la base indicada."""
+        configurar_servidor_correo_mailhog(dc_mock, "odoo_db", "odoo")
+
+        dc_mock.exec_cmd.assert_called_once()
+        llamada = dc_mock.exec_cmd.call_args
+        assert llamada[0][0] == "db"
+        comando = llamada[0][1]
+        assert "psql" in comando
+        assert "odoo_db" in comando
+
+    def test_desactiva_otros_servidores_y_activa_mailhog(self, dc_mock):
+        """Desactiva todo ir_mail_server ajeno y deja MailHog activo en 1025."""
+        configurar_servidor_correo_mailhog(dc_mock, "odoo_db", "odoo")
+
+        sql = dc_mock.exec_cmd.call_args[0][1][-1]
+        assert "UPDATE ir_mail_server SET active = false" in sql
+        assert "'MailHog (odev)'" in sql
+        assert "'mailhog'" in sql
+        assert "1025" in sql
+
+    def test_es_idempotente_por_construccion(self, dc_mock):
+        """Inserta solo si no existe y actualiza el registro existente."""
+        configurar_servidor_correo_mailhog(dc_mock, "odoo_db", "odoo")
+
+        sql = dc_mock.exec_cmd.call_args[0][1][-1]
+        assert "WHERE NOT EXISTS" in sql
+        assert "UPDATE ir_mail_server SET smtp_host" in sql
+
+    def test_rechaza_nombre_bd_invalido(self, dc_mock):
+        """Valida el nombre de base antes de armar SQL."""
+        with pytest.raises(ValueError, match="invalido"):
+            configurar_servidor_correo_mailhog(dc_mock, "odoo'; --", "odoo")
+
+
+class TestAsegurarEntornoDesarrollo:
+    """Grupo de tests para asegurar_entorno_desarrollo()."""
+
+    def _estado(self, dc_mock, stdout: bytes, codigo: int = 0) -> None:
+        dc_mock.exec_capture.return_value = (stdout, b"", codigo)
+
+    def test_omite_si_base_no_inicializada(self, dc_mock):
+        """Si psql falla (base o esquema inexistente) no escribe nada."""
+        self._estado(dc_mock, b"", codigo=2)
+
+        resultado = asegurar_entorno_desarrollo(dc_mock, "odoo_db", "odoo", "8070")
+
+        assert resultado == "omitido"
+        dc_mock.exec_cmd.assert_not_called()
+
+    def test_sin_cambios_si_estado_correcto(self, dc_mock):
+        """No escribe si parametros y MailHog ya estan como corresponde."""
+        estado = f"{URL_REPORTES_INTERNA}|http://localhost:8070|0|1\n".encode()
+        self._estado(dc_mock, estado)
+
+        resultado = asegurar_entorno_desarrollo(dc_mock, "odoo_db", "odoo", "8070")
+
+        assert resultado == "sin_cambios"
+        dc_mock.exec_cmd.assert_not_called()
+
+    def test_aplica_si_report_url_incorrecta(self, dc_mock):
+        """Escribe parametros y MailHog si report.url apunta al puerto del host."""
+        estado = b"http://localhost:8070|http://localhost:8070|0|1\n"
+        self._estado(dc_mock, estado)
+
+        resultado = asegurar_entorno_desarrollo(dc_mock, "odoo_db", "odoo", "8070")
+
+        assert resultado == "aplicado"
+        assert dc_mock.exec_cmd.call_count == 2
+        sqls = [c[0][1][-1] for c in dc_mock.exec_cmd.call_args_list]
+        assert any("ir_config_parameter" in s for s in sqls)
+        assert any("ir_mail_server" in s for s in sqls)
+
+    def test_aplica_si_hay_otro_mail_server_activo(self, dc_mock):
+        """Escribe si quedo activo un servidor de correo ajeno a MailHog."""
+        estado = f"{URL_REPORTES_INTERNA}|http://localhost:8070|1|1\n".encode()
+        self._estado(dc_mock, estado)
+
+        resultado = asegurar_entorno_desarrollo(dc_mock, "odoo_db", "odoo", "8070")
+
+        assert resultado == "aplicado"
 
 
 class TestValidarNombreBd:
