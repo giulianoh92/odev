@@ -129,6 +129,7 @@ class TestListarModulosDisponibles:
         )
         ctx = MagicMock()
         ctx.directorio_config = tmp_path
+        ctx.config = None
 
         with patch("odev.commands._helpers.detectar_layout", return_value=fake_layout):
             resultado = listar_modulos_disponibles(ctx)
@@ -153,6 +154,7 @@ class TestListarModulosDisponibles:
         )
         ctx = MagicMock()
         ctx.directorio_config = tmp_path
+        ctx.config = None
 
         with patch("odev.commands._helpers.detectar_layout", return_value=fake_layout):
             resultado = listar_modulos_disponibles(ctx)
@@ -177,6 +179,7 @@ class TestListarModulosDisponibles:
         )
         ctx = MagicMock()
         ctx.directorio_config = tmp_path
+        ctx.config = None
 
         with patch("odev.commands._helpers.detectar_layout", return_value=fake_layout):
             resultado = listar_modulos_disponibles(ctx)
@@ -196,6 +199,7 @@ class TestValidarModulos:
     def _make_ctx(self, tmp_path: Path) -> MagicMock:
         ctx = MagicMock()
         ctx.directorio_config = tmp_path
+        ctx.config = None
         ctx.config = MagicMock()
         ctx.config.rutas_addons = None
         return ctx
@@ -408,3 +412,78 @@ class TestExitCodesEpilog:
         assert missing_epilog == [], (
             f"Comandos sin 'Codigos de salida' en --help: {missing_epilog}"
         )
+
+
+class TestListarModulosDisponiblesConfig:
+    """paths.addons del .odev.yaml es la fuente de verdad para la validacion.
+
+    Regresion del caso monorepo: modulos a dos niveles bajo directorios no
+    convencionales (reswoy/reswoy-elog/<mod>) que detectar_layout solo
+    encontraba via .gitmodules. Al des-submodularizar, la entrada desaparece
+    de .gitmodules y la validacion dejaba de ver modulos que el container SI
+    monta (los mounts se generan desde paths.addons).
+    """
+
+    def _ctx_con_config(self, tmp_path: Path, rutas: list[str]) -> MagicMock:
+        ctx = MagicMock()
+        ctx.directorio_config = tmp_path
+        ctx.config.rutas_addons = rutas
+        return ctx
+
+    def test_config_encuentra_modulos_en_ruta_no_convencional(
+        self, tmp_path: Path
+    ) -> None:
+        """Modulos bajo ruta declarada en config, invisible para heuristicas."""
+        from odev.commands._helpers import listar_modulos_disponibles
+
+        addon_dir = tmp_path / "reswoy" / "reswoy-elog"
+        addon_dir.mkdir(parents=True)
+        for nombre in ["purchase_workflow_app", "elog_config"]:
+            (addon_dir / nombre).mkdir()
+            (addon_dir / nombre / "__manifest__.py").touch()
+
+        ctx = self._ctx_con_config(tmp_path, ["./reswoy/reswoy-elog"])
+
+        resultado = listar_modulos_disponibles(ctx)
+
+        assert resultado == {"purchase_workflow_app", "elog_config"}
+
+    def test_config_ruta_absoluta_se_respeta(self, tmp_path: Path) -> None:
+        """Rutas absolutas en paths.addons se usan tal cual."""
+        from odev.commands._helpers import listar_modulos_disponibles
+
+        addon_dir = tmp_path / "externo"
+        addon_dir.mkdir()
+        (addon_dir / "mod_x").mkdir()
+        (addon_dir / "mod_x" / "__manifest__.py").touch()
+
+        ctx = self._ctx_con_config(tmp_path / "proyecto", [str(addon_dir)])
+        (tmp_path / "proyecto").mkdir()
+
+        resultado = listar_modulos_disponibles(ctx)
+
+        assert resultado == {"mod_x"}
+
+    def test_config_sin_modulos_cae_a_heuristica(self, tmp_path: Path) -> None:
+        """Rutas de config vacias/inexistentes → fallback a detectar_layout."""
+        from odev.commands._helpers import listar_modulos_disponibles
+        from odev.core.detect import RepoLayout, TipoRepo
+
+        addon_dir = tmp_path / "addons"
+        addon_dir.mkdir()
+        (addon_dir / "mod_heuristico").mkdir()
+        (addon_dir / "mod_heuristico" / "__manifest__.py").touch()
+
+        fake_layout = RepoLayout(
+            tipo=TipoRepo.MULTI_ADDON,
+            rutas_addons=[addon_dir],
+            modulos_encontrados=1,
+        )
+        ctx = self._ctx_con_config(tmp_path, ["./no-existe"])
+
+        with patch(
+            "odev.commands._helpers.detectar_layout", return_value=fake_layout
+        ):
+            resultado = listar_modulos_disponibles(ctx)
+
+        assert resultado == {"mod_heuristico"}

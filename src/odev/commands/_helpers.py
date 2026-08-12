@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from pathlib import Path
 from typing import NoReturn
 
 import typer
@@ -108,11 +109,17 @@ def parsear_modulos_csv(valor: str) -> list[str]:
 
 
 def listar_modulos_disponibles(contexto: ProjectContext) -> set[str]:
-    """Enumera modulos descubribles via detectar_layout.
+    """Enumera modulos disponibles: paths.addons del config, o heuristicas.
 
-    Reutiliza la logica de deteccion existente. Set para lookup O(1).
-    Retorna set vacio si layout es desconocido (modulos_encontrados == 0)
-    para que callers traten el caso como 'fallback: no bloquear'.
+    paths.addons de .odev.yaml es la fuente de verdad cuando existe: es lo
+    que genera los mounts del container, asi que validar contra otra cosa
+    puede rechazar modulos que el container SI ve. Caso concreto: modulos a
+    dos niveles bajo directorios no convencionales (p.ej. un ex-submodulo
+    des-submodularizado) que detectar_layout solo encontraba via .gitmodules.
+
+    Fallback a detectar_layout cuando no hay config o sus rutas no aportan
+    modulos. Set para lookup O(1). Retorna set vacio si tampoco la heuristica
+    encuentra nada, para que callers traten el caso como 'no bloquear'.
 
     Argumentos:
         contexto: contexto del proyecto resuelto.
@@ -120,6 +127,20 @@ def listar_modulos_disponibles(contexto: ProjectContext) -> set[str]:
     Retorna:
         Conjunto de nombres tecnicos de modulos detectados en addons-path.
     """
+    rutas_config = contexto.config.rutas_addons if contexto.config else []
+    if rutas_config:
+        nombres_config: set[str] = set()
+        for ruta in rutas_config:
+            p = Path(ruta)
+            dir_addons = p if p.is_absolute() else contexto.directorio_config / p
+            if not dir_addons.is_dir():
+                continue
+            for sub in sorted(dir_addons.iterdir()):
+                if (sub / "__manifest__.py").exists():
+                    nombres_config.add(sub.name)
+        if nombres_config:
+            return nombres_config
+
     layout = detectar_layout(contexto.directorio_config)
     if layout.modulos_encontrados == 0:
         return set()
