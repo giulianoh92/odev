@@ -355,7 +355,8 @@ def _construir_valores(
         ],
         "addon_dirs_container": [
             m["container_path"] for m in construir_addon_mounts(["./addons"], Path("."))
-        ],
+        ]
+        + (["/mnt/enterprise-addons"] if habilitar_enterprise else []),
         "addons_paths_list": ["./addons"],
         "project_mode": "inline",
         "odev_min_version": __version__,

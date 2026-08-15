@@ -121,6 +121,64 @@ class TestConstruirContextoTemplates:
         assert ctx["enterprise_enabled"] is True
         assert ctx["enterprise_path"] == "/shared/enterprise"
 
+    def test_addon_dirs_container_incluye_todos_los_mounts_custom(self, tmp_path: Path) -> None:
+        """addon_dirs_container incluye TODOS los mounts custom, no solo los primeros.
+
+        Bug: con 5 paths de addons custom configurados, el entrypoint solo
+        escaneaba requirements.txt en /mnt/extra-addons y /mnt/extra-addons-1.
+        """
+        config_data = {
+            "odoo": {"version": "19.0"},
+            "enterprise": {"enabled": False, "path": "./enterprise"},
+            "paths": {
+                "addons": [
+                    "./addons",
+                    "./addons-1",
+                    "./addons-2",
+                    "./addons-3",
+                    "./addons-4",
+                ]
+            },
+            "project": {"name": "multi-mounts-test"},
+        }
+        (tmp_path / ".odev.yaml").write_text(yaml.dump(config_data))
+
+        config = ProjectConfig(tmp_path)
+        ctx = construir_contexto_templates(config, {}, tmp_path)
+
+        esperados = [
+            "/mnt/extra-addons",
+            "/mnt/extra-addons-1",
+            "/mnt/extra-addons-2",
+            "/mnt/extra-addons-3",
+            "/mnt/extra-addons-4",
+        ]
+        assert ctx["addon_dirs_container"] == esperados
+
+    def test_addon_dirs_container_incluye_enterprise_si_habilitado(self, tmp_path: Path) -> None:
+        """addon_dirs_container debe incluir /mnt/enterprise-addons si enterprise esta habilitado."""
+        config_data = {
+            "odoo": {"version": "19.0"},
+            "enterprise": {"enabled": True, "path": "/shared/enterprise"},
+            "paths": {"addons": ["./addons"]},
+            "project": {"name": "ent-test"},
+        }
+        (tmp_path / ".odev.yaml").write_text(yaml.dump(config_data))
+
+        config = ProjectConfig(tmp_path)
+        ctx = construir_contexto_templates(config, {}, tmp_path)
+
+        assert "/mnt/enterprise-addons" in ctx["addon_dirs_container"]
+
+    def test_addon_dirs_container_excluye_enterprise_si_deshabilitado(
+        self, proyecto_con_config: Path
+    ) -> None:
+        """addon_dirs_container NO debe incluir enterprise si esta deshabilitado."""
+        config = ProjectConfig(proyecto_con_config)
+        ctx = construir_contexto_templates(config, {}, proyecto_con_config)
+
+        assert "/mnt/enterprise-addons" not in ctx["addon_dirs_container"]
+
 
 class TestNecesitaRegeneracion:
     """Tests for necesita_regeneracion()."""
@@ -284,3 +342,61 @@ class TestRegenerarConfiguracion:
         # but the function should not crash
         contenido = (proyecto_con_config / ".env").read_text()
         assert "PROJECT_NAME=" in contenido
+
+    def test_regenera_entrypoint_con_todos_los_addon_mounts(self, tmp_path: Path) -> None:
+        """Bug: regenerar_configuracion no re-renderizaba entrypoint.sh.
+
+        Simula un proyecto que originalmente tenia 2 paths de addons custom
+        (por eso su entrypoint.sh existente solo escanea /mnt/extra-addons y
+        /mnt/extra-addons-1). El usuario agrega 3 paths mas en .odev.yaml
+        (totalizando 5) y corre `odev reconfigure` / `odev up`, que dispara
+        regenerar_configuracion(). docker-compose.yml se regenera con los 5
+        mounts, pero entrypoint.sh se quedaba con el contenido viejo (2 mounts)
+        porque no estaba en la lista de templates que regen.py re-renderiza.
+        """
+        from odev.core.resolver import ModoProyecto, ProjectContext
+
+        config_data = {
+            "odev_min_version": "0.2.0",
+            "mode": "inline",
+            "odoo": {"version": "19.0", "image": "odoo:19"},
+            "database": {"image": "pgvector/pgvector:pg16"},
+            "enterprise": {"enabled": False, "path": "./enterprise"},
+            "services": {"pgweb": True},
+            "paths": {
+                "addons": [
+                    "./addons",
+                    "./addons-1",
+                    "./addons-2",
+                    "./addons-3",
+                    "./addons-4",
+                ]
+            },
+            "project": {"name": "test-multi-mounts", "description": ""},
+        }
+        (tmp_path / ".odev.yaml").write_text(yaml.dump(config_data, default_flow_style=False))
+
+        # Archivos generados existentes, como si el proyecto ya hubiera sido
+        # inicializado cuando solo tenia 2 paths de addons.
+        (tmp_path / "docker-compose.yml").write_text("services:\n  web:\n    image: odoo:19\n")
+        (tmp_path / "config").mkdir()
+        (tmp_path / "config" / "odoo.conf").write_text(
+            "[options]\naddons_path = /mnt/extra-addons,/mnt/extra-addons-1\n"
+        )
+        (tmp_path / "entrypoint.sh").write_text(
+            '#!/bin/bash\nADDONS_DIRS="/mnt/extra-addons /mnt/extra-addons-1"\n'
+        )
+
+        config = ProjectConfig(tmp_path)
+        ctx = ProjectContext(
+            nombre="test-multi-mounts", modo=ModoProyecto.INLINE,
+            directorio_config=tmp_path,
+            directorio_trabajo=tmp_path,
+            config=config,
+        )
+
+        regenerar_configuracion(ctx)
+
+        contenido_entrypoint = (tmp_path / "entrypoint.sh").read_text()
+        for sufijo in ("", "-1", "-2", "-3", "-4"):
+            assert f"/mnt/extra-addons{sufijo}" in contenido_entrypoint

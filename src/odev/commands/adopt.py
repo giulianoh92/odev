@@ -308,6 +308,13 @@ def _construir_valores(
 
     habilitar_debugpy = extras.get("habilitar_debugpy", False)
 
+    # Directorios de addons montados en el contenedor que el entrypoint debe
+    # escanear en busca de requirements.txt: TODOS los mounts custom mas
+    # enterprise si esta habilitado.
+    addon_dirs_container = [m["container_path"] for m in addon_mounts]
+    if layout.tiene_enterprise:
+        addon_dirs_container.append("/mnt/enterprise-addons")
+
     return {
         # --- Variables MAYUSCULAS (para env.j2, odoo.conf.j2) ---
         "PROJECT_NAME": nombre,
@@ -341,7 +348,7 @@ def _construir_valores(
         "enterprise_path": enterprise_path,
         "addon_mounts": addon_mounts,
         "addon_container_paths": [m["container_path"] for m in addon_mounts],
-        "addon_dirs_container": [m["container_path"] for m in addon_mounts],
+        "addon_dirs_container": addon_dirs_container,
         "addons_paths_list": rutas_addons_str,
         "odev_min_version": "0.2.0",
         "odev_version": __version__,

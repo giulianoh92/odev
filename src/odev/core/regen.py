@@ -1,7 +1,8 @@
 """Motor de regeneracion compartido para archivos de configuracion odev.
 
 Lee odev.yaml y el .env existente, construye un contexto unificado de templates,
-y re-renderiza docker-compose.yml y odoo.conf. Opcionalmente re-renderiza .env.
+y re-renderiza docker-compose.yml, entrypoint.sh y odoo.conf. Opcionalmente
+re-renderiza .env.
 
 Usado por: commands/reconfigure.py, commands/up.py, commands/adopt.py.
 """
@@ -9,6 +10,7 @@ Usado por: commands/reconfigure.py, commands/up.py, commands/adopt.py.
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -163,6 +165,14 @@ def construir_contexto_templates(
     rutas_addons_str = config.rutas_addons
     addon_mounts = construir_addon_mounts(rutas_addons_str, directorio_config)
 
+    # Directorios de addons montados en el contenedor que el entrypoint debe
+    # escanear en busca de requirements.txt: TODOS los mounts custom
+    # (/mnt/extra-addons, /mnt/extra-addons-1, -2, ...) mas enterprise si
+    # esta habilitado.
+    addon_dirs_container = [m["container_path"] for m in addon_mounts]
+    if enterprise_habilitado:
+        addon_dirs_container.append("/mnt/enterprise-addons")
+
     nombre = config.nombre_proyecto or directorio_config.name
     modo = config.modo
 
@@ -199,7 +209,7 @@ def construir_contexto_templates(
         "enterprise_path": enterprise_path,
         "addon_mounts": addon_mounts,
         "addon_container_paths": [m["container_path"] for m in addon_mounts],
-        "addon_dirs_container": [m["container_path"] for m in addon_mounts],
+        "addon_dirs_container": addon_dirs_container,
         "addons_paths_list": rutas_addons_str,
         "odev_min_version": config.version_minima,
         "services_pgweb": config.pgweb_habilitado,
@@ -304,6 +314,18 @@ def regenerar_configuracion(
         success("docker-compose.yml (regenerado)")
     else:
         resultado.archivos_sin_cambios.append(ruta_compose)
+
+    # 4b. Renderizar entrypoint.sh (debe reflejar TODOS los mounts de addons
+    # actuales, no solo los que existian cuando se genero por primera vez).
+    ruta_entrypoint = dir_config / "entrypoint.sh"
+    contenido_anterior_entrypoint = ruta_entrypoint.read_text() if ruta_entrypoint.exists() else ""
+    _renderizar_template("entrypoint.sh.j2", ruta_entrypoint, valores)
+    os.chmod(ruta_entrypoint, 0o755)
+    if ruta_entrypoint.read_text() != contenido_anterior_entrypoint:
+        resultado.archivos_regenerados.append(ruta_entrypoint)
+        success("entrypoint.sh (regenerado)")
+    else:
+        resultado.archivos_sin_cambios.append(ruta_entrypoint)
 
     # 5. Renderizar odoo.conf
     ruta_odoo_conf = dir_config / "config" / "odoo.conf"
