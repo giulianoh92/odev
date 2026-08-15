@@ -10,7 +10,7 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from odev.core.project import ProjectConfig, _mezclar_profundo
+from odev.core.project import ProjectConfig, _mezclar_profundo, resolver_ruta_yaml
 
 
 class TestProjectConfig:
@@ -149,6 +149,31 @@ class TestProjectConfig:
         pc = ProjectConfig(tmp_path)
 
         assert pc.ruta_enterprise == "./enterprise"
+
+
+class TestResolverRutaYaml:
+    """Tests para la funcion resolver_ruta_yaml() (resolucion dual de nombre de archivo)."""
+
+    def test_prefiere_punto_cuando_ambos_existen(self, tmp_path):
+        """Si existen .odev.yaml y odev.yaml, prioriza el archivo con punto."""
+        (tmp_path / ".odev.yaml").write_text("project:\n  name: dotted\n")
+        (tmp_path / "odev.yaml").write_text("project:\n  name: undotted\n")
+
+        ruta = resolver_ruta_yaml(tmp_path)
+
+        assert ruta == tmp_path / ".odev.yaml"
+
+    def test_resuelve_odev_yaml_sin_punto_modo_external(self, tmp_path):
+        """Resuelve odev.yaml (sin punto) cuando .odev.yaml no existe (modo external)."""
+        (tmp_path / "odev.yaml").write_text("project:\n  name: external\n")
+
+        ruta = resolver_ruta_yaml(tmp_path)
+
+        assert ruta == tmp_path / "odev.yaml"
+
+    def test_retorna_none_si_no_existe_ninguno(self, tmp_path):
+        """Retorna None si no existe ni .odev.yaml ni odev.yaml."""
+        assert resolver_ruta_yaml(tmp_path) is None
 
 
 class TestMezclarProfundo:

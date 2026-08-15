@@ -180,6 +180,30 @@ def _validar_esquema(datos: dict, ruta_archivo: Path) -> list[str]:
     return advertencias
 
 
+def resolver_ruta_yaml(directorio: Path) -> Path | None:
+    """Resuelve la ruta al archivo de configuracion del proyecto.
+
+    Soporta ambos nombres de archivo usados por odev:
+    - ".odev.yaml" (proyectos inline, dentro del directorio de trabajo)
+    - "odev.yaml"  (proyectos externos adoptados, en ~/.odev/projects/<nombre>/)
+
+    Si ambos existen, prioriza ".odev.yaml".
+
+    Argumentos:
+        directorio: Directorio donde buscar el archivo de configuracion.
+
+    Retorna:
+        Path al archivo encontrado, o None si no existe ninguno de los dos.
+    """
+    ruta_con_punto = directorio / ".odev.yaml"
+    ruta_sin_punto = directorio / "odev.yaml"
+    if ruta_con_punto.exists():
+        return ruta_con_punto
+    if ruta_sin_punto.exists():
+        return ruta_sin_punto
+    return None
+
+
 class ProjectConfig:
     """Configuracion de un proyecto odev cargada desde .odev.yaml.
 
@@ -200,17 +224,13 @@ class ProjectConfig:
         # Soporte para ambos nombres de archivo:
         # - ".odev.yaml" (proyectos inline, dentro del directorio de trabajo)
         # - "odev.yaml"  (proyectos externos adoptados, en ~/.odev/projects/<nombre>/)
-        ruta_con_punto = ruta_proyecto / ".odev.yaml"
-        ruta_sin_punto = ruta_proyecto / "odev.yaml"
-        if ruta_con_punto.exists():
-            self.ruta_archivo = ruta_con_punto
-        elif ruta_sin_punto.exists():
-            self.ruta_archivo = ruta_sin_punto
-        else:
+        ruta_resuelta = resolver_ruta_yaml(ruta_proyecto)
+        if ruta_resuelta is None:
             raise FileNotFoundError(
                 f"No se encontro .odev.yaml ni odev.yaml en {ruta_proyecto}. "
                 "Ejecuta 'odev init' para crear un proyecto."
             )
+        self.ruta_archivo = ruta_resuelta
         with open(self.ruta_archivo, encoding="utf-8") as archivo:
             datos_crudos = yaml.safe_load(archivo) or {}
         # Validar esquema basico del YAML

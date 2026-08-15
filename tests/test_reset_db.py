@@ -196,3 +196,63 @@ class TestResetDbDryRun:
             reset_db(neutralize=True, yes=True, dry_run=True)
 
         mock_confirm.assert_not_called()
+
+
+# ─── Regen antes de dc.up() (bug: odev.yaml editado no se propagaba) ──────────
+
+
+class TestResetDbRegeneraAntesDeUp:
+    """Verifica que reset-db regenera la configuracion antes de dc.up() si esta stale."""
+
+    def test_regenera_configuracion_cuando_esta_desactualizada(self, tmp_path: Path) -> None:
+        """Si necesita_regeneracion() es True, regenerar_configuracion se llama antes de dc.up()."""
+        ctx, rutas, dc = _hacer_mocks_reset_db(tmp_path)
+
+        orden_llamadas = []
+        dc.up.side_effect = lambda *a, **k: orden_llamadas.append("up")
+
+        with (
+            patch("odev.commands.reset_db.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.reset_db.obtener_rutas", return_value=rutas),
+            patch("odev.commands.reset_db.obtener_docker", return_value=dc),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch(
+                "odev.commands.reset_db.necesita_regeneracion", return_value=True
+            ) as mock_necesita,
+            patch("odev.commands.reset_db.regenerar_configuracion") as mock_regenerar,
+        ):
+            mock_regenerar.side_effect = lambda *a, **k: (
+                orden_llamadas.append("regen") or MagicMock(archivos_regenerados=[])
+            )
+
+            from odev.commands.reset_db import reset_db
+
+            reset_db(neutralize=False, yes=True, dry_run=False)
+
+        mock_necesita.assert_called_once_with(ctx)
+        mock_regenerar.assert_called_once_with(ctx)
+        dc.up.assert_called_once()
+        # La regeneracion debe ocurrir ANTES de dc.up()
+        assert orden_llamadas == ["regen", "up"]
+
+    def test_no_regenera_cuando_esta_actualizada(self, tmp_path: Path) -> None:
+        """Si necesita_regeneracion() es False, no se llama a regenerar_configuracion."""
+        ctx, rutas, dc = _hacer_mocks_reset_db(tmp_path)
+
+        with (
+            patch("odev.commands.reset_db.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.reset_db.obtener_rutas", return_value=rutas),
+            patch("odev.commands.reset_db.obtener_docker", return_value=dc),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch(
+                "odev.commands.reset_db.necesita_regeneracion", return_value=False
+            ) as mock_necesita,
+            patch("odev.commands.reset_db.regenerar_configuracion") as mock_regenerar,
+        ):
+            from odev.commands.reset_db import reset_db
+
+            reset_db(neutralize=False, yes=True, dry_run=False)
+
+        mock_necesita.assert_called_once_with(ctx)
+        mock_regenerar.assert_not_called()
+        dc.up.assert_called_once()

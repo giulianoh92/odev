@@ -19,6 +19,7 @@ from odev.core.neutralize import (
     neutralizar_base_datos,
     resetear_credenciales_admin,
 )
+from odev.core.regen import necesita_regeneracion, regenerar_configuracion
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,12 @@ def reset_db(
 
     info("Deteniendo contenedores y eliminando volumenes...")
     dc.down(volumes=True)
+
+    if necesita_regeneracion(contexto):
+        warning("odev.yaml cambio desde la ultima regeneracion. Regenerando configuracion...")
+        resultado_regen = regenerar_configuracion(contexto)
+        if resultado_regen.archivos_regenerados:
+            info(f"Regenerado: {', '.join(a.name for a in resultado_regen.archivos_regenerados)}")
 
     info("Iniciando entorno limpio...")
     dc.up()

@@ -10,6 +10,7 @@ import typer
 
 from odev.commands._helpers import requerir_proyecto
 from odev.core.console import error, info, success, warning
+from odev.core.project import resolver_ruta_yaml
 from odev.core.regen import RegenResult, regenerar_configuracion
 
 
@@ -36,11 +37,11 @@ def reconfigure(
 
     contexto = requerir_proyecto(obtener_nombre_proyecto())
 
-    # Verificar que odev.yaml existe (no se puede reconfigurar sin el)
-    ruta_yaml = contexto.directorio_config / ".odev.yaml"
-    if not ruta_yaml.exists():
+    # Verificar que el archivo de configuracion existe (no se puede reconfigurar sin el)
+    ruta_yaml = resolver_ruta_yaml(contexto.directorio_config)
+    if ruta_yaml is None:
         error(
-            f"No se encontro .odev.yaml en '{contexto.directorio_config}'. "
+            f"No se encontro .odev.yaml ni odev.yaml en '{contexto.directorio_config}'. "
             "No se puede reconfigurar sin el archivo de configuracion. "
             "Ejecuta 'odev init' o 'odev adopt' primero."
         )

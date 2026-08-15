@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
+
+import yaml
 
 from odev.core.project import ProjectConfig
 from odev.core.regen import (
@@ -128,6 +131,37 @@ class TestNecesitaRegeneracion:
         )
 
         assert necesita_regeneracion(ctx) is False
+
+
+class TestReconfigureModoExternal:
+    """Verifica que 'odev reconfigure' funciona en proyectos external (odev.yaml sin punto)."""
+
+    def test_reconfigure_succeeds_with_undotted_yaml(self, tmp_path: Path) -> None:
+        """No debe fallar con 'No se encontro .odev.yaml' cuando solo existe odev.yaml sin punto."""
+        config_yaml = {
+            "odoo": {"version": "19.0", "image": "odoo:19"},
+            "project": {"name": "external-test"},
+        }
+        (tmp_path / "odev.yaml").write_text(yaml.dump(config_yaml))
+        (tmp_path / ".env").write_text("PROJECT_NAME=external-test\n")
+
+        config = ProjectConfig(tmp_path)
+        ctx = ProjectContext(
+            nombre="external-test",
+            modo=ModoProyecto.EXTERNAL,
+            directorio_config=tmp_path,
+            directorio_trabajo=tmp_path,
+            config=config,
+        )
+
+        with (
+            patch("odev.commands.reconfigure.requerir_proyecto", return_value=ctx),
+            patch("odev.main.obtener_nombre_proyecto", return_value="external-test"),
+        ):
+            from odev.commands.reconfigure import reconfigure
+
+            # No debe lanzar typer.Exit por "No se encontro .odev.yaml"
+            reconfigure(include_env=False, dry_run=False)
 
 
 class TestRegenResult:

@@ -186,6 +186,48 @@ class TestNecesitaRegeneracion:
 
         assert necesita_regeneracion(ctx) is False
 
+    def test_odev_yaml_sin_punto_mas_nuevo_dispara_regen(self, tmp_path: Path) -> None:
+        """External-mode layout: odev.yaml (sin punto) mas nuevo dispara regen.
+
+        Los proyectos external (~/.odev/projects/<nombre>/) guardan su config
+        como 'odev.yaml' sin punto inicial. necesita_regeneracion debe detectar
+        ese archivo igual que detecta '.odev.yaml' en proyectos inline.
+        """
+        (tmp_path / "odev.yaml").write_text("project:\n  name: external-test\n")
+        (tmp_path / "docker-compose.yml").write_text("services:\n  web:\n    image: odoo:19\n")
+        (tmp_path / "config").mkdir()
+        (tmp_path / "config" / "odoo.conf").write_text("[options]\n")
+
+        time.sleep(0.05)
+        ruta_yaml = tmp_path / "odev.yaml"
+        ruta_yaml.write_text(ruta_yaml.read_text())
+
+        from odev.core.resolver import ModoProyecto, ProjectContext
+        ctx = ProjectContext(
+            nombre="test-external", modo=ModoProyecto.EXTERNAL,
+            directorio_config=tmp_path,
+            directorio_trabajo=tmp_path,
+            config=None,
+        )
+
+        assert necesita_regeneracion(ctx) is True
+
+    def test_odev_yaml_con_punto_sigue_funcionando(self, proyecto_con_config: Path) -> None:
+        """Regresion: .odev.yaml (con punto, modo inline) sigue disparando regen."""
+        time.sleep(0.05)
+        ruta_yaml = proyecto_con_config / ".odev.yaml"
+        ruta_yaml.write_text(ruta_yaml.read_text())
+
+        from odev.core.resolver import ModoProyecto, ProjectContext
+        ctx = ProjectContext(
+            nombre="test", modo=ModoProyecto.INLINE,
+            directorio_config=proyecto_con_config,
+            directorio_trabajo=proyecto_con_config,
+            config=None,
+        )
+
+        assert necesita_regeneracion(ctx) is True
+
 
 class TestRegenerarConfiguracion:
     """Tests for regenerar_configuracion()."""

@@ -21,7 +21,7 @@ from odev.core.config import (
 )
 from odev.core.console import success
 from odev.core.paths import get_project_templates_dir
-from odev.core.project import ProjectConfig
+from odev.core.project import ProjectConfig, resolver_ruta_yaml
 from odev.core.resolver import ProjectContext
 
 logger = logging.getLogger(__name__)
@@ -216,9 +216,10 @@ def construir_contexto_templates(
 def necesita_regeneracion(contexto: ProjectContext) -> bool:
     """Verifica si los archivos generados necesitan ser regenerados.
 
-    Compara el mtime de .odev.yaml contra los archivos generados
-    (docker-compose.yml, odoo.conf). Si .odev.yaml es mas nuevo que
-    alguno de ellos, retorna True.
+    Compara el mtime del archivo de configuracion (.odev.yaml u odev.yaml,
+    resuelto via resolver_ruta_yaml) contra los archivos generados
+    (docker-compose.yml, odoo.conf). Si el archivo de configuracion es
+    mas nuevo que alguno de ellos, retorna True.
 
     Argumentos:
         contexto: Contexto del proyecto resuelto.
@@ -227,9 +228,9 @@ def necesita_regeneracion(contexto: ProjectContext) -> bool:
         True si se necesita regenerar, False si todo esta actualizado.
     """
     dir_config = contexto.directorio_config
-    ruta_yaml = dir_config / ".odev.yaml"
+    ruta_yaml = resolver_ruta_yaml(dir_config)
 
-    if not ruta_yaml.exists():
+    if ruta_yaml is None:
         return False
 
     mtime_yaml = ruta_yaml.stat().st_mtime
