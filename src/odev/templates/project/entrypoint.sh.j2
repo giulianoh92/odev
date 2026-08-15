@@ -72,9 +72,23 @@ ADDONS_DIRS="/mnt/extra-addons /mnt/enterprise-addons"
 {% endif %}
 REQ_FILES=$(find $ADDONS_DIRS -maxdepth 3 -name 'requirements.txt' -not -empty 2>/dev/null || true)
 if [ -n "$REQ_FILES" ]; then
+    # Si algun requirements.txt depende de un paquete git+ (ej. pyafipws), pip
+    # lo necesita para clonar el repo. La imagen base de Odoo no trae git, y
+    # sin este chequeo el pip install fallaria en silencio mas abajo.
+    if grep -q 'git+' $REQ_FILES 2>/dev/null && ! command -v git > /dev/null 2>&1; then
+        if [ "$(id -u)" = "0" ]; then
+            echo "Detectada dependencia git+ en requirements.txt: instalando git..."
+            apt-get update && apt-get install -y --no-install-recommends git
+        else
+            echo "ADVERTENCIA: hay dependencias git+ en requirements.txt pero git no esta instalado y este proceso no corre como root para instalarlo." >&2
+        fi
+    fi
+
     echo "Instalando dependencias Python de los archivos requirements.txt de addons..."
     for req in $REQ_FILES; do
-        pip install --break-system-packages --quiet -r "$req" 2>/dev/null || true
+        if ! pip install --break-system-packages --quiet -r "$req"; then
+            echo "ADVERTENCIA: fallo la instalacion de dependencias de $req" >&2
+        fi
     done
 fi
 

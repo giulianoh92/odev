@@ -134,3 +134,52 @@ def test_env_contiene_variables_clave(entorno_jinja, valores_minimos):
     assert "ODOO_VERSION" in resultado
     assert "DB_NAME" in resultado
     assert "WEB_PORT" in resultado
+
+
+def test_entrypoint_instala_git_si_falta_para_dependencias_git_plus(
+    entorno_jinja, valores_minimos
+):
+    """Bug: requirements con git+ fallan en silencio si la imagen no trae git.
+
+    El entrypoint debe detectar, entre los requirements.txt encontrados, si
+    alguno tiene una dependencia git+ y, si el binario git no esta presente,
+    instalarlo via apt-get (solo si corre como root; si no, advertir en vez
+    de fallar).
+    """
+    template = entorno_jinja.get_template("entrypoint.sh.j2")
+    resultado = template.render(**valores_minimos)
+
+    assert "git+" in resultado
+    assert "command -v git" in resultado
+    assert '"$(id -u)" = "0"' in resultado
+    assert "apt-get install -y --no-install-recommends git" in resultado
+
+
+def test_entrypoint_no_falla_en_silencio_si_pip_install_falla(entorno_jinja, valores_minimos):
+    """Bug: pip install de requirements.txt tenia `2>/dev/null || true`, silenciando errores."""
+    template = entorno_jinja.get_template("entrypoint.sh.j2")
+    resultado = template.render(**valores_minimos)
+
+    assert 'pip install --break-system-packages --quiet -r "$req" 2>/dev/null || true' not in (
+        resultado
+    )
+    # El fallo debe quedar visible (log/warning), no desaparecer.
+    assert "fallo la instalacion de dependencias" in resultado
+
+
+def test_entrypoint_renderizado_es_bash_valido(entorno_jinja, valores_minimos, tmp_path):
+    """El entrypoint.sh renderizado debe ser sintacticamente valido (bash -n)."""
+    import subprocess
+
+    template = entorno_jinja.get_template("entrypoint.sh.j2")
+    resultado = template.render(**valores_minimos)
+
+    ruta_script = tmp_path / "entrypoint.sh"
+    ruta_script.write_text(resultado)
+
+    proceso = subprocess.run(
+        ["bash", "-n", str(ruta_script)],
+        capture_output=True,
+        text=True,
+    )
+    assert proceso.returncode == 0, proceso.stderr
