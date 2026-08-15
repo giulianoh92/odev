@@ -130,4 +130,17 @@ echo "Iniciando Odoo con comando: $CMD ${ARGS[*]}"
 
 # Ejecutar Odoo y duplicar la salida al archivo de log manteniendo stderr para los logs de Docker.
 # Usar exec para reemplazar el shell, con sustitucion de proceso para tee al archivo de log.
-exec $CMD "${ARGS[@]}" > >(tee -a "$LOG_FILE") 2>&1
+if [ "$(id -u)" = "0" ]; then
+    # Patron root-then-drop: el contenedor arranco como root (necesario mas
+    # arriba para poder instalar paquetes de sistema via apt-get), pero
+    # Odoo no debe quedar corriendo como root. setpriv esta presente en la
+    # imagen odoo:19 (gosu no lo esta) y baja uid/gid a odoo inicializando
+    # sus grupos suplementarios. Exportar HOME es necesario: sin esto el
+    # proceso hereda el HOME de root y pip/user-site apuntan mal.
+    export HOME=/var/lib/odoo
+    exec setpriv --reuid=odoo --regid=odoo --init-groups "$CMD" "${ARGS[@]}" > >(tee -a "$LOG_FILE") 2>&1
+else
+    # Override del usuario en docker-compose (no root): se mantiene el
+    # exec directo, sin drop de privilegios.
+    exec $CMD "${ARGS[@]}" > >(tee -a "$LOG_FILE") 2>&1
+fi

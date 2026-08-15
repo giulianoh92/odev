@@ -29,6 +29,14 @@ services:
   web:
     image: ${ODOO_IMAGE}
     restart: unless-stopped
+    # Patron root-then-drop (estandar docker, como postgres/redis oficial):
+    # arranca como root para que el entrypoint pueda instalar paquetes de
+    # sistema (ej. git para deps git+ de requirements.txt) y recien al
+    # final baja privilegios al usuario odoo via setpriv antes de ejecutar
+    # Odoo. La imagen odoo:19 arranca como usuario odoo (uid 100) por
+    # default, nunca como root, por lo que sin esto esa instalacion nunca
+    # se ejecuta.
+    user: root
     depends_on:
       db:
         condition: service_healthy

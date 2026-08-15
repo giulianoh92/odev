@@ -119,6 +119,23 @@ def test_docker_compose_con_enterprise(entorno_jinja, valores_minimos):
     assert "enterprise" in resultado
 
 
+def test_docker_compose_web_corre_como_root(entorno_jinja, valores_minimos):
+    """El servicio web debe arrancar con user: root (patron root-then-drop).
+
+    La imagen oficial odoo:19 arranca como usuario odoo (uid 100) por
+    default, nunca como root. Sin `user: root`, la rama del entrypoint que
+    instala paquetes de sistema (ej. git para deps git+) queda muerta:
+    `id -u` nunca da 0 y el pip install de requirements git+ sigue fallando.
+    """
+    template = entorno_jinja.get_template("docker-compose.yml.j2")
+    resultado = template.render(**valores_minimos)
+
+    inicio = resultado.index("\n  web:\n")
+    fin = resultado.index("\n  pgweb:\n", inicio)
+    bloque_web = resultado[inicio:fin]
+    assert "user: root" in bloque_web
+
+
 def test_odoo_conf_contiene_addons_path(entorno_jinja, valores_minimos):
     """El odoo.conf renderizado contiene la configuracion de addons_path."""
     template = entorno_jinja.get_template("odoo.conf.j2")
@@ -171,6 +188,58 @@ def test_entrypoint_renderizado_es_bash_valido(entorno_jinja, valores_minimos, t
     """El entrypoint.sh renderizado debe ser sintacticamente valido (bash -n)."""
     import subprocess
 
+    template = entorno_jinja.get_template("entrypoint.sh.j2")
+    resultado = template.render(**valores_minimos)
+
+    ruta_script = tmp_path / "entrypoint.sh"
+    ruta_script.write_text(resultado)
+
+    proceso = subprocess.run(
+        ["bash", "-n", str(ruta_script)],
+        capture_output=True,
+        text=True,
+    )
+    assert proceso.returncode == 0, proceso.stderr
+
+
+def test_entrypoint_dropea_privilegios_a_odoo_via_setpriv(entorno_jinja, valores_minimos):
+    """El entrypoint debe bajar privilegios a odoo antes de ejecutar Odoo.
+
+    Con el servicio web arrancando como root (para poder instalar paquetes
+    de sistema), el proceso final de Odoo no debe quedar corriendo como
+    root: se usa setpriv (presente en la imagen odoo:19; gosu no lo esta)
+    para bajar a uid/gid odoo, exportando HOME para que pip/user-site
+    apunten al directorio correcto en vez de heredar el HOME de root.
+    """
+    template = entorno_jinja.get_template("entrypoint.sh.j2")
+    resultado = template.render(**valores_minimos)
+
+    assert "setpriv --reuid=odoo --regid=odoo --init-groups" in resultado
+    assert "export HOME=/var/lib/odoo" in resultado
+    # Si no corre como root (override del usuario en compose), se mantiene
+    # el exec directo sin setpriv.
+    assert '"$(id -u)" = "0"' in resultado
+
+
+def test_entrypoint_debugpy_tambien_dropea_privilegios(entorno_jinja, valores_minimos):
+    """La variante debugpy tambien debe pasar por el drop de privilegios.
+
+    CMD/ARGS son compartidos entre la variante normal y la de debugpy, asi
+    que ambas rutas deben terminar en el mismo exec con setpriv.
+    """
+    valores_minimos["DEBUGPY"] = "True"
+    template = entorno_jinja.get_template("entrypoint.sh.j2")
+    resultado = template.render(**valores_minimos)
+
+    assert "setpriv --reuid=odoo --regid=odoo --init-groups" in resultado
+    assert '"$CMD" "${ARGS[@]}"' in resultado
+
+
+def test_entrypoint_debugpy_renderizado_es_bash_valido(entorno_jinja, valores_minimos, tmp_path):
+    """La variante debugpy tambien debe ser sintacticamente valida (bash -n)."""
+    import subprocess
+
+    valores_minimos["DEBUGPY"] = "True"
     template = entorno_jinja.get_template("entrypoint.sh.j2")
     resultado = template.render(**valores_minimos)
 
