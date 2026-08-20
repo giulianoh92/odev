@@ -50,6 +50,10 @@ Issues = "https://github.com/giuliano/odev/issues"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Los tests importan odev desde el repo, no desde una instalacion. Sin esto,
+# `pytest` toma cualquier odev que haya en site-packages (o falla si no hay
+# ninguno) y colecciona con ImportError sobre simbolos que si existen en src/.
+pythonpath = ["src"]
 norecursedirs = ["src/odev/templates"]
 filterwarnings = [
     "ignore::pytest.PytestCollectionWarning",
