@@ -11,7 +11,7 @@ import typer
 
 from odev.core.console import error, info, warning
 from odev.core.detect import detectar_layout
-from odev.core.docker import DockerCompose
+from odev.core.docker import USUARIO_ODOO, DockerCompose
 from odev.core.paths import ProjectPaths
 from odev.core.resolver import (
     ProjectContext,
@@ -309,7 +309,9 @@ def ejecutar_odoo_compacto(
     """
     from odev.core.odoo_log_filter import filter_odoo_log
 
-    stdout_bytes, stderr_bytes, returncode = dc.exec_capture(service, comando)
+    stdout_bytes, stderr_bytes, returncode = dc.exec_capture(
+        service, comando, user=USUARIO_ODOO
+    )
     texto = (stdout_bytes + stderr_bytes).decode("utf-8", errors="replace")
     filtrado = filter_odoo_log(texto.splitlines())
 

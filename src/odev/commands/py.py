@@ -27,6 +27,7 @@ from odev.commands._helpers import (
 from odev.commands._odoo_shell import _BANNER_LINE_RE, _strip_banner  # noqa: F401
 from odev.core.config import load_env
 from odev.core.console import error
+from odev.core.docker import USUARIO_ODOO
 
 
 def _execute_py(contexto, expression: str) -> str:
@@ -65,7 +66,7 @@ def _execute_py(contexto, expression: str) -> str:
     ]
 
     dc = obtener_docker(contexto)
-    result = dc.exec_cmd("web", args, interactive=False, stdin_data=script)
+    result = dc.exec_cmd("web", args, interactive=False, stdin_data=script, user=USUARIO_ODOO)
     stdout = result.stdout or b""
     stderr = result.stderr or b""
     returncode = result.returncode
@@ -102,7 +103,9 @@ def _run_py(expression: str, keep_banner: bool = False) -> None:
         ]
         dc = obtener_docker(contexto)
         try:
-            result = dc.exec_cmd("web", args, interactive=False, stdin_data=script)
+            result = dc.exec_cmd(
+                "web", args, interactive=False, stdin_data=script, user=USUARIO_ODOO
+            )
             stdout = result.stdout or b""
             stderr = result.stderr or b""
             returncode = result.returncode

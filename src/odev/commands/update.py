@@ -11,6 +11,7 @@ from odev.commands._helpers import (
     validar_modulos,
 )
 from odev.core.config import load_env
+from odev.core.docker import USUARIO_ODOO
 
 
 def update(
@@ -56,7 +57,7 @@ def update(
 
     if verbose:
         # Ruta pre-0.7.0: log crudo interactivo, sin filtro ni exit code derivado
-        dc.exec_cmd("web", comando, interactive=True)
+        dc.exec_cmd("web", comando, interactive=True, user=USUARIO_ODOO)
         codigo_final = 0
     else:
         codigo_final = ejecutar_odoo_compacto(dc, "web", comando, cantidad_modulos=len(modulos))
@@ -64,7 +65,32 @@ def update(
     info("Reiniciando servicio web...")
     dc.restart("web")
 
+    _reasegurar_configuracion_local(dc, valores_env)
+
     if codigo_final != 0:
         error(f"Actualizacion de '{modulos_csv}' termino con errores (exit {codigo_final}).")
         raise typer.Exit(codigo_final)
     success(f"Modulo(s) '{modulos_csv}' actualizado(s) y servicio web reiniciado.")
+
+
+def _reasegurar_configuracion_local(dc, valores_env: dict) -> None:
+    """Revalida el invariante de configuracion local sobre la base.
+
+    Instalar o actualizar modulos toca la base y reinicia web, asi que es el
+    momento exacto para confirmar que report.url sigue apuntando al puerto
+    interno del contenedor y que MailHog sigue siendo el unico servidor de
+    correo activo. Es idempotente: si ya estaba bien no escribe nada.
+    """
+    from odev.core.console import info, warning
+    from odev.core.neutralize import asegurar_entorno_desarrollo
+
+    nombre_bd = valores_env.get("DB_NAME", "odoo_db")
+    usuario_bd = valores_env.get("DB_USER", "odoo")
+    puerto_web = valores_env.get("WEB_PORT", "8069")
+    try:
+        resultado = asegurar_entorno_desarrollo(dc, nombre_bd, usuario_bd, puerto_web)
+    except (OSError, ValueError) as exc:
+        warning(f"No se pudo revalidar la configuracion local: {exc}")
+        return
+    if resultado == "aplicado":
+        info("Configuracion local restablecida (report.url, MailHog).")

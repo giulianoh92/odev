@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 
 from odev.core.console import info, success
-from odev.core.docker import DockerCompose
+from odev.core.docker import USUARIO_ODOO, DockerCompose
 
 _PATRON_NOMBRE_BD = re.compile(r"^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$")
 _PATRON_PUERTO = re.compile(r"^\d+$")
@@ -89,6 +89,7 @@ def neutralizar_base_datos(
             nombre_bd,
         ],
         interactive=True,
+        user=USUARIO_ODOO,
     )
     success("Base de datos neutralizada.")
 
@@ -219,11 +220,65 @@ def configurar_servidor_correo_mailhog(
     success(f"Servidor de correo: {CORREO_MAILHOG_HOST}:{CORREO_MAILHOG_PUERTO} (MailHog).")
 
 
+def esperar_base_lista(
+    dc: DockerCompose,
+    nombre_bd: str,
+    usuario_bd: str,
+    intentos: int = 60,
+    intervalo: int = 5,
+) -> bool:
+    """Espera a que la base tenga esquema de Odoo, sin abortar el comando.
+
+    `docker compose up` retorna en cuanto los contenedores arrancan, pero Odoo
+    crea la base e instala `base` recien despues — segundos en el mejor caso,
+    minutos cuando el entrypoint todavia esta instalando requirements de los
+    addons. Consultar la configuracion antes de eso devuelve un fallo de psql
+    que no significa "no hay nada que hacer" sino "todavia no se puede saber".
+
+    A diferencia del sondeo de reset-db, esta funcion NO lanza typer.Exit: el
+    caller decide si avisa, reintenta o sigue.
+
+    Argumentos:
+        dc: Instancia de DockerCompose configurada para el proyecto.
+        nombre_bd: Nombre de la base de datos.
+        usuario_bd: Usuario de la base de datos.
+        intentos: Numero maximo de sondeos.
+        intervalo: Segundos entre sondeos.
+
+    Retorna:
+        True si la base quedo lista, False si se agotaron los intentos.
+
+    Lanza:
+        ValueError: Si el nombre de base es invalido.
+    """
+    import time
+
+    _validar_nombre_bd(nombre_bd)
+    sql_check = (
+        "SELECT EXISTS (SELECT 1 FROM information_schema.tables "
+        "WHERE table_name = 'ir_config_parameter');"
+    )
+    for i in range(intentos):
+        stdout, _stderr, codigo = dc.exec_capture(
+            "db",
+            ["psql", "-U", usuario_bd, "-d", nombre_bd, "-tAc", sql_check],
+        )
+        if codigo == 0 and stdout.decode(errors="replace").strip() == "t":
+            return True
+        if i < intentos - 1:
+            info(f"  Esperando inicializacion de '{nombre_bd}'... ({i + 1}/{intentos})")
+            time.sleep(intervalo)
+    return False
+
+
 def asegurar_entorno_desarrollo(
     dc: DockerCompose,
     nombre_bd: str,
     usuario_bd: str,
     puerto_web: str = "8069",
+    esperar: bool = False,
+    intentos: int = 60,
+    intervalo: int = 5,
 ) -> str:
     """Verifica y aplica parametros de desarrollo y MailHog si hace falta.
 
@@ -237,6 +292,11 @@ def asegurar_entorno_desarrollo(
         nombre_bd: Nombre de la base de datos.
         usuario_bd: Usuario de la base de datos.
         puerto_web: Puerto web publicado en el host.
+        esperar: Si True y la base no responde, espera a que Odoo la cree
+            antes de decidir. Necesario en `odev up`, donde la base nace
+            despues de que `docker compose up` retorna.
+        intentos: Sondeos maximos de la espera.
+        intervalo: Segundos entre sondeos.
 
     Retorna:
         'omitido' si la base no esta lista, 'sin_cambios' si ya estaba
@@ -261,6 +321,15 @@ def asegurar_entorno_desarrollo(
         "db",
         ["psql", "-U", usuario_bd, "-d", nombre_bd, "-tAc", sql_estado],
     )
+    if codigo != 0 and esperar:
+        # La base todavia no existe: Odoo la crea despues de `compose up`.
+        # Esperarla es lo que convierte la garantia en garantia.
+        if not esperar_base_lista(dc, nombre_bd, usuario_bd, intentos, intervalo):
+            return "omitido"
+        stdout, _stderr, codigo = dc.exec_capture(
+            "db",
+            ["psql", "-U", usuario_bd, "-d", nombre_bd, "-tAc", sql_estado],
+        )
     if codigo != 0:
         return "omitido"
     estado = stdout.decode().strip()

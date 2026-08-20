@@ -23,6 +23,18 @@ from typing import TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
 
+USUARIO_ODOO = "odoo"
+"""Usuario no-root de la imagen oficial odoo:*.
+
+El contenedor arranca como root para que el entrypoint pueda instalar
+paquetes de sistema y requirements de los addons, y recien al final baja
+privilegios a este usuario via setpriv. Por eso todo `docker compose exec`
+entra como ROOT: un Odoo ejecutado asi crea shards del filestore con owner
+root que el servidor de larga vida (que corre como odoo) ya no puede
+escribir — los bundles de assets dejan de archivarse y los reportes salen
+sin estilos. Todo comando que ejecute Odoo debe pasar user=USUARIO_ODOO.
+"""
+
 if TYPE_CHECKING:
     from odev.core.resolver import ProjectContext
 
@@ -36,6 +48,7 @@ class DockerCompose:
     """
 
     _PATRON_SERVICIO = re.compile(r"^[a-zA-Z0-9_-]+$")
+    _PATRON_USUARIO = re.compile(r"^[a-zA-Z0-9_.:-]+$")
 
     def __init__(self, project_root: Path | None = None) -> None:
         """Inicializa el wrapper de Docker Compose.
@@ -322,12 +335,35 @@ class DockerCompose:
             args.append(service)
         self._exec(args, interactive=True)
 
+    def _args_usuario(self, user: str | None) -> list[str]:
+        """Traduce `user` a los flags de docker compose exec.
+
+        Argumentos:
+            user: Usuario (o uid[:gid]) con el que ejecutar dentro del
+                contenedor. None deja el usuario por defecto de la imagen.
+
+        Retorna:
+            ['--user', <user>] o lista vacia.
+
+        Lanza:
+            ValueError: Si el usuario contiene caracteres invalidos.
+        """
+        if user is None:
+            return []
+        if not self._PATRON_USUARIO.match(user):
+            raise ValueError(
+                f"Usuario invalido: '{user}'. "
+                "Solo se permiten letras, numeros, guiones, puntos y dos puntos."
+            )
+        return ["--user", user]
+
     def exec_cmd(
         self,
         service: str,
         command: list[str],
         interactive: bool = False,
         stdin_data: bytes | None = None,
+        user: str | None = None,
     ) -> subprocess.CompletedProcess:
         """Ejecuta un comando dentro de un contenedor en ejecucion.
 
@@ -348,6 +384,7 @@ class DockerCompose:
         args = ["exec"]
         if stdin_data is not None:
             args.append("-T")
+        args.extend(self._args_usuario(user))
         args.extend([service, *command])
         if interactive:
             return self._exec(args, interactive=True)
@@ -357,6 +394,7 @@ class DockerCompose:
         self,
         service: str,
         command: list[str],
+        user: str | None = None,
     ) -> tuple[bytes, bytes, int]:
         """Ejecuta un comando dentro de un contenedor capturando stdout y stderr.
 
@@ -384,7 +422,7 @@ class DockerCompose:
                 f"Nombre de servicio invalido: '{service}'. "
                 "Solo se permiten letras, numeros, guiones y guiones bajos."
             )
-        args = ["exec", "-T", service, *command]
+        args = ["exec", "-T", *self._args_usuario(user), service, *command]
         result = self._run(args, capture=True, check=False)
         return (result.stdout, result.stderr, result.returncode)
 
@@ -392,6 +430,7 @@ class DockerCompose:
         self,
         service: str,
         command: list[str],
+        user: str | None = None,
     ) -> subprocess.Popen:
         """Ejecuta un comando dentro del contenedor capturando stdout/stderr en pipe.
 
@@ -416,7 +455,7 @@ class DockerCompose:
         cmd = [*self._cmd]
         if self._project_name:
             cmd.extend(["-p", self._project_name])
-        cmd.extend(["exec", service, *command])
+        cmd.extend(["exec", *self._args_usuario(user), service, *command])
         return subprocess.Popen(
             cmd,
             cwd=self._project_root,
@@ -429,6 +468,7 @@ class DockerCompose:
         service: str,
         command: list[str],
         stdin_file: Path,
+        user: str | None = None,
     ) -> subprocess.CompletedProcess:
         """Ejecuta un comando dentro de un contenedor pipeando stdin desde un archivo.
 
@@ -459,7 +499,7 @@ class DockerCompose:
         cmd = [*self._cmd]
         if self._project_name:
             cmd.extend(["-p", self._project_name])
-        cmd.extend(["exec", "-T", service, *command])
+        cmd.extend(["exec", "-T", *self._args_usuario(user), service, *command])
         with stdin_file.open("rb") as fp:
             proc = subprocess.Popen(
                 cmd,

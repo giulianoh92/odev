@@ -26,6 +26,7 @@ import typer
 from odev.commands._helpers import obtener_docker, requerir_proyecto
 from odev.commands._odoo_shell import _strip_banner
 from odev.core.config import load_env
+from odev.core.docker import USUARIO_ODOO
 
 # Python script template ejecutado en odoo shell.
 # %r escapa el nombre del modelo de forma segura (string Python literal).
@@ -88,6 +89,7 @@ def _execute_model_info(contexto, model: str) -> dict:
             "web",
             ["odoo", "shell", "--config=/etc/odoo/odoo.conf", "-d", nombre_bd, "--no-http"],
             stdin_data=script.encode("utf-8"),
+            user=USUARIO_ODOO,
         )
     except subprocess.CalledProcessError as exc:
         raise RuntimeError("Stack not running or DB unavailable") from exc

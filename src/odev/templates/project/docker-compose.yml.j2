@@ -108,7 +108,10 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:8081 || exit 1"]
+      # curl, no wget: la imagen sosedoff/pgweb no trae wget, y un sondeo
+      # con wget deja el servicio en unhealthy permanente aunque este
+      # sirviendo HTTP 200. -f falla ante status de error, no solo si no conecta.
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://localhost:8081/ || exit 1"]
       interval: 10s
       retries: 3
       start_period: 5s

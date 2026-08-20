@@ -91,6 +91,10 @@ def _call_update(
         patch("odev.commands.update.load_env", return_value={"DB_NAME": "test_db"}),
         patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
         patch("odev.commands._helpers.listar_modulos_disponibles", return_value=disponibles),
+        patch(
+            "odev.core.neutralize.asegurar_entorno_desarrollo",
+            return_value="sin_cambios",
+        ),
     ):
         mock_rutas.return_value.env_file = tmp_path / ".env"
         try:
@@ -128,6 +132,10 @@ def _call_install(
         patch("odev.commands.install.load_env", return_value={"DB_NAME": "test_db"}),
         patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
         patch("odev.commands._helpers.listar_modulos_disponibles", return_value=disponibles),
+        patch(
+            "odev.core.neutralize.asegurar_entorno_desarrollo",
+            return_value="sin_cambios",
+        ),
     ):
         mock_rutas.return_value.env_file = tmp_path / ".env"
         try:

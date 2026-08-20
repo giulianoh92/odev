@@ -37,6 +37,7 @@ from odev.commands._helpers import (
 )
 from odev.core.config import load_env
 from odev.core.console import error, info
+from odev.core.docker import USUARIO_ODOO
 from odev.core.test_parser import TestResult, parse_odoo_test_output
 
 # Puerto HTTP interno que bindea el proceso de test dentro del container.
@@ -278,7 +279,7 @@ def _execute_test(
         comando.extend(["--test-tags", ",".join(tag_parts)])
 
     dc = obtener_docker(contexto)
-    popen = dc.exec_cmd_stream("web", comando)
+    popen = dc.exec_cmd_stream("web", comando, user=USUARIO_ODOO)
     lines, _ = _stream_and_collect(popen)
     result = parse_odoo_test_output(lines)
 
@@ -399,11 +400,11 @@ def _run_test(
             info(f"Ejecutando tests del modulo: {module}")
         else:
             info("Ejecutando todos los tests (esto puede tomar un rato)...")
-        dc.exec_cmd("web", comando, interactive=True)
+        dc.exec_cmd("web", comando, interactive=True, user=USUARIO_ODOO)
         return
 
     # Ruta con stream y parseo
-    popen = dc.exec_cmd_stream("web", comando)
+    popen = dc.exec_cmd_stream("web", comando, user=USUARIO_ODOO)
     lines, returncode = _stream_and_collect(popen, save_log_path=save_log, echo=verbose)
     result = parse_odoo_test_output(lines)
 

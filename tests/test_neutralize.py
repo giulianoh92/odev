@@ -47,6 +47,7 @@ class TestNeutralizarBaseDatos:
                 "-d", "odoo_db",
             ],
             interactive=True,
+            user="odoo",
         )
 
     def test_usa_nombre_bd_correcto(self, dc_mock):

@@ -115,22 +115,36 @@ def _asegurar_parametros_desarrollo(
     valores_env: dict,
     puerto_web: str,
 ) -> None:
-    """Garantiza parametros de desarrollo y MailHog sobre la base existente.
+    """Garantiza parametros de desarrollo y MailHog sobre la base del proyecto.
 
     Solo escribe si algo difiere del estado esperado (para no invalidar
     caches de Odoo en cada up); en ese caso reinicia web para que los
-    workers no sirvan valores viejos desde el ormcache. Si la base no
-    esta inicializada todavia se omite en silencio: reset-db y
-    load-backup ya configuran esto al crear la base.
+    workers no sirvan valores viejos desde el ormcache.
+
+    Espera a que la base exista antes de decidir. `docker compose up` retorna
+    en cuanto los contenedores arrancan, pero Odoo crea la base recien
+    despues: consultarla antes devolvia un fallo de psql que se interpretaba
+    como "no hay nada que hacer", y el proyecto quedaba sin report.url (PDFs
+    sin estilos) y sin MailHog hasta que alguien corriera `up` una segunda
+    vez. Si aun asi no se puede garantizar, se avisa — nunca en silencio.
     """
     from odev.core.neutralize import asegurar_entorno_desarrollo
 
     nombre_bd = valores_env.get("DB_NAME", "odoo_db")
     usuario_bd = valores_env.get("DB_USER", "odoo")
     try:
-        resultado = asegurar_entorno_desarrollo(dc, nombre_bd, usuario_bd, puerto_web)
+        resultado = asegurar_entorno_desarrollo(
+            dc, nombre_bd, usuario_bd, puerto_web, esperar=True
+        )
     except (OSError, ValueError) as exc:
         warning(f"No se pudieron verificar los parametros de desarrollo: {exc}")
+        return
+    if resultado == "omitido":
+        warning(
+            f"La base '{nombre_bd}' no quedo inicializada a tiempo: report.url y "
+            "MailHog siguen sin configurar. Volve a ejecutar 'odev up' cuando "
+            "Odoo termine de crearla."
+        )
         return
     if resultado == "aplicado":
         info("Parametros de desarrollo actualizados — reiniciando web...")
