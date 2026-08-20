@@ -6,6 +6,51 @@ El formato esta basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 y este proyecto adhiere a [Versionado Semantico](https://semver.org/spec/v2.0.0.html).
 Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
 
+## [0.9.0] - 2026-08-20
+
+### Corregido
+
+- **Odoo ya no se ejecuta como root dentro del contenedor.** `docker compose exec` entra como el usuario de la imagen (root, necesario para que el entrypoint instale `git` y los `requirements.txt` de los addons), asi que todo Odoo lanzado por odev creaba shards del filestore con owner `root`. El servidor de larga vida corre como `odoo` desde 0.8.2 (`setpriv`) y por lo tanto ya no podia escribir en ellos: los bundles de assets dejaban de archivarse (`PermissionError` en `ir_attachment._file_write`), `/web/assets/*` respondia 500 y la UI quedaba en blanco. Un solo `addon-install` alcanzaba para dejar >1200 rutas inaccesibles. Ahora `addon-install`, `update`, `test`, `py`, `model-info` y `neutralize` pasan `--user odoo`. `shell` y `tui` siguen entrando como root, que es lo util para depurar.
+- **`odev up` ya no deja el proyecto sin `report.url` ni MailHog.** `asegurar_entorno_desarrollo` sondeaba la base inmediatamente despues de `compose up`, pero Odoo la crea recien segundos (o minutos, si el entrypoint todavia instala requirements) mas tarde. El fallo de psql se interpretaba como "no hay nada que hacer" y se retornaba **en silencio**, de modo que la base quedaba sin `report.url` — los PDF QWeb salian sin estilos porque wkhtmltopdf no podia bajar los bundles CSS — y sin MailHog como servidor de correo. Ahora `up` espera a que la base exista antes de decidir y, si aun asi no puede garantizar la configuracion, **avisa** en lugar de callarse.
+- **El healthcheck de pgweb ya no reporta `unhealthy` de forma permanente.** Sondeaba con `wget -q --spider`, pero la imagen `sosedoff/pgweb:0.16.2` no incluye wget: cada intento fallaba con `wget: not found` mientras el servicio respondia HTTP 200, y el falso negativo contaminaba `odev status` y `odev doctor`. Ahora usa `curl -fsS` (presente en la imagen), que ademas falla ante un status HTTP de error y no solo cuando no hay conexion. El healthcheck de MailHog queda igual: `mailhog/mailhog:v1.0.1` si trae `/usr/bin/wget`.
+
+### Agregado
+
+- `esperar_base_lista()` en `odev.core.neutralize` — sondea hasta que la base tenga esquema de Odoo y **retorna** `bool` en lugar de abortar el comando (a diferencia del sondeo de `reset-db`, que lanza `typer.Exit`). Parametros `intentos`/`intervalo`, por defecto 60 x 5s.
+- Parametros `esperar`, `intentos` e `intervalo` en `asegurar_entorno_desarrollo()`. Con `esperar=True` espera a que la base exista y vuelve a leer el estado.
+- Parametro `user` en `DockerCompose.exec_cmd`, `exec_capture`, `exec_cmd_stream` y `exec_cmd_file`, mas la constante `USUARIO_ODOO`. El usuario se valida y `--user` se emite **antes** del nombre del servicio, como exige `docker compose exec`.
+- `addon-install` y `update` revalidan la configuracion local al terminar (idempotente): instalar o actualizar modulos toca la base y reinicia web, asi que es el momento exacto para confirmar que `report.url` sigue apuntando al puerto interno y que MailHog sigue siendo el unico servidor de correo activo.
+
+### Cambiado
+
+- **Comportamiento default**: `odev up` puede tardar mas en el primer arranque de una base nueva, porque ahora espera a que Odoo termine de crearla para garantizar la configuracion local. Si la espera se agota, emite un warning explicito.
+
+## [0.8.2] - 2026-08-15
+
+### Corregido
+
+- `entrypoint`: baja privilegios a `odoo` via `setpriv` en lugar de depender de un `apt-get` que moria en contenedores no-root.
+
+## [0.8.1] - 2026-08-15
+
+### Corregido
+
+- `entrypoint`: instala `git` para las dependencias `git+` y ya no silencia los fallos de `pip install`.
+- `entrypoint`: incluye todos los mounts de addons y enterprise en `addon_dirs_container`.
+
+## [0.8.0] - 2026-08-15
+
+### Agregado
+
+- `neutralize`: `odev up` asegura los parametros de desarrollo y MailHog sobre la base existente.
+
+### Corregido
+
+- `neutralize`: `report.url` apunta al puerto interno del contenedor — con el puerto del host los PDF salen sin estilos cuando `WEB_PORT != 8069`.
+- `config`: resuelve `.odev.yaml` y `odev.yaml` en `regen`, `reconfigure` y `reset-db`.
+- `helpers`: valida modulos contra `paths.addons` del config antes de aplicar heuristicas.
+- `preflight`: reconoce contenedores propios cuando las Labels vienen en formato string.
+
 ## [0.7.0] - 2026-07-03
 
 ### Agregado
