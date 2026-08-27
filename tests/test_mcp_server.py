@@ -59,30 +59,63 @@ class TestMcpLazyImport:
 
         assert hasattr(odev.commands.mcp, "mcp_app")
 
-    def test_import_fastmcp_fails_exits_2(self, capsys):
-        """_import_fastmcp() exits 2 + stderr hint when mcp missing."""
-        to_remove = [k for k in sys.modules if "mcp.server.fastmcp" in k]
-        for k in to_remove:
-            del sys.modules[k]
+    def test_import_fastmcp_returns_class_when_available(self):
+        """Happy path: the 1.x API is present, the class comes back."""
+        pytest.importorskip("mcp.server.fastmcp", reason="mcp 1.x not installed")
 
-        with patch.dict(sys.modules, {"mcp.server.fastmcp": None, "mcp": None}):
-            import importlib
+        import odev.commands.mcp as mcp_module
 
-            to_remove2 = [k for k in sys.modules if k == "odev.commands.mcp"]
-            for k in to_remove2:
-                del sys.modules[k]
+        assert mcp_module._import_fastmcp() is not None
 
-            import odev.commands.mcp as mcp_module
+    def test_import_fastmcp_exits_2_when_mcp_absent(self, capsys):
+        """`mcp` not importable at all -> exit 2 + install hint."""
+        import typer
 
-            # Reload to clear cached module
-            importlib.reload(mcp_module)
+        import odev.commands.mcp as mcp_module
 
-            # Patch the import inside the function
-            with patch.object(mcp_module, "_import_fastmcp") as mock_import:
-                mock_import.side_effect = SystemExit(2)
-                with pytest.raises(SystemExit) as exc:
-                    mock_import()
-                assert exc.value.code == 2
+        with patch.dict(sys.modules, {"mcp": None}):
+            with pytest.raises(typer.Exit) as exc:
+                mcp_module._import_fastmcp()
+
+        assert exc.value.exit_code == 2
+        err = capsys.readouterr().err
+        assert "not installed" in err
+        assert "odev[mcp]" in err
+
+    def test_import_fastmcp_exits_2_when_api_incompatible(self, capsys):
+        """`mcp` present but 1.x API gone (SDK 2.0 dropped mcp.server.fastmcp).
+
+        Regression: the guard used to report this as "package not installed",
+        sending the operator to reinstall something already installed.
+        """
+        import typer
+
+        import odev.commands.mcp as mcp_module
+
+        # `mcp` must be cached BEFORE the patch: mcp 1.x's __init__ pulls
+        # mcp.server.fastmcp transitively, so in a cold process the patch
+        # below would break `import mcp` itself and exercise the wrong branch.
+        pytest.importorskip("mcp", reason="mcp not installed")
+
+        with patch.dict(sys.modules, {"mcp.server.fastmcp": None}):
+            with pytest.raises(typer.Exit) as exc:
+                mcp_module._import_fastmcp()
+
+        assert exc.value.exit_code == 2
+        err = capsys.readouterr().err
+        assert "not installed" not in err, "must not claim mcp is missing when it is present"
+        assert "incompatible" in err
+        assert "mcp.server.fastmcp" in err
+        assert "<2" in err, "must point at the version pin, not a bare reinstall"
+
+    def test_mcp_version_falls_back_to_unknown(self):
+        """Version lookup never raises, even without package metadata."""
+        from importlib.metadata import PackageNotFoundError
+
+        import odev.commands.mcp as mcp_module
+
+        with patch.object(mcp_module, "_pkg_version", side_effect=PackageNotFoundError):
+            assert mcp_module._mcp_version() == "unknown"
 
     def test_serve_exits_2_when_mcp_missing(self, capsys):
         """serve() writes stderr hint and exits 2 when mcp not installed."""

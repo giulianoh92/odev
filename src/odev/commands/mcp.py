@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import logging
 import sys
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 
 import typer
 
@@ -29,19 +31,45 @@ mcp_app = typer.Typer(
 # ---------------------------------------------------------------------------
 
 
-def _import_fastmcp():
-    """Lazy import. Returns FastMCP class or aborts with exit 2 + install hint."""
+def _mcp_version() -> str:
+    """Installed `mcp` version, or "unknown" when metadata is unavailable."""
     try:
-        from mcp.server.fastmcp import FastMCP  # noqa: PLC0415
+        return _pkg_version("mcp")
+    except PackageNotFoundError:
+        return "unknown"
 
-        return FastMCP
+
+def _import_fastmcp():
+    """Lazy import of the 1.x FastMCP API. Returns the class or exits 2.
+
+    The two failure modes need different fixes, so they get different
+    messages. Reporting a broken API as "not installed" sends the operator
+    to reinstall a package that is already there.
+    """
+    try:
+        import mcp  # noqa: F401, PLC0415
     except ImportError:
         sys.stderr.write(
             "ERROR: 'mcp' package not installed.\n"
             "Install with: pipx install --force 'odev[mcp]'\n"
-            "Or: pip install 'mcp>=1.0.0'\n"
+            "Or: pip install 'mcp>=1.0.0,<2'\n"
         )
-        raise typer.Exit(2)
+        raise typer.Exit(2) from None
+
+    try:
+        from mcp.server.fastmcp import FastMCP  # noqa: PLC0415
+    except ImportError:
+        sys.stderr.write(
+            f"ERROR: 'mcp' {_mcp_version()} is installed but incompatible: "
+            "'mcp.server.fastmcp' is missing.\n"
+            "odev needs the 1.x API; MCP SDK 2.0 renamed FastMCP to MCPServer "
+            "in 'mcp.server.mcpserver'.\n"
+            "Reinstall the pinned extra: pipx install --force 'odev[mcp]'\n"
+            "Or: pip install 'mcp>=1.0.0,<2'\n"
+        )
+        raise typer.Exit(2) from None
+
+    return FastMCP
 
 
 # ---------------------------------------------------------------------------
