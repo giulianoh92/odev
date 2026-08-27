@@ -50,7 +50,7 @@ class TestMcpLazyImport:
         )
 
         def mock_import(name, *args, **kwargs):
-            if name == "mcp.server.fastmcp":
+            if name == "mcp.server":
                 raise ImportError("mcp not installed")
             return original_import(name, *args, **kwargs)
 
@@ -59,15 +59,15 @@ class TestMcpLazyImport:
 
         assert hasattr(odev.commands.mcp, "mcp_app")
 
-    def test_import_fastmcp_returns_class_when_available(self):
-        """Happy path: the 1.x API is present, the class comes back."""
-        pytest.importorskip("mcp.server.fastmcp", reason="mcp 1.x not installed")
+    def test_import_mcpserver_returns_class_when_available(self):
+        """Happy path: the 2.x API is present, the class comes back."""
+        pytest.importorskip("mcp.server", reason="mcp not installed")
 
         import odev.commands.mcp as mcp_module
 
-        assert mcp_module._import_fastmcp() is not None
+        assert mcp_module._import_mcpserver() is not None
 
-    def test_import_fastmcp_exits_2_when_mcp_absent(self, capsys):
+    def test_import_mcpserver_exits_2_when_mcp_absent(self, capsys):
         """`mcp` not importable at all -> exit 2 + install hint."""
         import typer
 
@@ -75,38 +75,39 @@ class TestMcpLazyImport:
 
         with patch.dict(sys.modules, {"mcp": None}):
             with pytest.raises(typer.Exit) as exc:
-                mcp_module._import_fastmcp()
+                mcp_module._import_mcpserver()
 
         assert exc.value.exit_code == 2
         err = capsys.readouterr().err
         assert "not installed" in err
         assert "odev[mcp]" in err
 
-    def test_import_fastmcp_exits_2_when_api_incompatible(self, capsys):
-        """`mcp` present but 1.x API gone (SDK 2.0 dropped mcp.server.fastmcp).
+    def test_import_mcpserver_exits_2_when_sdk_too_old(self, capsys):
+        """`mcp` present but pre-2.x (MCPServer missing from mcp.server).
 
-        Regression: the guard used to report this as "package not installed",
-        sending the operator to reinstall something already installed.
+        Regression: the guard must not report a version mismatch as "package
+        not installed" — that sends the operator to reinstall something that
+        is already there.
         """
         import typer
 
         import odev.commands.mcp as mcp_module
 
-        # `mcp` must be cached BEFORE the patch: mcp 1.x's __init__ pulls
-        # mcp.server.fastmcp transitively, so in a cold process the patch
-        # below would break `import mcp` itself and exercise the wrong branch.
+        # `mcp` must be cached BEFORE the patch: mcp's __init__ pulls
+        # mcp.server transitively, so in a cold process the patch below
+        # would break `import mcp` itself and exercise the wrong branch.
         pytest.importorskip("mcp", reason="mcp not installed")
 
-        with patch.dict(sys.modules, {"mcp.server.fastmcp": None}):
+        with patch.dict(sys.modules, {"mcp.server": None}):
             with pytest.raises(typer.Exit) as exc:
-                mcp_module._import_fastmcp()
+                mcp_module._import_mcpserver()
 
         assert exc.value.exit_code == 2
         err = capsys.readouterr().err
         assert "not installed" not in err, "must not claim mcp is missing when it is present"
-        assert "incompatible" in err
-        assert "mcp.server.fastmcp" in err
-        assert "<2" in err, "must point at the version pin, not a bare reinstall"
+        assert "too old" in err
+        assert "MCPServer" in err
+        assert "mcp>=2" in err, "must point at the version floor, not a bare reinstall"
 
     def test_mcp_version_falls_back_to_unknown(self):
         """Version lookup never raises, even without package metadata."""
@@ -121,14 +122,14 @@ class TestMcpLazyImport:
         """serve() writes stderr hint and exits 2 when mcp not installed."""
         import odev.commands.mcp as mcp_module
 
-        def fake_import_fastmcp():
+        def fake_import_mcpserver():
             sys.stderr.write(
                 "ERROR: 'mcp' package not installed.\n"
                 "Install with: pipx install --force 'odev[mcp]'\n"
             )
             raise SystemExit(2)
 
-        with patch.object(mcp_module, "_import_fastmcp", side_effect=fake_import_fastmcp):
+        with patch.object(mcp_module, "_import_mcpserver", side_effect=fake_import_mcpserver):
             with pytest.raises(SystemExit) as exc:
                 mcp_module.serve(transport="stdio", port=3333)
 
@@ -148,7 +149,7 @@ class TestMcpTransports:
     def test_unknown_transport_exits_2(self, capsys):
         """serve(transport='bogus') writes stderr and exits 2."""
         pytest.importorskip("mcp")
-        import click
+        import typer
 
         import odev.commands.mcp as mcp_module
 
@@ -156,11 +157,11 @@ class TestMcpTransports:
         fake_server.run = MagicMock(return_value=None)
 
         with (
-            patch.object(mcp_module, "_import_fastmcp", return_value=type("FakeMCP", (), {})),
+            patch.object(mcp_module, "_import_mcpserver", return_value=type("FakeMCP", (), {})),
             patch.object(mcp_module, "_configure_stderr_logging"),
             patch.object(mcp_module, "_build_server", return_value=fake_server),
         ):
-            with pytest.raises((SystemExit, click.exceptions.Exit)) as exc:
+            with pytest.raises((SystemExit, typer.Exit)) as exc:
                 mcp_module.serve(transport="bogus", port=3333)
 
         captured = capsys.readouterr()
@@ -177,7 +178,7 @@ class TestMcpTransports:
         fake_server.run = MagicMock(side_effect=KeyboardInterrupt)
 
         with (
-            patch.object(mcp_module, "_import_fastmcp", return_value=type("FakeMCP", (), {})),
+            patch.object(mcp_module, "_import_mcpserver", return_value=type("FakeMCP", (), {})),
             patch.object(mcp_module, "_configure_stderr_logging"),
             patch.object(mcp_module, "_build_server", return_value=fake_server),
         ):
@@ -223,14 +224,14 @@ class TestMcpTools:
     """C2: 9 tools callable with mocked _execute_* returns."""
 
     def _build_server(self):
-        from mcp.server.fastmcp import FastMCP
+        from mcp.server import MCPServer
 
         import odev.commands.mcp as mcp_module
 
-        return mcp_module._build_server(FastMCP)
+        return mcp_module._build_server(MCPServer)
 
     def _call_tool(self, server, name, args=None):
-        """Call a registered tool via FastMCP.call_tool (async)."""
+        """Call a registered tool. SDK 2.x returns a CallToolResult."""
         return asyncio.run(server.call_tool(name, args or {}))
 
     def test_odev_status_tool_returns_list(self):
@@ -243,8 +244,8 @@ class TestMcpTools:
         ):
             with patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()):
                 server = self._build_server()
-                content, _ = self._call_tool(server, "odev_status")
-                assert len(content) > 0
+                result = self._call_tool(server, "odev_status")
+                assert len(result.content) > 0
 
     def test_odev_shell_tool_returns_dict(self):
         """odev_shell calls _execute_shell and returns dict."""
@@ -257,7 +258,7 @@ class TestMcpTools:
                 result = self._call_tool(
                     server, "odev_shell", {"service": "web", "command": "echo hello"}
                 )
-                content = result[0] if isinstance(result, tuple) else result
+                content = result.content
                 assert len(content) > 0
 
     def test_odev_sql_tool_returns_list(self):
@@ -267,8 +268,8 @@ class TestMcpTools:
         with patch("odev.commands.sql._execute_sql", return_value=[{"id": 1}]):
             with patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()):
                 server = self._build_server()
-                content, _ = self._call_tool(server, "odev_sql", {"query": "SELECT 1"})
-                assert len(content) > 0
+                content = self._call_tool(server, "odev_sql", {"query": "SELECT 1"})
+                assert len(content.content) > 0
 
     def test_odev_py_tool_returns_str(self):
         """odev_py calls _execute_py and returns string."""
@@ -277,8 +278,8 @@ class TestMcpTools:
         with patch("odev.commands.py._execute_py", return_value="42"):
             with patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()):
                 server = self._build_server()
-                content, _ = self._call_tool(server, "odev_py", {"expression": "1+1"})
-                assert len(content) > 0
+                content = self._call_tool(server, "odev_py", {"expression": "1+1"})
+                assert len(content.content) > 0
 
     def test_odev_test_tool_returns_dict(self):
         """odev_test calls _execute_test and returns TestResult dict."""
@@ -300,7 +301,7 @@ class TestMcpTools:
                 server = self._build_server()
                 result = self._call_tool(server, "odev_test", {"module": "my_module"})
                 content = result[0] if isinstance(result, tuple) else result
-                assert len(content) > 0
+                assert len(content.content) > 0
 
     def test_odev_logs_tool_returns_list(self):
         """odev_logs calls _execute_logs and returns list."""
@@ -312,8 +313,8 @@ class TestMcpTools:
         ):
             with patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()):
                 server = self._build_server()
-                content, _ = self._call_tool(server, "odev_logs", {"service": "web"})
-                assert len(content) > 0
+                content = self._call_tool(server, "odev_logs", {"service": "web"})
+                assert len(content.content) > 0
 
     def test_odev_doctor_tool_returns_dict(self):
         """odev_doctor calls _execute_doctor and returns dict."""
@@ -324,7 +325,7 @@ class TestMcpTools:
                 server = self._build_server()
                 result = self._call_tool(server, "odev_doctor")
                 content = result[0] if isinstance(result, tuple) else result
-                assert len(content) > 0
+                assert len(content.content) > 0
 
     def test_odev_model_info_tool_returns_dict(self):
         """odev_model_info calls _execute_model_info and returns dict."""
@@ -338,7 +339,7 @@ class TestMcpTools:
                 server = self._build_server()
                 result = self._call_tool(server, "odev_model_info", {"model": "res.partner"})
                 content = result[0] if isinstance(result, tuple) else result
-                assert len(content) > 0
+                assert len(content.content) > 0
 
     def test_odev_modules_tool_returns_list(self):
         """odev_modules calls _execute_modules and returns list."""
@@ -350,8 +351,8 @@ class TestMcpTools:
         ):
             with patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()):
                 server = self._build_server()
-                content, _ = self._call_tool(server, "odev_modules")
-                assert len(content) > 0
+                content = self._call_tool(server, "odev_modules")
+                assert len(content.content) > 0
 
     def test_tool_error_path_raises(self):
         """When _execute_status raises RuntimeError, tool raises (server keeps running)."""
@@ -364,6 +365,75 @@ class TestMcpTools:
                 server = self._build_server()
                 with pytest.raises(Exception):
                     self._call_tool(server, "odev_status")
+
+    def test_tool_error_keeps_the_original_message(self):
+        """SDK 2.x withholds the message of anything but an anticipated failure.
+
+        Without the _anticipado translation the caller would get a bare
+        "Error executing tool odev_sql" and the actual DB error would stay
+        buried in the server log.
+        """
+        from mcp.server.mcpserver.exceptions import ToolError
+
+        import odev.commands.mcp as mcp_module
+
+        with patch(
+            "odev.commands.sql._execute_sql",
+            side_effect=RuntimeError('ERROR: relation "res_partnr" does not exist'),
+        ):
+            with patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()):
+                server = self._build_server()
+                with pytest.raises(ToolError) as exc:
+                    self._call_tool(server, "odev_sql", {"query": "SELECT 1"})
+
+        assert 'relation "res_partnr" does not exist' in str(exc.value)
+
+    def test_tool_bug_is_not_dressed_up_as_operational(self):
+        """A bug in odev stays a crash: it belongs in the log, not in the model."""
+        from mcp.server.mcpserver.exceptions import UnexpectedToolError
+
+        import odev.commands.mcp as mcp_module
+
+        with patch(
+            "odev.commands.status._execute_status",
+            side_effect=AttributeError("'NoneType' object has no attribute 'rutas'"),
+        ):
+            with patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()):
+                server = self._build_server()
+                with pytest.raises(UnexpectedToolError):
+                    self._call_tool(server, "odev_status")
+
+    def test_missing_project_message_reaches_the_client(self):
+        """_resolve_contexto's ValueError must survive as an anticipated failure."""
+        from mcp.server.mcpserver.exceptions import ToolError
+
+        import odev.commands.mcp as mcp_module
+
+        with patch.object(
+            mcp_module, "_resolve_contexto", side_effect=ValueError("No odev project found: nope")
+        ):
+            server = self._build_server()
+            with pytest.raises(ToolError) as exc:
+                self._call_tool(server, "odev_status")
+
+        assert "No odev project found" in str(exc.value)
+
+    def test_server_advertises_odev_version(self):
+        """SDK 2.x defaults version to ""; the handshake must carry odev's."""
+        from odev import __version__
+
+        server = self._build_server()
+        assert server.version == __version__
+        assert server.version, "handshake must not advertise an empty version"
+
+    def test_tool_schema_survives_the_error_wrapper(self):
+        """functools.wraps must keep the signature the SDK builds schemas from."""
+        server = self._build_server()
+        tools = {t.name: t for t in asyncio.run(server.list_tools())}
+        assert set(tools) >= {"odev_sql", "odev_shell", "odev_test"}
+        props = tools["odev_shell"].input_schema["properties"]
+        assert {"service", "command"} <= set(props), props
+        assert tools["odev_sql"].description
 
     def test_no_context_path_raises(self):
         """When _resolve_contexto raises ValueError, tool raises without typer.Exit."""
@@ -388,11 +458,11 @@ class TestMcpResources:
     """C3: 4 resources callable."""
 
     def _build_server(self):
-        from mcp.server.fastmcp import FastMCP
+        from mcp.server import MCPServer
 
         import odev.commands.mcp as mcp_module
 
-        return mcp_module._build_server(FastMCP)
+        return mcp_module._build_server(MCPServer)
 
     def _read_resource(self, server, uri):
         return asyncio.run(server.read_resource(uri))
@@ -488,11 +558,11 @@ class TestMcpPrompts:
     """C4: 3 prompts return templated strings with expected substitutions."""
 
     def _build_server(self):
-        from mcp.server.fastmcp import FastMCP
+        from mcp.server import MCPServer
 
         import odev.commands.mcp as mcp_module
 
-        return mcp_module._build_server(FastMCP)
+        return mcp_module._build_server(MCPServer)
 
     def _get_prompt(self, server, name, args):
         result = asyncio.run(server.get_prompt(name, args))
@@ -529,11 +599,11 @@ class TestStdoutDiscipline:
     """CC1: tool calls must not write to stdout."""
 
     def _build_server(self):
-        from mcp.server.fastmcp import FastMCP
+        from mcp.server import MCPServer
 
         import odev.commands.mcp as mcp_module
 
-        return mcp_module._build_server(FastMCP)
+        return mcp_module._build_server(MCPServer)
 
     def _call_tool(self, server, name, args=None):
         return asyncio.run(server.call_tool(name, args or {}))

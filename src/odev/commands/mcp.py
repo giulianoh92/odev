@@ -1,15 +1,16 @@
 """odev mcp serve — expose odev as an MCP server.
 
-Provides a FastMCP server with 9 tools, 4 resources, and 3 prompts
-that wrap the odev _execute_* helper layer. All imports of the optional
-`mcp` package are lazy (inside function bodies) so this module is safely
-importable even when `mcp` is not installed.
+Provides an MCPServer (mcp SDK 2.x) with 9 tools, 4 resources, and 3
+prompts that wrap the odev _execute_* helper layer. All imports of the
+optional `mcp` package are lazy (inside function bodies) so this module is
+safely importable even when `mcp` is not installed.
 
 Install the optional extra: pipx install --force 'odev[mcp]'
 """
 
 from __future__ import annotations
 
+import functools
 import logging
 import sys
 from importlib.metadata import PackageNotFoundError
@@ -39,12 +40,12 @@ def _mcp_version() -> str:
         return "unknown"
 
 
-def _import_fastmcp():
-    """Lazy import of the 1.x FastMCP API. Returns the class or exits 2.
+def _import_mcpserver():
+    """Lazy import of the MCPServer API (mcp SDK 2.x). Returns class or exits 2.
 
     The two failure modes need different fixes, so they get different
-    messages. Reporting a broken API as "not installed" sends the operator
-    to reinstall a package that is already there.
+    messages. Reporting a version mismatch as "not installed" sends the
+    operator to reinstall a package that is already there.
     """
     try:
         import mcp  # noqa: F401, PLC0415
@@ -52,24 +53,24 @@ def _import_fastmcp():
         sys.stderr.write(
             "ERROR: 'mcp' package not installed.\n"
             "Install with: pipx install --force 'odev[mcp]'\n"
-            "Or: pip install 'mcp>=1.0.0,<2'\n"
+            "Or: pip install 'mcp>=2,<3'\n"
         )
         raise typer.Exit(2) from None
 
     try:
-        from mcp.server.fastmcp import FastMCP  # noqa: PLC0415
+        from mcp.server import MCPServer  # noqa: PLC0415
     except ImportError:
         sys.stderr.write(
-            f"ERROR: 'mcp' {_mcp_version()} is installed but incompatible: "
-            "'mcp.server.fastmcp' is missing.\n"
-            "odev needs the 1.x API; MCP SDK 2.0 renamed FastMCP to MCPServer "
-            "in 'mcp.server.mcpserver'.\n"
+            f"ERROR: 'mcp' {_mcp_version()} is installed but too old: "
+            "'MCPServer' is missing from 'mcp.server'.\n"
+            "odev needs the SDK 2.x API; 1.x exposed this server as FastMCP "
+            "in 'mcp.server.fastmcp'.\n"
             "Reinstall the pinned extra: pipx install --force 'odev[mcp]'\n"
-            "Or: pip install 'mcp>=1.0.0,<2'\n"
+            "Or: pip install 'mcp>=2,<3'\n"
         )
         raise typer.Exit(2) from None
 
-    return FastMCP
+    return MCPServer
 
 
 # ---------------------------------------------------------------------------
@@ -97,9 +98,9 @@ def serve(
     Exposes odev operations as MCP tools, resources, and prompts.
     The `mcp` optional extra must be installed: pipx install 'odev[mcp]'
     """
-    FastMCP = _import_fastmcp()
+    MCPServer = _import_mcpserver()
     _configure_stderr_logging()  # critical: no stdout pollution on stdio transport
-    server = _build_server(FastMCP)
+    server = _build_server(MCPServer)
     try:
         if transport == "stdio":
             server.run()  # default stdio, blocks
@@ -137,13 +138,57 @@ def _configure_stderr_logging() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _build_server(FastMCP):
-    """Construct and configure the FastMCP server instance."""
-    mcp = FastMCP("odev")
-    _register_tools(mcp)
-    _register_resources(mcp)
-    _register_prompts(mcp)
-    return mcp
+def _build_server(MCPServer):
+    """Construct and configure the MCPServer instance.
+
+    `version` is odev's, not the SDK's: it defaults to "" in SDK 2.x, so the
+    handshake would otherwise advertise an empty server version.
+    """
+    from odev import __version__  # noqa: PLC0415
+
+    server = MCPServer("odev", version=__version__)
+    _register_tools(server)
+    _register_resources(server)
+    _register_prompts(server)
+    return server
+
+
+# ---------------------------------------------------------------------------
+# Error translation
+# ---------------------------------------------------------------------------
+
+# How the _execute_* layer signals an operational failure: bad input
+# (ValueError) or an unusable environment (RuntimeError). Anything else that
+# escapes is a bug in odev, and the SDK is right to treat it as a crash.
+FALLOS_OPERATIVOS = (ValueError, RuntimeError)
+
+
+def _anticipado(error_cls):
+    """Re-raise operational failures as `error_cls` so the client sees them.
+
+    The SDK forwards the message of an *anticipated* failure (ToolError,
+    ResourceError) and withholds every other one: the model gets a bare
+    "Error executing tool <name>" and the detail stays in the server log.
+    Without this translation the whole _execute_* diagnostic surface — the
+    offending SQL error line, "Stack not running or DB unavailable", docker's
+    own messages — would be invisible to the caller.
+
+    A crash still reaches the SDK untranslated, which is what we want: a bug
+    in odev belongs in the log with its traceback, not in the model's context
+    dressed up as an operational error.
+    """
+
+    def decorator(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            try:
+                return fn(*args, **kwargs)
+            except FALLOS_OPERATIVOS as exc:
+                raise error_cls(str(exc)) from exc
+
+        return wrapper
+
+    return decorator
 
 
 # ---------------------------------------------------------------------------
@@ -158,8 +203,8 @@ def _resolve_contexto():
     en orden: (1) flag --project, (2) variable de entorno ODEV_PROJECT.
     Si ambos faltan, `resolver_proyecto` aplica estrategias cwd-walk.
 
-    MCP-safe: no lanza typer.Exit; solo ValueError para que el framework MCP
-    devuelva un error estructurado al cliente.
+    MCP-safe: no lanza typer.Exit; solo ValueError, que `_anticipado`
+    traduce a ToolError/ResourceError para que el mensaje llegue al cliente.
     """
     from odev.core.resolver import (  # noqa: PLC0415
         ProyectoAmbiguoError,
@@ -179,8 +224,10 @@ def _resolve_contexto():
 # ---------------------------------------------------------------------------
 
 
-def _register_tools(mcp) -> None:
+def _register_tools(server) -> None:
     """Register 9 MCP tools wrapping the _execute_* helper layer."""
+    from mcp.server.mcpserver.exceptions import ToolError  # noqa: PLC0415
+
     from odev.commands.doctor import _execute_doctor  # noqa: PLC0415
     from odev.commands.logs import _execute_logs  # noqa: PLC0415
     from odev.commands.model_info import _execute_model_info  # noqa: PLC0415
@@ -191,47 +238,56 @@ def _register_tools(mcp) -> None:
     from odev.commands.status import _execute_status  # noqa: PLC0415
     from odev.commands.test import _execute_test  # noqa: PLC0415
 
-    @mcp.tool()
+    @server.tool()
+    @_anticipado(ToolError)
     def odev_status() -> list[dict]:
         """Get docker-compose service status."""
         return _execute_status(_resolve_contexto())
 
-    @mcp.tool()
+    @server.tool()
+    @_anticipado(ToolError)
     def odev_shell(service: str, command: str) -> dict:
         """Run a shell command inside a service container."""
         return _execute_shell(_resolve_contexto(), service, command)
 
-    @mcp.tool()
+    @server.tool()
+    @_anticipado(ToolError)
     def odev_sql(query: str) -> list[dict]:
         """Execute SELECT against the Odoo DB; returns rows as dicts."""
         return _execute_sql(_resolve_contexto(), query)
 
-    @mcp.tool()
+    @server.tool()
+    @_anticipado(ToolError)
     def odev_py(expression: str) -> str:
         """Evaluate Python expression in odoo shell (banner-stripped)."""
         return _execute_py(_resolve_contexto(), expression)
 
-    @mcp.tool()
+    @server.tool()
+    @_anticipado(ToolError)
     def odev_test(module: str, tags: str | None = None) -> dict:
         """Run Odoo tests for one or more modules (CSV)."""
         return _execute_test(_resolve_contexto(), module, tags=tags)
 
-    @mcp.tool()
+    @server.tool()
+    @_anticipado(ToolError)
     def odev_logs(service: str, tail: int = 200) -> list[dict]:
         """Read recent service logs (parsed)."""
         return _execute_logs(_resolve_contexto(), service, tail)
 
-    @mcp.tool()
+    @server.tool()
+    @_anticipado(ToolError)
     def odev_doctor() -> dict:
         """Run environment diagnostics; returns CheckResult dict."""
         return _execute_doctor(_resolve_contexto())
 
-    @mcp.tool()
+    @server.tool()
+    @_anticipado(ToolError)
     def odev_model_info(model: str) -> dict:
         """Inspect an Odoo model's fields, inheritance, and methods."""
         return _execute_model_info(_resolve_contexto(), model)
 
-    @mcp.tool()
+    @server.tool()
+    @_anticipado(ToolError)
     def odev_modules() -> list[dict]:
         """List installed Odoo modules with state and version."""
         return _execute_modules(_resolve_contexto())
@@ -242,17 +298,23 @@ def _register_tools(mcp) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _register_resources(mcp) -> None:
+def _register_resources(server) -> None:
     """Register 4 MCP resources."""
+    from mcp.server.mcpserver.exceptions import (  # noqa: PLC0415
+        ResourceError,
+        ResourceNotFoundError,
+    )
 
-    @mcp.resource("odev://project/context")
+    @server.resource("odev://project/context")
+    @_anticipado(ResourceError)
     def project_context() -> str:
         """Current project context as markdown (equivalent to odev context)."""
         from odev.commands.context import _execute_context  # noqa: PLC0415
 
         return _execute_context(_resolve_contexto())
 
-    @mcp.resource("odev://project/config")
+    @server.resource("odev://project/config")
+    @_anticipado(ResourceError)
     def project_config() -> str:
         """Parsed .odev.yaml contents as JSON."""
         import json  # noqa: PLC0415
@@ -263,12 +325,14 @@ def _register_resources(mcp) -> None:
         cfg = ProjectConfig(contexto.directorio_config)
         return json.dumps(cfg.to_dict(), indent=2, ensure_ascii=False)
 
-    @mcp.resource("odev://db/schema")
+    @server.resource("odev://db/schema")
+    @_anticipado(ResourceError)
     def db_schema() -> str:
         """pg_dump --schema-only of the project database."""
         return _execute_db_schema(_resolve_contexto())
 
-    @mcp.resource("odev://modules/{name}/manifest")
+    @server.resource("odev://modules/{name}/manifest")
+    @_anticipado(ResourceError)
     def module_manifest(name: str) -> str:
         """Parsed __manifest__.py of a module as JSON."""
         import json  # noqa: PLC0415
@@ -278,7 +342,7 @@ def _register_resources(mcp) -> None:
         contexto = _resolve_contexto()
         path = _find_manifest(contexto, name)
         if path is None:
-            raise ValueError(f"Module '{name}' not found in addons paths.")
+            raise ResourceNotFoundError(f"Module '{name}' not found in addons paths.")
         return json.dumps(_parsear_manifiesto(path), indent=2, ensure_ascii=False)
 
 
@@ -344,10 +408,10 @@ def _find_manifest(contexto, module_name: str):
 # ---------------------------------------------------------------------------
 
 
-def _register_prompts(mcp) -> None:
+def _register_prompts(server) -> None:
     """Register 3 MCP prompt templates."""
 
-    @mcp.prompt()
+    @server.prompt()
     def diagnose_failing_test(test_name: str) -> str:
         """Analyze a failing Odoo test and propose a fix."""
         return (
@@ -360,7 +424,7 @@ def _register_prompts(mcp) -> None:
             "4. Propose a fix and the smallest test that reproduces it."
         )
 
-    @mcp.prompt()
+    @server.prompt()
     def explain_module(module_name: str) -> str:
         """Explain an Odoo module's purpose, dependencies, and structure."""
         return (
@@ -371,7 +435,7 @@ def _register_prompts(mcp) -> None:
             "3. Flag any unusual hooks (post-init, uninstall) or external deps."
         )
 
-    @mcp.prompt()
+    @server.prompt()
     def generate_migration(model: str, description: str) -> str:
         """Generate an Odoo ORM migration scaffold."""
         return (
