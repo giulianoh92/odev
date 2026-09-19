@@ -19,7 +19,6 @@ from rich.table import Table
 
 from odev.commands._helpers import obtener_docker, requerir_proyecto
 from odev.core.console import console
-from odev.core.resolver import ProyectoAmbiguoError, ProyectoNoEncontradoError
 
 
 def _parse_ports(publishers) -> list[int]:
@@ -85,10 +84,10 @@ def status(
 
     if json_output:
         try:
-            contexto = requerir_proyecto(obtener_nombre_proyecto())
-        except (ProyectoNoEncontradoError, ProyectoAmbiguoError) as e:
-            sys.stderr.write(json.dumps({"error": str(e)}) + "\n")
-            raise typer.Exit(1) from e
+            # silencioso=True: requerir_proyecto no imprime su propio
+            # diagnostico human-formatted. Este bloque arma el unico
+            # diagnostico que un consumidor --json puede parsear (T6).
+            contexto = requerir_proyecto(obtener_nombre_proyecto(), silencioso=True)
         except typer.Exit:
             err_msg = "No se encontro un proyecto odev en el directorio actual."
             sys.stderr.write(json.dumps({"error": err_msg}) + "\n")

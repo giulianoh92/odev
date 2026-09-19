@@ -885,7 +885,7 @@ class TestDoctorProjectResolutionRefactor:
                 pass
 
         # requerir_proyecto debe haber sido llamado con el nombre del proyecto
-        mock_req.assert_called_once_with("sis-odoo")
+        mock_req.assert_called_once_with("sis-odoo", silencioso=True)
 
     def test_execute_doctor_uses_contexto_not_detect_mode(self, tmp_path):
         """_execute_doctor(contexto) pasa contexto a los helpers sin llamar detect_mode."""

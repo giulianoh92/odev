@@ -28,7 +28,6 @@ from odev.commands._helpers import (
 )
 from odev.core.config import load_env
 from odev.core.console import console, error, info
-from odev.core.resolver import ProyectoAmbiguoError, ProyectoNoEncontradoError
 
 # SQL para obtener modulos instalados/pendientes.
 # COALESCE convierte NULL en cadena vacia para version.
@@ -147,10 +146,10 @@ def modules(
 
     if json_output:
         try:
-            contexto = requerir_proyecto(obtener_nombre_proyecto())
-        except (ProyectoNoEncontradoError, ProyectoAmbiguoError) as e:
-            sys.stderr.write(json.dumps({"error": str(e)}) + "\n")
-            raise typer.Exit(1) from e
+            # silencioso=True: requerir_proyecto no imprime su propio
+            # diagnostico human-formatted. Este bloque arma el unico
+            # diagnostico que un consumidor --json puede parsear (T6).
+            contexto = requerir_proyecto(obtener_nombre_proyecto(), silencioso=True)
         except typer.Exit:
             err_msg = "No se encontro un proyecto odev en el directorio actual."
             sys.stderr.write(json.dumps({"error": err_msg}) + "\n")

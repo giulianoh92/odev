@@ -97,14 +97,18 @@ class TestStatusJson:
     def test_json_no_project_escribe_error_en_stderr_y_exit_1(
         self, tmp_path: Path, capsys
     ) -> None:
-        """C4-3: sin proyecto → stderr JSON con key 'error' y exit 1."""
+        """C4-3: sin proyecto → stderr JSON con key 'error' y exit 1.
+
+        requerir_proyecto real nunca deja escapar ProyectoNoEncontradoError
+        (la atrapa y levanta typer.Exit(1)); el mock refleja eso en vez del
+        dominio interno, que es justo la distincion que T6 corrigio.
+        """
         from odev.commands.status import status
-        from odev.core.resolver import ProyectoNoEncontradoError
 
         with (
             patch(
                 "odev.commands.status.requerir_proyecto",
-                side_effect=ProyectoNoEncontradoError("no project"),
+                side_effect=typer.Exit(1),
             ),
             patch("odev.main.obtener_nombre_proyecto", return_value=None),
         ):
@@ -121,3 +125,39 @@ class TestStatusJson:
         assert captured.out == "", f"stdout debe quedar vacio, got: {captured.out!r}"
         err_data = json.loads(captured.err)
         assert "error" in err_data
+
+    def test_json_no_project_un_solo_diagnostico(self, tmp_path: Path, capsys) -> None:
+        """T6: --json sin proyecto imprime UN solo diagnostico, no dos.
+
+        Ejercita el requerir_proyecto real (no mockeado): antes de T6, este
+        caso escribia dos lineas a stderr — la human-formatted de
+        requerir_proyecto (error()/warning()) y la JSON de este caller. Se
+        mockea solo resolver_proyecto (una capa mas abajo) para forzar el
+        fallo sin reemplazar requerir_proyecto entero.
+        """
+        from odev.commands.status import status
+        from odev.core.resolver import ProyectoAmbiguoError
+
+        with (
+            patch(
+                "odev.commands._helpers.resolver_proyecto",
+                side_effect=ProyectoAmbiguoError(tmp_path, ["uno", "dos"]),
+            ),
+            patch("odev.main.obtener_nombre_proyecto", return_value=None),
+        ):
+            exc = None
+            try:
+                status(json_output=True)
+            except (SystemExit, typer.Exit) as e:
+                exc = e
+
+        assert exc is not None
+        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
+        assert code == 1
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        lineas_err = [linea for linea in captured.err.splitlines() if linea.strip()]
+        assert len(lineas_err) == 1, f"stderr debe tener un solo diagnostico: {lineas_err!r}"
+        data = json.loads(lineas_err[0])
+        assert "error" in data

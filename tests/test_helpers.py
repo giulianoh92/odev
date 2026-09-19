@@ -723,3 +723,46 @@ class TestRequerirProyectoEscribeAStderr:
         captured = capsys.readouterr()
         assert captured.out == ""
         assert "uno" in captured.err and "dos" in captured.err
+
+    def test_silencioso_no_proyecto_no_escribe_nada(self, capsys) -> None:
+        """T6: silencioso=True suprime el mensaje humano pero sigue exit 1.
+
+        Pensado para callers --json (modules.py, status.py) que arman su
+        propio diagnostico JSON; sin este flag terminaban emitiendo dos
+        lineas a stderr para el mismo fallo.
+        """
+        import typer
+
+        from odev.commands._helpers import requerir_proyecto
+        from odev.core.resolver import ProyectoNoEncontradoError
+
+        with patch(
+            "odev.commands._helpers.resolver_proyecto",
+            side_effect=ProyectoNoEncontradoError("no hay proyecto aca"),
+        ):
+            with pytest.raises(typer.Exit) as exc:
+                requerir_proyecto(silencioso=True)
+
+        assert exc.value.exit_code == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""
+
+    def test_silencioso_proyecto_ambiguo_no_escribe_nada(self, capsys) -> None:
+        """T6: silencioso=True tambien suprime la advertencia de ambiguedad."""
+        import typer
+
+        from odev.commands._helpers import requerir_proyecto
+        from odev.core.resolver import ProyectoAmbiguoError
+
+        with patch(
+            "odev.commands._helpers.resolver_proyecto",
+            side_effect=ProyectoAmbiguoError(Path("/tmp/x"), ["uno", "dos"]),
+        ):
+            with pytest.raises(typer.Exit) as exc:
+                requerir_proyecto(silencioso=True)
+
+        assert exc.value.exit_code == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""

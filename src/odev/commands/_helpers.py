@@ -239,7 +239,11 @@ def validar_modulos(
         raise ValueError(f"Modulos no encontrados: {', '.join(faltantes)}")
 
 
-def requerir_proyecto(nombre_proyecto: str | None = None) -> ProjectContext:
+def requerir_proyecto(
+    nombre_proyecto: str | None = None,
+    *,
+    silencioso: bool = False,
+) -> ProjectContext:
     """Resuelve el proyecto actual o lanza error con mensaje amigable.
 
     Usado por todos los comandos que necesitan estar en un proyecto.
@@ -247,6 +251,14 @@ def requerir_proyecto(nombre_proyecto: str | None = None) -> ProjectContext:
 
     Args:
         nombre_proyecto: Nombre explicito del proyecto (por ej. de --project).
+        silencioso: si True, omite el mensaje human-formatted (error()/
+            warning()) y solo levanta typer.Exit(1). Pensado para callers
+            --json (modules.py, status.py) que arman su propio diagnostico
+            JSON en su `except typer.Exit`: sin esto, un caller --json
+            terminaba emitiendo DOS lineas a stderr para el mismo fallo — la
+            humana de aca y la JSON del caller (T6, pulido-final). El path
+            humano por default sigue igual: requerir_proyecto lo llaman
+            ~20 comandos y la mayoria no tiene --json.
 
     Returns:
         ProjectContext con la informacion del proyecto resuelto.
@@ -257,13 +269,12 @@ def requerir_proyecto(nombre_proyecto: str | None = None) -> ProjectContext:
     try:
         return resolver_proyecto(nombre_proyecto=nombre_proyecto)
     except ProyectoNoEncontradoError as e:
-        # requerir_proyecto lo llaman ~20 comandos, varios con --json.
-        # error() escribe por stderr, asi que no rompe el parseo de ninguno
-        # de ellos antes de que su propio except pueda emitir el error en JSON.
-        error(str(e))
+        if not silencioso:
+            error(str(e))
         raise typer.Exit(1) from e
     except ProyectoAmbiguoError as e:
-        warning(str(e))
+        if not silencioso:
+            warning(str(e))
         raise typer.Exit(1) from e
 
 
