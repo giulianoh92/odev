@@ -853,6 +853,24 @@ cd odev
 pip install -e ".[dev]"
 ```
 
+## Skill de Claude Code
+
+El repositorio incluye una skill de Claude Code en `.claude/skills/odev/SKILL.md`,
+versionada junto con el codigo que documenta: se actualiza en el mismo commit que
+cambia el comportamiento que describe. Se activa automaticamente para cualquier
+agente que trabaje dentro de este repositorio, sin pasos adicionales.
+
+Para instalarla globalmente y que aplique a cualquier proyecto Odoo administrado
+por odev:
+
+```bash
+cp -r .claude/skills/odev ~/.claude/skills/
+```
+
+Cubre, entre otras cosas, la trampa de transacciones de `odev py`, la resolucion
+de proyecto, la seleccion entre MCP y CLI, los codigos de salida y el protocolo
+de una sola corrida para diagnosticar tests fallidos sin repetir la bateria completa.
+
 ## Requisitos
 
 - **Python 3.10+** (se recomienda 3.12)

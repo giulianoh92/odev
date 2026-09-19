@@ -20,3 +20,8 @@ htmlcov/
 .DS_Store
 .atl/
 uv.lock
+
+# La skill de Claude Code se versiona con el codigo que documenta.
+# Muchos entornos ignoran .claude/ globalmente (core.excludesFile); esta
+# negacion local tiene precedencia y la vuelve a incluir.
+!.claude/
