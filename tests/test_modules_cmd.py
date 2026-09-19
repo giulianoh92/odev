@@ -1,9 +1,10 @@
-"""Tests para odev modules --json — listado de modulos instalados.
+"""Tests para odev modules — listado de modulos instalados.
 
 Cubre:
-  - C9-1: JSON array con name, state, version
+  - C9-1: JSON array con name, state, version (--json/-j)
   - C9-2: no modules → []
   - C9-3: no project context → exit 1
+  - D1: tabla Rich human-readable por default, JSON solo con --json/-j
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 import typer
 
 
@@ -29,6 +31,7 @@ def _call_modules(
     tmp_path: Path,
     mock_dc: MagicMock,
     env_valores: dict | None = None,
+    json_output: bool = True,
 ):
     """Llama modules() con contexto mockeado."""
     from odev.commands.modules import modules
@@ -45,7 +48,7 @@ def _call_modules(
     ):
         mock_rutas.return_value.env_file = tmp_path / ".env"
         try:
-            modules(json_output=True)
+            modules(json_output=json_output)
         except (SystemExit, typer.Exit) as e:
             return e
     return None
@@ -112,3 +115,55 @@ class TestModulesJson:
         assert exc is not None
         code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
         assert code == 1
+
+
+class TestModulesTableDefault:
+    """D1: 'odev modules' sin flags muestra una tabla Rich, no JSON."""
+
+    def test_sin_flags_no_emite_json_en_stdout(self, tmp_path: Path, capsys) -> None:
+        """Bare 'odev modules' (json_output=False) no debe emitir un JSON array."""
+        mock_dc = MagicMock()
+        psql_out = b"sale\x1finstalled\x1f17.0.1.0.0\nstock\x1finstalled\x1f17.0.2.0.0\n"
+        mock_dc.exec_capture.return_value = (psql_out, b"", 0)
+
+        _call_modules(tmp_path, mock_dc, json_output=False)
+
+        captured = capsys.readouterr()
+        with pytest.raises(json.JSONDecodeError):
+            json.loads(captured.out)
+
+    def test_sin_flags_tabla_incluye_nombres_de_modulo(self, tmp_path: Path, capsys) -> None:
+        """La tabla human-readable debe listar los nombres de los modulos."""
+        mock_dc = MagicMock()
+        psql_out = b"sale\x1finstalled\x1f17.0.1.0.0\nstock\x1finstalled\x1f17.0.2.0.0\n"
+        mock_dc.exec_capture.return_value = (psql_out, b"", 0)
+
+        _call_modules(tmp_path, mock_dc, json_output=False)
+
+        captured = capsys.readouterr()
+        assert "sale" in captured.out
+        assert "stock" in captured.out
+
+    def test_sin_flags_sin_modulos_no_crashea(self, tmp_path: Path, capsys) -> None:
+        """Sin modulos instalados y sin --json, no debe lanzar excepcion ni imprimir []."""
+        mock_dc = MagicMock()
+        mock_dc.exec_capture.return_value = (b"", b"", 0)
+
+        exc = _call_modules(tmp_path, mock_dc, json_output=False)
+
+        captured = capsys.readouterr()
+        assert exc is None
+        assert "[]" not in captured.out
+
+    def test_json_true_sigue_emitiendo_json(self, tmp_path: Path, capsys) -> None:
+        """Con --json/-j explicito, el comportamiento JSON previo se mantiene intacto."""
+        mock_dc = MagicMock()
+        psql_out = b"sale\x1finstalled\x1f17.0.1.0.0\n"
+        mock_dc.exec_capture.return_value = (psql_out, b"", 0)
+
+        _call_modules(tmp_path, mock_dc, json_output=True)
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert isinstance(data, list)
+        assert data[0]["name"] == "sale"

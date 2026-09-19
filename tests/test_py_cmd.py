@@ -15,6 +15,7 @@ import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 import typer
 
 # ---------------------------------------------------------------------------
@@ -37,6 +38,7 @@ def _call_run_py(
     mock_dc: MagicMock,
     expression: str,
     env_valores: dict | None = None,
+    commit: bool = False,
 ):
     """Llama _run_py con contexto mockeado.
 
@@ -61,7 +63,7 @@ def _call_run_py(
     ):
         mock_rutas.return_value.env_file = tmp_path / ".env"
         try:
-            _run_py(expression)
+            _run_py(expression, commit=commit)
         except (SystemExit, typer.Exit) as e:
             return e
     return None
@@ -240,3 +242,161 @@ class TestOdooShellHelperSmoke:
         )
         result = _strip_banner(raw)
         assert result == "42"
+
+
+# ---------------------------------------------------------------------------
+# E1: --commit persiste la transaccion
+# ---------------------------------------------------------------------------
+
+
+class TestPyCommitFlag:
+    """E1: --commit agrega env.cr.commit() al script sin tocar la expresion."""
+
+    def test_sin_commit_no_agrega_env_cr_commit(self, tmp_path: Path) -> None:
+        """Sin --commit: stdin_data es solo print(expresion), comportamiento previo."""
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=b"4\n", stderr=b""
+        )
+
+        _call_run_py(tmp_path, mock_dc, "2+2", commit=False)
+
+        kwargs = mock_dc.exec_cmd.call_args[1]
+        assert kwargs.get("stdin_data") == b"print(2+2)\n"
+
+    def test_con_commit_agrega_env_cr_commit_al_script(self, tmp_path: Path) -> None:
+        """--commit agrega una linea env.cr.commit() despues del print()."""
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=b"4\n", stderr=b""
+        )
+
+        _call_run_py(tmp_path, mock_dc, "2+2", commit=True)
+
+        kwargs = mock_dc.exec_cmd.call_args[1]
+        stdin_data = kwargs.get("stdin_data")
+        assert stdin_data == b"print(2+2)\nenv.cr.commit()\n"
+
+    def test_con_commit_resultado_sigue_siendo_el_de_la_expresion(self, tmp_path: Path) -> None:
+        """--commit no cambia el resultado impreso: sigue siendo el de la expresion."""
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=b"4\n", stderr=b""
+        )
+
+        exc = _call_run_py(tmp_path, mock_dc, "2+2", commit=True)
+
+        assert exc is not None
+        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
+        assert code == 0
+
+
+# ---------------------------------------------------------------------------
+# E1: warning por stderr cuando la expresion parece escribir sin --commit
+# ---------------------------------------------------------------------------
+
+
+class TestPyWarnEscrituraSinCommit:
+    """E1: warning por stderr si la expresion parece escribir y no hay --commit."""
+
+    @pytest.mark.parametrize(
+        "expression",
+        [
+            "env['res.partner'].create({'name': 'x'})",
+            "record.write({'name': 'y'})",
+            "record.unlink()",
+            "record.copy()",
+        ],
+    )
+    def test_warning_en_stderr_si_parece_escribir_sin_commit(
+        self, tmp_path: Path, expression: str, capsys
+    ) -> None:
+        """Cada llamada de escritura conocida dispara el warning por stderr."""
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=b"None\n", stderr=b""
+        )
+
+        _call_run_py(tmp_path, mock_dc, expression, commit=False)
+
+        captured = capsys.readouterr()
+        assert "WARN" in captured.err
+        assert "--commit" in captured.err
+        assert "WARN" not in captured.out
+
+    def test_sin_warning_en_stdout(self, tmp_path: Path, capsys) -> None:
+        """El warning nunca contamina stdout — solo va por stderr."""
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=b"ok\n", stderr=b""
+        )
+
+        _call_run_py(tmp_path, mock_dc, "env['res.partner'].create({})", commit=False)
+
+        captured = capsys.readouterr()
+        assert "WARN" not in captured.out
+
+    def test_con_commit_suprime_el_warning(self, tmp_path: Path, capsys) -> None:
+        """--commit suprime el warning por completo, aunque la expresion escriba."""
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=b"ok\n", stderr=b""
+        )
+
+        _call_run_py(tmp_path, mock_dc, "env['res.partner'].create({})", commit=True)
+
+        captured = capsys.readouterr()
+        assert "WARN" not in captured.err
+
+    def test_expresion_de_solo_lectura_no_dispara_warning(self, tmp_path: Path, capsys) -> None:
+        """Una expresion de lectura (sin llamadas de escritura conocidas) no advierte."""
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=b"5\n", stderr=b""
+        )
+
+        _call_run_py(tmp_path, mock_dc, "env['res.partner'].search_count([])", commit=False)
+
+        captured = capsys.readouterr()
+        assert "WARN" not in captured.err
+
+
+class TestExpresionPareceEscribir:
+    """Unit tests de la heuristica _expresion_parece_escribir (E1)."""
+
+    @pytest.mark.parametrize(
+        "expression",
+        [
+            "env['res.partner'].create({'name': 'x'})",
+            "partner.write({'name': 'y'})",
+            "partner.unlink()",
+            "partner.copy()",
+        ],
+    )
+    def test_detecta_llamadas_de_escritura_conocidas(self, expression: str) -> None:
+        from odev.commands.py import _expresion_parece_escribir
+
+        assert _expresion_parece_escribir(expression) is True
+
+    @pytest.mark.parametrize(
+        "expression",
+        [
+            "2+2",
+            "env['res.partner'].search_count([])",
+            "env['res.partner'].browse(1).name",
+        ],
+    )
+    def test_no_detecta_expresiones_de_lectura(self, expression: str) -> None:
+        from odev.commands.py import _expresion_parece_escribir
+
+        assert _expresion_parece_escribir(expression) is False
+
+    def test_falso_negativo_documentado_metodo_de_negocio(self) -> None:
+        """Una escritura dentro de un metodo de negocio propio no se detecta (documentado).
+
+        Esta es la limitacion explicita de la heuristica: es texto, no AST.
+        """
+        from odev.commands.py import _expresion_parece_escribir
+
+        # 'action_confirm' podria escribir internamente, pero el texto no lo delata
+        assert _expresion_parece_escribir("record.action_confirm()") is False

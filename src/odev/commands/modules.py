@@ -3,7 +3,8 @@
 Consulta ir_module_module via psql y retorna la lista de modulos
 en estado 'installed', 'to upgrade' o 'to install'.
 
-JSON schema (--json):
+Por default muestra una tabla Rich ordenada por nombre (D1). Con --json/-j
+emite JSON sin formato:
   [{"name": str, "state": str, "version": str}, ...]
   Sin modulos: []
   Error de proyecto: exit 1
@@ -18,6 +19,7 @@ import json
 import sys
 
 import typer
+from rich.table import Table
 
 from odev.commands._helpers import (
     obtener_docker,
@@ -25,6 +27,7 @@ from odev.commands._helpers import (
     requerir_proyecto,
 )
 from odev.core.config import load_env
+from odev.core.console import console, error, info
 from odev.core.resolver import ProyectoAmbiguoError, ProyectoNoEncontradoError
 
 # SQL para obtener modulos instalados/pendientes.
@@ -120,44 +123,73 @@ def _execute_modules(contexto) -> list[dict]:
 
 def modules(
     json_output: bool = typer.Option(
-        True,
+        False,
         "--json",
         "-j",
-        help=(
-            "Emite JSON a stdout (default en 0.5.0). Output human-readable planificado para 0.6.0."
-        ),
+        help="Emite JSON a stdout para consumo por agentes.",
     ),
 ) -> None:
-    """Lista modulos instalados del proyecto Odoo en formato JSON.
+    """Lista modulos instalados del proyecto Odoo.
 
     Consulta ir_module_module para modulos en estado 'installed',
-    'to upgrade' o 'to install'. Retorna JSON array ordenado por nombre.
+    'to upgrade' o 'to install'. Por default muestra una tabla Rich
+    ordenada por nombre; con --json/-j emite un array JSON sin formato (D1).
 
-    Nota: las dependencias entre modulos se incluiran en 0.6.0.
+    Nota: las dependencias entre modulos no se incluyen todavia.
 
     Codigos de salida:
 
-      0  Consulta exitosa (puede ser lista vacia [])
+      0  Consulta exitosa (puede ser lista vacia [] o tabla vacia)
 
       1  Error: sin proyecto odev, DB no disponible, psql fallo
     """
     from odev.main import obtener_nombre_proyecto
 
-    try:
-        contexto = requerir_proyecto(obtener_nombre_proyecto())
-    except (ProyectoNoEncontradoError, ProyectoAmbiguoError) as e:
-        sys.stderr.write(json.dumps({"error": str(e)}) + "\n")
-        raise typer.Exit(1) from e
-    except typer.Exit:
-        err_msg = "No se encontro un proyecto odev en el directorio actual."
-        sys.stderr.write(json.dumps({"error": err_msg}) + "\n")
-        raise
+    if json_output:
+        try:
+            contexto = requerir_proyecto(obtener_nombre_proyecto())
+        except (ProyectoNoEncontradoError, ProyectoAmbiguoError) as e:
+            sys.stderr.write(json.dumps({"error": str(e)}) + "\n")
+            raise typer.Exit(1) from e
+        except typer.Exit:
+            err_msg = "No se encontro un proyecto odev en el directorio actual."
+            sys.stderr.write(json.dumps({"error": err_msg}) + "\n")
+            raise
+
+        try:
+            result = _execute_modules(contexto)
+        except RuntimeError as e:
+            sys.stderr.write(json.dumps({"error": str(e)}) + "\n")
+            raise typer.Exit(1) from e
+
+        sys.stdout.write(json.dumps(result) + "\n")
+        raise typer.Exit(0)
+
+    # Rich path (default): tabla human-readable, igual estilo que status.py.
+    contexto = requerir_proyecto(obtener_nombre_proyecto())
 
     try:
         result = _execute_modules(contexto)
     except RuntimeError as e:
-        sys.stderr.write(json.dumps({"error": str(e)}) + "\n")
+        error(str(e))
         raise typer.Exit(1) from e
 
-    sys.stdout.write(json.dumps(result) + "\n")
-    raise typer.Exit(0)
+    if not result:
+        info("No se encontraron modulos instalados.")
+        return
+
+    tabla = Table(title="Modulos instalados")
+    tabla.add_column("Nombre", style="cyan")
+    tabla.add_column("Estado", style="bold")
+    tabla.add_column("Version", style="dim")
+
+    for modulo in result:
+        estado = modulo["state"]
+        estilo_estado = "green" if estado == "installed" else "yellow"
+        tabla.add_row(
+            modulo["name"],
+            f"[{estilo_estado}]{estado}[/]",
+            modulo["version"],
+        )
+
+    console.print(tabla)
