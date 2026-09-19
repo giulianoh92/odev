@@ -92,6 +92,62 @@ def _parse_test_target(raw: str) -> tuple[str, str | None]:
     return module, tag
 
 
+def _build_test_tags(
+    modulos: list[str],
+    shorthand_tag: Optional[str],
+    tags: Optional[str],
+) -> list[str]:
+    """Construye los specs para el flag --test-tags de Odoo.
+
+    Odoo UNE los specs separados por coma, no los intersecta: en
+    odoo/tests/tag_selector.py, check() hace any(...) sobre los includes, y
+    dentro de un solo spec _is_matching() exige que coincida todo. Ademas un
+    include sin tag toma 'standard' por default.
+
+    Por eso emitir el prefijo auto-generado '/modulo' JUNTO a una expresion del
+    usuario amplia la seleccion en vez de acotarla: '/mymod,alpha' significa
+    "todos los tests standard de mymod" O "todos los tagueados alpha", y termina
+    corriendo el modulo entero.
+
+    Cuando el usuario pasa una expresion se descartan los prefijos: el argumento
+    '-u <modulos>' ya limita que modulos corren tests, asi que la expresion sola
+    filtra exactamente dentro de esos modulos.
+
+    Argumentos:
+        modulos: Lista de modulos parseada, o ["all"].
+        shorthand_tag: Sufijo Clase.metodo de la forma 'modulo:Clase.metodo'.
+        tags: Expresion cruda de --tags, si la hay.
+
+    Retorna:
+        Los specs a unir con comas. Vacio significa: no emitir --test-tags.
+
+    Raises:
+        typer.Exit(2): si se combinan el shorthand y --tags.
+    """
+    if shorthand_tag is not None and tags is not None:
+        sys.stderr.write(
+            "El shorthand 'modulo:Clase.metodo' y --tags no se pueden combinar: "
+            "los dos definen el filtro de tests, y Odoo uniria ambos en vez de "
+            "intersectarlos.\n"
+            "Elegi uno: 'odev test modulo:Clase.metodo' o "
+            "'odev test modulo --tags \"<expresion>\"'.\n"
+        )
+        raise typer.Exit(2)
+
+    if tags is not None:
+        # '-u' ya acota los modulos. Agregar '/modulo' aca haria OR con la
+        # expresion del usuario y correria el modulo completo.
+        return [tags]
+
+    if modulos == ["all"]:
+        return []
+
+    if shorthand_tag is not None:
+        return [f"/{modulos[0]}:{shorthand_tag}"]
+
+    return [f"/{m}" for m in modulos]
+
+
 def _stream_and_collect(
     popen: subprocess.Popen,
     save_log_path: Optional[Path] = None,
@@ -266,15 +322,10 @@ def _execute_test(
         "--log-level=test",
     ]
 
-    tag_parts: list[str] = []
     if modulos != ["all"]:
         comando.extend(["-u", ",".join(modulos)])
-        if shorthand_tag is not None:
-            tag_parts.append(f"/{modulos[0]}:{shorthand_tag}")
-        else:
-            tag_parts.extend(f"/{m}" for m in modulos)
-    if tags is not None:
-        tag_parts.append(tags)
+
+    tag_parts = _build_test_tags(modulos, shorthand_tag, tags)
     if tag_parts:
         comando.extend(["--test-tags", ",".join(tag_parts)])
 
@@ -374,19 +425,10 @@ def _run_test(
         f"--log-level={log_level}",
     ]
 
-    # Tags: construir --test-tags con prefijos /mod por modulo + user tags append.
-    # D8: si habia shorthand 'module:Class.method', el prefijo se construye como
-    # '/module:Class.method' en lugar de '/module' (filtrado fino).
-    tag_parts: list[str] = []
     if modulos != ["all"]:
         comando.extend(["-u", ",".join(modulos)])
-        if shorthand_tag is not None:
-            # Shorthand: exactamente un modulo con tag de clase/metodo
-            tag_parts.append(f"/{modulos[0]}:{shorthand_tag}")
-        else:
-            tag_parts.extend(f"/{m}" for m in modulos)
-    if tags is not None:
-        tag_parts.append(tags)
+
+    tag_parts = _build_test_tags(modulos, shorthand_tag, tags)
     if tag_parts:
         comando.extend(["--test-tags", ",".join(tag_parts)])
 
@@ -486,9 +528,11 @@ def test(
         None,
         "--tags",
         help=(
-            "Expresion de tags Odoo (ej. /mymod:MyClass o sale,account). "
-            "Se agrega a los prefijos auto-generados /m1,/m2 como sufijo. "
-            "Anula los prefijos si se usa sin modulos especificos."
+            "Expresion de tags Odoo (ej. MyClass, sale, :TestFoo.test_bar). "
+            "REEMPLAZA los prefijos auto-generados /m1,/m2 en vez de sumarse a "
+            "ellos: los modulos ya quedan acotados por -u, y unir ambos haria "
+            "que Odoo corra el modulo entero. No combinable con el shorthand "
+            "'modulo:Clase.metodo'."
         ),
     ),
     save_log: Optional[Path] = typer.Option(
