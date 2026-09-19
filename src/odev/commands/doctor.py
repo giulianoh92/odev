@@ -148,10 +148,16 @@ def doctor(
         from odev.main import obtener_nombre_proyecto  # noqa: PLC0415
 
         try:
-            contexto: ProjectContext | None = requerir_proyecto(obtener_nombre_proyecto())
+            # silencioso=True: requerir_proyecto no imprime su propio diagnostico
+            # human-formatted. El bloque de abajo arma el unico diagnostico que un
+            # consumidor --json puede parsear.
+            contexto: ProjectContext | None = requerir_proyecto(
+                obtener_nombre_proyecto(), silencioso=True
+            )
         except typer.Exit:
-            sys.stderr.write(json.dumps({"error": "no project context"}) + "\n")
-            raise typer.Exit(1) from None
+            err_msg = "No se encontro un proyecto odev en el directorio actual."
+            sys.stderr.write(json.dumps({"error": err_msg}) + "\n")
+            raise
 
         # JSON path: delega a _execute_doctor con el contexto resuelto (D1 design).
         # Rich console NO se llama en este path.
