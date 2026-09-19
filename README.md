@@ -867,9 +867,16 @@ por odev:
 cp -r .claude/skills/odev ~/.claude/skills/
 ```
 
-Cubre, entre otras cosas, la trampa de transacciones de `odev py`, la resolucion
-de proyecto, la seleccion entre MCP y CLI, los codigos de salida y el protocolo
-de una sola corrida para diagnosticar tests fallidos sin repetir la bateria completa.
+El `SKILL.md` es deliberadamente corto: lleva solo lo que un agente necesita
+saber **antes** de tocar algo, o sea las trampas que no puede deducir del
+`--help`. La profundidad vive en `references/`, que se carga bajo demanda:
+
+| Referencia | Contenido |
+| --- | --- |
+| `commands.md` | superficie completa, codigos de salida, combinaciones rechazadas, guardas destructivas, resolucion de proyecto |
+| `testing.md` | protocolo de una sola corrida y semantica de `--tags` |
+| `troubleshooting.md` | sintoma, causa, chequeo y arreglo; que verifica cada check de `doctor` |
+| `mcp.md` | las 9 tools, 4 resources y 3 prompts, y la capa de traduccion de errores |
 
 ## Requisitos
 
