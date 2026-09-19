@@ -140,7 +140,7 @@ class TestUpNuncaOmiteEnSilencio:
         ):
             _asegurar_parametros_desarrollo(dc, {"DB_NAME": "odoo_db", "DB_USER": "odoo"}, "8070")
 
-        salida = capsys.readouterr().out
+        salida = capsys.readouterr().err
         assert "odoo_db" in salida or "base" in salida.lower()
 
     def test_up_pide_espera(self):

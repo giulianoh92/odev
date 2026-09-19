@@ -16,7 +16,6 @@ import json
 import sys
 
 import typer
-from rich.console import Console
 
 from odev.commands._helpers import (
     ejecutar_passthrough,
@@ -25,6 +24,7 @@ from odev.commands._helpers import (
     requerir_proyecto,
 )
 from odev.core.config import load_env
+from odev.core.console import error
 
 # ASCII Unit Separator (0x1F) — separador de campos para psql JSON mode.
 # Nunca aparece en datos SQL normales. Evita problemas de quoting en CSV.
@@ -111,16 +111,16 @@ def _run_sql(query: str, csv: bool, json_output: bool = False) -> None:
 
     # C3: estas dos guardas tempranas corren antes de resolver el proyecto,
     # o sea antes de saber nada del stack -- pero SI ya sabemos el formato
-    # pedido (--json), asi que hay que honrarlo aca. error() de core.console
-    # usa un Console sin destino explicito y termina en stdout, lo que rompe
-    # a un consumidor --json que espera JSON puro ahi. Mismo patron que ya
-    # usa _run_test para el rechazo temprano de --verbose.
+    # pedido (--json), asi que hay que honrarlo aca. En modo --json el
+    # diagnostico va como JSON por stderr; si no, error() ya escribe por
+    # stderr y no rompe a un consumidor --json que espera JSON puro ahi.
+    # Mismo patron que ya usa _run_test para el rechazo temprano de --verbose.
     if not query.strip():
         mensaje = "La consulta SQL no puede estar vacia."
         if json_output:
             sys.stderr.write(json.dumps({"error": mensaje}) + "\n")
         else:
-            Console(stderr=True).print(f"[bold red]ERROR[/] {mensaje}")
+            error(mensaje)
         raise typer.Exit(2)
 
     if json_output and csv:
