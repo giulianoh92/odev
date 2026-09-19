@@ -136,6 +136,26 @@ def test_docker_compose_web_corre_como_root(entorno_jinja, valores_minimos):
     assert "user: root" in bloque_web
 
 
+def test_docker_compose_web_no_escribe_bytecode(entorno_jinja, valores_minimos):
+    """El servicio web no debe escribir __pycache__ dentro de ./addons (T5).
+
+    El servicio corre como root hasta que el entrypoint dropea privilegios
+    via setpriv (patron root-then-drop, ver comentario junto a `user: root`).
+    Sin PYTHONDONTWRITEBYTECODE=1, Odoo deja __pycache__ root:root en el
+    directorio de addons bind-mounteado, y el usuario no puede borrar su
+    propio proyecto sin sudo. `user: root` y el setpriv del entrypoint no
+    cambian: esto elimina la causa (no se escribe bytecode), no el sintoma.
+    """
+    template = entorno_jinja.get_template("docker-compose.yml.j2")
+    resultado = template.render(**valores_minimos)
+
+    inicio = resultado.index("\n  web:\n")
+    fin = resultado.index("\n  pgweb:\n", inicio)
+    bloque_web = resultado[inicio:fin]
+    assert "PYTHONDONTWRITEBYTECODE=1" in bloque_web
+    assert "user: root" in bloque_web  # el fix no toca el modelo de privilegios
+
+
 def test_odoo_conf_contiene_addons_path(entorno_jinja, valores_minimos):
     """El odoo.conf renderizado contiene la configuracion de addons_path."""
     template = entorno_jinja.get_template("odoo.conf.j2")

@@ -308,6 +308,33 @@ class TestRegenerarConfiguracion:
         contenido = (proyecto_con_config / "docker-compose.yml").read_text()
         assert "services:" in contenido
 
+    def test_regenera_compose_incluye_pythondontwritebytecode(
+        self, proyecto_con_config: Path
+    ) -> None:
+        """T5: un proyecto existente recibe PYTHONDONTWRITEBYTECODE en su proximo up.
+
+        docker-compose.yml en el fixture es un stub viejo (pre-T5, sin la
+        variable). regenerar_configuracion() es lo que corre 'odev up' antes
+        de levantar el stack, asi que este test confirma que proyectos ya
+        creados la reciben sin re-generar el proyecto entero.
+        """
+        from odev.core.resolver import ModoProyecto, ProjectContext
+        config = ProjectConfig(proyecto_con_config)
+        ctx = ProjectContext(
+            nombre="test", modo=ModoProyecto.INLINE,
+            directorio_config=proyecto_con_config,
+            directorio_trabajo=proyecto_con_config,
+            config=config,
+        )
+
+        contenido_antes = (proyecto_con_config / "docker-compose.yml").read_text()
+        assert "PYTHONDONTWRITEBYTECODE" not in contenido_antes  # stub viejo del fixture
+
+        regenerar_configuracion(ctx)
+
+        contenido_despues = (proyecto_con_config / "docker-compose.yml").read_text()
+        assert "PYTHONDONTWRITEBYTECODE=1" in contenido_despues
+
     def test_preserva_env_por_defecto(self, proyecto_con_config: Path) -> None:
         """Does NOT regenerate .env by default."""
         from odev.core.resolver import ModoProyecto, ProjectContext

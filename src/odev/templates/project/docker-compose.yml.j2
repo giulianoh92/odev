@@ -70,6 +70,12 @@ services:
       - INIT_MODULES=${INIT_MODULES}
       - POSTGRES_DB=${DB_NAME}
       - DEBUGPY=${DEBUGPY}
+      # Sin esto, el proceso Odoo (que corre como root hasta el setpriv del
+      # entrypoint) deja __pycache__ root:root dentro de ./addons montado por
+      # bind, y el usuario no puede borrar su propio proyecto sin sudo. No
+      # tiene costo real en un stack de desarrollo: el codigo cambia todo el
+      # tiempo y la cache de bytecode se invalida de todos modos.
+      - PYTHONDONTWRITEBYTECODE=1
     entrypoint: ["/entrypoint.sh"]
     develop:
       watch:
