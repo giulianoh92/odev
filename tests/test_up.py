@@ -12,6 +12,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 import typer
 
+from tests._helpers import call_command
+
 
 @pytest.fixture
 def registry_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -84,7 +86,7 @@ class TestUpPreflightPass:
             patch("odev.main.obtener_nombre_proyecto", return_value="mi-proyecto"),
         ):
             from odev.commands.up import up
-            up()
+            call_command(up)
 
         dc_mock.up.assert_called_once()
 
@@ -126,7 +128,7 @@ class TestUpPreflightFail:
             from odev.commands.up import up
 
             with pytest.raises(typer.Exit) as exc_info:
-                up()
+                call_command(up)
 
         assert exc_info.value.exit_code == 3
         dc_mock.up.assert_not_called()
@@ -164,7 +166,7 @@ class TestUpPreflightFail:
             from odev.commands.up import up
 
             with pytest.raises(typer.Exit):
-                up()
+                call_command(up)
 
 
 class TestPgwebUrlGated:
@@ -209,7 +211,7 @@ class TestPgwebUrlGated:
             patch("odev.commands.up.success"),
         ):
             from odev.commands.up import up
-            up()
+            call_command(up)
 
         return info_calls
 
@@ -289,7 +291,7 @@ class TestPreflightHint:
             from odev.commands.up import up
 
             with pytest.raises(typer.Exit):
-                up()
+                call_command(up)
 
         all_output = " ".join(info_calls + error_calls)
         assert "odev doctor" in all_output or "doctor" in all_output.lower(), (
