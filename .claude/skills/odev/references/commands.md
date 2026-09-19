@@ -11,6 +11,10 @@ argument before the command runs. Parse stdout without filtering it; read stderr
 for diagnostics. Progress and success lines (`INFO`, `OK`) are on stdout and are
 the only non-data text there — commands with `--json` do not emit them.
 
+Under `--json`, a failure produces exactly one machine-readable line on stderr
+and nothing on stdout. Read that line as JSON; do not expect a human-formatted
+message next to it.
+
 ## Exit code contract
 
 | Code | Meaning |
@@ -20,10 +24,11 @@ the only non-data text there — commands with `--json` do not emit them.
 | 2 | Usage error — bad argument, unknown module, `all` mixed with names, conflicting flags |
 | 3 | Environment error — port busy, DB unavailable, Docker unavailable, stack down, `mcp` extra missing or incompatible |
 
-`addon-install` and `update` are the exception: they forward Odoo's own
-process return code. If that code is 0 but the captured log contains a
-traceback or a CRITICAL line, odev maps it to 1 anyway (same philosophy as
-`test`'s `returncode_hint`).
+`addon-install` and `update` honour this table like every other command: any
+failure is 1. Odoo's own process return code is not forwarded — it is preserved
+in the stderr message instead, since neither command has `--json`. A run that
+exits 0 but whose captured log contains a traceback or a CRITICAL line is also 1
+(same philosophy as `test`'s `returncode_hint`).
 
 `model-info` on a nonexistent model is 1, not 2: it took a live ORM query to
 find out, so it's a runtime fact, not a usage mistake made upfront.

@@ -95,6 +95,23 @@ longer write to.
 prefer `odev py`/`odev_py` or `addon-install`/`update` for anything that
 touches ORM attachments.
 
+## Root-owned files you cannot delete
+
+**Symptom.** `rm -rf <project>` fails with permission denied on `.pyc` files
+under `addons/*/__pycache__`, even though the project directory belongs to you.
+
+**Cause.** The Odoo process runs as root until the entrypoint's `setpriv` drop,
+so any bytecode it wrote onto the bind-mounted `addons/` directory landed as
+`root:root`. Projects created from odev 0.13.0 on set
+`PYTHONDONTWRITEBYTECODE=1` on the `web` service and never write it; `odev up`
+regenerates the compose file, so an existing project picks it up on its next
+start without being recreated.
+
+**Check.** `ls -l addons/*/__pycache__`.
+
+**Fix.** Delete the leftovers with container privileges rather than `sudo`:
+`docker run --rm -v "$PWD:/w" alpine sh -c 'find /w -name __pycache__ -prune -exec rm -rf {} +'`.
+
 ## PDF reports without styles
 
 **Symptom.** QWeb PDF reports render with no CSS — layout looks broken,
