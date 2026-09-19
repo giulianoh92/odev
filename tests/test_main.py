@@ -6,6 +6,7 @@ como se espera.
 """
 
 import logging
+from unittest.mock import patch
 
 from typer.testing import CliRunner
 
@@ -84,6 +85,46 @@ class TestDebugFlag:
         # The root logger should NOT be set to DEBUG level
         # (it may be WARNING/INFO from basicConfig defaults)
         assert root_logger.level != logging.DEBUG or original_level == logging.DEBUG
+
+
+class TestSubcomandosNoDisponiblesDebugLog:
+    """D3: los imports fallidos se loguean a nivel DEBUG cuando --debug esta activo.
+
+    Antes de este fix, adopt/reconfigure/projects/enterprise se registraban
+    dentro de try/except ImportError sin dejar ningun rastro: el subcomando
+    simplemente no existia. main() ahora registra cada fallo en
+    SUBCOMANDOS_NO_DISPONIBLES al importar el modulo, y lo loguea aca recien
+    cuando --debug esta activo (el flag se conoce despues de esos imports).
+    """
+
+    def test_debug_activo_loguea_cada_import_fallido(self, monkeypatch):
+        """Con --debug, cada fallo registrado se pasa a _logger.debug.
+
+        Se llama a main() directamente (no via CliRunner): --help es un
+        flag eager de Click que corta la ejecucion antes de que el cuerpo
+        del callback corra, asi que invocar la funcion sirve para ejercitar
+        el cuerpo real sin ese atajo.
+        """
+        fallos = [("adopt", "No module named 'algo'")]
+        monkeypatch.setattr(main_module, "SUBCOMANDOS_NO_DISPONIBLES", fallos)
+
+        with patch.object(main_module._logger, "debug") as mock_debug:
+            main_module.main(project=None, version=False, debug=True)
+
+        mock_debug.assert_called_once()
+        args = mock_debug.call_args.args
+        assert "adopt" in args
+        assert "No module named 'algo'" in args
+
+    def test_sin_debug_no_loguea_los_fallos(self, monkeypatch):
+        """Sin --debug, _logger.debug no se llama para los fallos registrados."""
+        fallos = [("adopt", "boom")]
+        monkeypatch.setattr(main_module, "SUBCOMANDOS_NO_DISPONIBLES", fallos)
+
+        with patch.object(main_module._logger, "debug") as mock_debug:
+            main_module.main(project=None, version=False, debug=False)
+
+        mock_debug.assert_not_called()
 
 
 class TestHelpSubgroups:

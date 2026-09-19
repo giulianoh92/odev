@@ -144,7 +144,8 @@ def eliminar(
 
     if entry is None:
         error(f"No se encontro el proyecto '{nombre}' en el registro.")
-        raise SystemExit(1)
+        # D4: typer.Exit, no SystemExit -- consistente con el resto del archivo.
+        raise typer.Exit(1)
 
     if not force:
         from rich.prompt import Confirm

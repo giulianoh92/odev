@@ -46,8 +46,19 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
+_logger = logging.getLogger(__name__)
+
 # --- Estado global para la opcion --project ---
 _nombre_proyecto: str | None = None
+
+# D3: subcomandos opcionales cuyo import fallo. Cada entrada es
+# (nombre_subcomando, texto del ImportError). Se llenan mas abajo, en los
+# try/except que envuelven el registro de adopt/reconfigure/projects/
+# enterprise. Antes, un import fallido hacia desaparecer el subcomando en
+# silencio: 'odev adopt' respondia "comando desconocido" sin ninguna pista
+# de que algo se rompio. `doctor` lee esta lista para reportar la
+# degradacion en vez de dejarla invisible.
+SUBCOMANDOS_NO_DISPONIBLES: list[tuple[str, str]] = []
 
 
 def _version_callback(mostrar: bool) -> None:
@@ -93,6 +104,12 @@ def main(
             force=True,
         )
         logging.getLogger().setLevel(logging.DEBUG)
+        # D3: los imports opcionales fallidos ya se registraron en
+        # SUBCOMANDOS_NO_DISPONIBLES al cargar este modulo, antes de que
+        # --debug se conociera. Recien aca, con el nivel DEBUG ya activo,
+        # se puede volcar el detalle al log sin que se pierda por nivel.
+        for nombre, detalle in SUBCOMANDOS_NO_DISPONIBLES:
+            _logger.debug("Subcomando '%s' no disponible: fallo el import (%s)", nombre, detalle)
     else:
         logging.basicConfig(level=logging.INFO, force=True)
 
@@ -155,29 +172,29 @@ try:
     from odev.commands.adopt import adopt
 
     app.command(name="adopt", epilog=EPILOG_EXIT_CODES)(adopt)
-except ImportError:
-    pass
+except ImportError as exc:
+    SUBCOMANDOS_NO_DISPONIBLES.append(("adopt", str(exc)))
 
 try:
     from odev.commands.reconfigure import reconfigure
 
     app.command(name="reconfigure", epilog=EPILOG_EXIT_CODES)(reconfigure)
-except ImportError:
-    pass
+except ImportError as exc:
+    SUBCOMANDOS_NO_DISPONIBLES.append(("reconfigure", str(exc)))
 
 try:
     from odev.commands.projects import app as projects_app
 
     app.add_typer(projects_app, name="projects", rich_help_panel="Subgrupos")
-except ImportError:
-    pass
+except ImportError as exc:
+    SUBCOMANDOS_NO_DISPONIBLES.append(("projects", str(exc)))
 
 try:
     from odev.commands.enterprise import app as enterprise_app
 
     app.add_typer(enterprise_app, name="enterprise", rich_help_panel="Subgrupos")
-except ImportError:
-    pass
+except ImportError as exc:
+    SUBCOMANDOS_NO_DISPONIBLES.append(("enterprise", str(exc)))
 
 if __name__ == "__main__":
     app()

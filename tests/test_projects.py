@@ -199,3 +199,34 @@ class TestProjectsBareJsonAlsoWorks:
         data = json.loads(result.output.strip())
         assert "projects" in data
         assert data["projects"][0]["name"] == "sis-odoo"
+
+
+class TestProjectsRemoveExitConsistency:
+    """D4: 'projects remove' usa typer.Exit, consistente con el resto del archivo.
+
+    Antes de este fix usaba raise SystemExit(1) directamente, inconsistente
+    con listar()/etc. que usan typer.Exit para las salidas no-cero.
+    """
+
+    def test_remove_inexistente_typer_exit_no_systemexit(self):
+        """eliminar() lanza typer.Exit(1), no SystemExit, cuando el proyecto no existe."""
+        import typer
+
+        from odev.commands.projects import eliminar
+
+        with patch("odev.commands.projects.Registry") as mock_reg:
+            mock_reg.return_value.obtener.return_value = None
+            with pytest.raises(typer.Exit) as exc_info:
+                eliminar(nombre="fantasma", delete_config=False, force=True)
+
+        assert exc_info.value.exit_code == 1
+
+    def test_remove_inexistente_via_cli_exit_1(self):
+        """odev projects remove <inexistente> sale con exit code 1 via CliRunner."""
+        from odev.commands.projects import app
+
+        with patch("odev.commands.projects.Registry") as mock_reg:
+            mock_reg.return_value.obtener.return_value = None
+            result = runner.invoke(app, ["remove", "fantasma", "--force"])
+
+        assert result.exit_code == 1

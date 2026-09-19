@@ -107,3 +107,62 @@ class TestSqlJson:
         captured = capsys.readouterr()
         err_data = json.loads(captured.err)
         assert "error" in err_data
+
+    def test_json_query_vacia_stderr_json_stdout_vacio_exit_2(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """C3: 'odev sql "" --json' escribe JSON a stderr y nada a stdout.
+
+        Antes de este fix, la guarda temprana usaba error() de core.console,
+        que imprime texto Rich coloreado a stdout via un Console sin destino
+        explicito -- rompiendo el contrato --json antes de que el codigo
+        siquiera supiera que se habia pedido JSON. El contenedor no debe
+        contactarse.
+        """
+        mock_dc = MagicMock()
+
+        exc = _call_run_sql_json(tmp_path, mock_dc, "")
+
+        assert exc is not None
+        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
+        assert code == 2
+        captured = capsys.readouterr()
+        assert captured.out == "", f"stdout debe quedar vacio, got: {captured.out!r}"
+        err_data = json.loads(captured.err)
+        assert "error" in err_data
+        mock_dc.exec_capture.assert_not_called()
+
+    def test_json_y_csv_mutuamente_excluyentes_stderr_json_exit_2(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """C3: --json + --csv rechazado con JSON a stderr, stdout vacio, exit 2."""
+        from odev.commands.sql import _run_sql
+
+        mock_dc = MagicMock()
+        ctx = _make_contexto(tmp_path)
+
+        with (
+            patch("odev.commands.sql.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.sql.obtener_docker", return_value=mock_dc),
+            patch("odev.commands.sql.obtener_rutas") as mock_rutas,
+            patch(
+                "odev.commands.sql.load_env",
+                return_value={"DB_NAME": "odoo_db", "DB_USER": "odoo"},
+            ),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+        ):
+            mock_rutas.return_value.env_file = tmp_path / ".env"
+            exc = None
+            try:
+                _run_sql("SELECT 1", csv=True, json_output=True)
+            except (SystemExit, typer.Exit) as e:
+                exc = e
+
+        assert exc is not None
+        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
+        assert code == 2
+        captured = capsys.readouterr()
+        assert captured.out == "", f"stdout debe quedar vacio, got: {captured.out!r}"
+        err_data = json.loads(captured.err)
+        assert "error" in err_data
+        mock_dc.exec_capture.assert_not_called()
