@@ -7,6 +7,8 @@ tools, resources, prompts, stdout discipline. See spec C1-C5, tasks 2.1-2.13.
 from __future__ import annotations
 
 import asyncio
+import json
+import subprocess
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -67,8 +69,13 @@ class TestMcpLazyImport:
 
         assert mcp_module._import_mcpserver() is not None
 
-    def test_import_mcpserver_exits_2_when_mcp_absent(self, capsys):
-        """`mcp` not importable at all -> exit 2 + install hint."""
+    def test_import_mcpserver_exits_3_when_mcp_absent(self, capsys):
+        """`mcp` not importable at all -> exit 3 (environment error) + install hint.
+
+        D4: a missing optional dependency is an environment problem, not a
+        usage error -- EPILOG_EXIT_CODES reserves 2 for usage and 3 for
+        environment.
+        """
         import typer
 
         import odev.commands.mcp as mcp_module
@@ -77,17 +84,17 @@ class TestMcpLazyImport:
             with pytest.raises(typer.Exit) as exc:
                 mcp_module._import_mcpserver()
 
-        assert exc.value.exit_code == 2
+        assert exc.value.exit_code == 3
         err = capsys.readouterr().err
         assert "not installed" in err
         assert "odev[mcp]" in err
 
-    def test_import_mcpserver_exits_2_when_sdk_too_old(self, capsys):
+    def test_import_mcpserver_exits_3_when_sdk_too_old(self, capsys):
         """`mcp` present but pre-2.x (MCPServer missing from mcp.server).
 
         Regression: the guard must not report a version mismatch as "package
         not installed" — that sends the operator to reinstall something that
-        is already there.
+        is already there. D4: also an environment error -> exit 3.
         """
         import typer
 
@@ -102,7 +109,7 @@ class TestMcpLazyImport:
             with pytest.raises(typer.Exit) as exc:
                 mcp_module._import_mcpserver()
 
-        assert exc.value.exit_code == 2
+        assert exc.value.exit_code == 3
         err = capsys.readouterr().err
         assert "not installed" not in err, "must not claim mcp is missing when it is present"
         assert "too old" in err
@@ -271,15 +278,17 @@ class TestMcpTools:
                 content = self._call_tool(server, "odev_sql", {"query": "SELECT 1"})
                 assert len(content.content) > 0
 
-    def test_odev_py_tool_returns_str(self):
-        """odev_py calls _execute_py and returns string."""
+    def test_odev_py_tool_returns_dict(self):
+        """odev_py calls _execute_py and returns a dict (result/committed/warning)."""
         import odev.commands.mcp as mcp_module
 
         with patch("odev.commands.py._execute_py", return_value="42"):
             with patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()):
                 server = self._build_server()
-                content = self._call_tool(server, "odev_py", {"expression": "1+1"})
-                assert len(content.content) > 0
+                result = self._call_tool(server, "odev_py", {"expression": "1+1"})
+                assert len(result.content) > 0
+                payload = json.loads(result.content[0].text)
+                assert payload == {"result": "42", "committed": False, "warning": None}
 
     def test_odev_test_tool_returns_dict(self):
         """odev_test calls _execute_test and returns TestResult dict."""
@@ -387,6 +396,119 @@ class TestMcpTools:
                     self._call_tool(server, "odev_sql", {"query": "SELECT 1"})
 
         assert 'relation "res_partnr" does not exist' in str(exc.value)
+
+    def test_odev_status_translates_called_process_error(self):
+        """A3: odev_status must not crash untranslated when the stack is down.
+
+        DockerCompose.ps_parsed() raises subprocess.CalledProcessError when
+        `docker compose ps` fails (e.g. stack not running). Before A3 this
+        escaped FALLOS_OPERATIVOS untranslated and the client only saw a bare
+        "Error executing tool odev_status".
+        """
+        from mcp.server.mcpserver.exceptions import ToolError
+
+        import odev.commands.mcp as mcp_module
+
+        with patch(
+            "odev.commands.status._execute_status",
+            side_effect=subprocess.CalledProcessError(1, ["docker", "compose", "ps"]),
+        ):
+            with patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()):
+                server = self._build_server()
+                with pytest.raises(ToolError) as exc:
+                    self._call_tool(server, "odev_status")
+
+        # The raw str() of a CalledProcessError is just a command line and a
+        # return code -- useless. The translated message must be actionable.
+        assert "Stack not running or DB unavailable" in str(exc.value)
+
+    def test_odev_py_translates_called_process_error(self):
+        """A3: odev_py must not crash untranslated when the stack is down.
+
+        _execute_py's dc.exec_cmd(..., check=True) raises
+        subprocess.CalledProcessError under the same conditions.
+        """
+        from mcp.server.mcpserver.exceptions import ToolError
+
+        import odev.commands.mcp as mcp_module
+
+        with patch(
+            "odev.commands.py._execute_py",
+            side_effect=subprocess.CalledProcessError(1, ["odoo", "shell"]),
+        ):
+            with patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()):
+                server = self._build_server()
+                with pytest.raises(ToolError) as exc:
+                    self._call_tool(server, "odev_py", {"expression": "1+1"})
+
+        assert "Stack not running or DB unavailable" in str(exc.value)
+
+    def test_odev_py_warning_for_writing_expression_without_commit(self):
+        """odev_py's warning key is populated when the heuristic detects a write.
+
+        This is the U7 fix for the gap the write-warning left behind: the CLI
+        got --commit plus a stderr warning, but the MCP wrapper -- where an
+        agent is most likely to report phantom work -- did not.
+        """
+        import odev.commands.mcp as mcp_module
+
+        with patch(
+            "odev.commands.py._execute_py",
+            return_value="res.partner(1,)",
+        ):
+            with patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()):
+                server = self._build_server()
+                result = self._call_tool(
+                    server,
+                    "odev_py",
+                    {"expression": "env['res.partner'].create({'name': 'x'})"},
+                )
+                payload = json.loads(result.content[0].text)
+
+        assert payload["result"] == "res.partner(1,)"
+        assert payload["committed"] is False
+        assert payload["warning"] is not None
+        assert "commit" in payload["warning"]
+
+    def test_odev_py_no_warning_when_commit_true(self):
+        """The warning is null when commit=True, even for a writing expression."""
+        import odev.commands.mcp as mcp_module
+
+        with patch(
+            "odev.commands.py._execute_py",
+            return_value="res.partner(1,)",
+        ) as mock_execute:
+            with patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()):
+                server = self._build_server()
+                result = self._call_tool(
+                    server,
+                    "odev_py",
+                    {"expression": "env['res.partner'].create({'name': 'x'})", "commit": True},
+                )
+                payload = json.loads(result.content[0].text)
+
+        _, kwargs = mock_execute.call_args
+        assert kwargs.get("commit") is True
+        assert payload["committed"] is True
+        assert payload["warning"] is None
+
+    def test_odev_py_no_warning_for_read_only_expression(self):
+        """The warning is null for an expression the heuristic does not flag."""
+        import odev.commands.mcp as mcp_module
+
+        with patch(
+            "odev.commands.py._execute_py",
+            return_value="3",
+        ):
+            with patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()):
+                server = self._build_server()
+                result = self._call_tool(
+                    server, "odev_py", {"expression": "env['res.partner'].search_count([])"}
+                )
+                payload = json.loads(result.content[0].text)
+
+        assert payload["committed"] is False
+        assert payload["warning"] is None
 
     def test_tool_bug_is_not_dressed_up_as_operational(self):
         """A bug in odev stays a crash: it belongs in the log, not in the model."""
