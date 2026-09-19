@@ -12,7 +12,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-import typer
 
 # ---------------------------------------------------------------------------
 # parsear_modulos_csv — REQ-1
@@ -50,18 +49,18 @@ class TestParsearModulosCsv:
         resultado = parsear_modulos_csv("mod1,")
         assert resultado == ["mod1"]
 
-    def test_1e_solo_comas_es_error(self, capsys) -> None:
-        """1-E: solo comas → Exit(2) y mensaje 'Lista de modulos vacia'."""
+    def test_1e_solo_comas_es_error(self) -> None:
+        """1-E: solo comas → ValueError con mensaje 'Lista de modulos vacia'.
+
+        A2/U1: las funciones compartidas lanzan ValueError, no typer.Exit;
+        es la capa CLI la que decide convertir eso a stderr + exit 2.
+        """
         from odev.commands._helpers import parsear_modulos_csv
 
-        with pytest.raises((SystemExit, typer.Exit)) as exc_info:
+        with pytest.raises(ValueError) as exc_info:
             parsear_modulos_csv(",,,,")
 
-        exc = exc_info.value
-        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
-        assert code == 2
-        captured = capsys.readouterr()
-        assert "Lista de modulos vacia" in captured.err
+        assert str(exc_info.value) == "Lista de modulos vacia"
 
     def test_1f_all_solo_es_aceptado(self) -> None:
         """1-F: 'all' como token unico retorna ['all'] sin error."""
@@ -77,29 +76,23 @@ class TestParsearModulosCsv:
         resultado = parsear_modulos_csv(" all ")
         assert resultado == ["all"]
 
-    def test_1g_all_mezclado_es_error(self, capsys) -> None:
-        """1-G: 'mod1,all' → Exit(2) y mensaje sobre 'all' mezclado."""
+    def test_1g_all_mezclado_es_error(self) -> None:
+        """1-G: 'mod1,all' → ValueError con mensaje sobre 'all' mezclado."""
         from odev.commands._helpers import parsear_modulos_csv
 
-        with pytest.raises((SystemExit, typer.Exit)) as exc_info:
+        with pytest.raises(ValueError) as exc_info:
             parsear_modulos_csv("mod1,all")
 
-        exc = exc_info.value
-        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
-        assert code == 2
-        captured = capsys.readouterr()
-        assert "'all'" in captured.err or "all" in captured.err.lower()
+        assert "'all'" in str(exc_info.value) or "all" in str(exc_info.value).lower()
 
-    def test_1g_all_primero_mezclado_es_error(self, capsys) -> None:
-        """1-G (variante): 'all,mod1' también es error."""
+    def test_1g_all_primero_mezclado_es_error(self) -> None:
+        """1-G (variante): 'all,mod1' tambien es error."""
         from odev.commands._helpers import parsear_modulos_csv
 
-        with pytest.raises((SystemExit, typer.Exit)) as exc_info:
+        with pytest.raises(ValueError) as exc_info:
             parsear_modulos_csv("all,mod1")
 
-        exc = exc_info.value
-        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
-        assert code == 2
+        assert "all" in str(exc_info.value).lower()
 
     def test_csv_tres_modulos(self) -> None:
         """Triangulacion: CSV con 3 modulos sin espacios."""
@@ -189,6 +182,76 @@ class TestListarModulosDisponibles:
 
 
 # ---------------------------------------------------------------------------
+# resolver_addon_dir — U2 (A1-b): lint de descubrimiento de tests necesita
+# el Path de un modulo puntual, no solo saber si el nombre existe.
+# ---------------------------------------------------------------------------
+
+
+class TestResolverAddonDir:
+    """resolver_addon_dir reusa las mismas fuentes que listar_modulos_disponibles."""
+
+    def test_encuentra_via_config(self, tmp_path: Path) -> None:
+        """paths.addons de la config → devuelve el Path del modulo."""
+        from odev.commands._helpers import resolver_addon_dir
+
+        addon_dir = tmp_path / "addons"
+        addon_dir.mkdir()
+        (addon_dir / "mymod").mkdir()
+        (addon_dir / "mymod" / "__manifest__.py").touch()
+
+        ctx = MagicMock()
+        ctx.directorio_config = tmp_path
+        ctx.config.rutas_addons = ["./addons"]
+
+        resultado = resolver_addon_dir("mymod", ctx)
+
+        assert resultado == addon_dir / "mymod"
+
+    def test_encuentra_via_heuristica_sin_config(self, tmp_path: Path) -> None:
+        """Sin config, cae a detectar_layout — mismo fallback que listar_modulos_disponibles."""
+        from odev.commands._helpers import resolver_addon_dir
+        from odev.core.detect import RepoLayout, TipoRepo
+
+        addon_dir = tmp_path / "addons"
+        addon_dir.mkdir()
+        (addon_dir / "mymod").mkdir()
+        (addon_dir / "mymod" / "__manifest__.py").touch()
+
+        ctx = MagicMock()
+        ctx.directorio_config = tmp_path
+        ctx.config = None
+
+        fake_layout = RepoLayout(
+            tipo=TipoRepo.MULTI_ADDON,
+            rutas_addons=[addon_dir],
+            modulos_encontrados=1,
+        )
+        with patch("odev.commands._helpers.detectar_layout", return_value=fake_layout):
+            resultado = resolver_addon_dir("mymod", ctx)
+
+        assert resultado == addon_dir / "mymod"
+
+    def test_modulo_inexistente_retorna_none(self, tmp_path: Path) -> None:
+        """Modulo que no existe en ninguna fuente → None, no una excepcion."""
+        from odev.commands._helpers import resolver_addon_dir
+        from odev.core.detect import RepoLayout, TipoRepo
+
+        ctx = MagicMock()
+        ctx.directorio_config = tmp_path
+        ctx.config = None
+
+        fake_layout = RepoLayout(
+            tipo=TipoRepo.DESCONOCIDO,
+            rutas_addons=[],
+            modulos_encontrados=0,
+        )
+        with patch("odev.commands._helpers.detectar_layout", return_value=fake_layout):
+            resultado = resolver_addon_dir("ghost_mod", ctx)
+
+        assert resultado is None
+
+
+# ---------------------------------------------------------------------------
 # validar_modulos — REQ-2
 # ---------------------------------------------------------------------------
 
@@ -247,8 +310,8 @@ class TestValidarModulos:
             validar_modulos(["base"], ctx, no_validate=False)
             mock_detect.assert_not_called()
 
-    def test_2b_un_modulo_faltante_exit_2(self, tmp_path: Path, capsys) -> None:
-        """2-B: un modulo inexistente → Exit(2) y stderr menciona el nombre."""
+    def test_2b_un_modulo_faltante_exit_2(self, tmp_path: Path) -> None:
+        """2-B: un modulo inexistente → ValueError y el mensaje nombra el modulo."""
         from odev.commands._helpers import validar_modulos
         from odev.core.detect import RepoLayout, TipoRepo
 
@@ -265,16 +328,12 @@ class TestValidarModulos:
         )
 
         with patch("odev.commands._helpers.detectar_layout", return_value=fake_layout):
-            with pytest.raises((SystemExit, typer.Exit)) as exc_info:
+            with pytest.raises(ValueError) as exc_info:
                 validar_modulos(["sale", "ghost_mod"], ctx, no_validate=False)
 
-        exc = exc_info.value
-        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
-        assert code == 2
-        captured = capsys.readouterr()
-        assert "ghost_mod" in captured.err
+        assert "ghost_mod" in str(exc_info.value)
 
-    def test_2c_multiples_faltantes_en_un_mensaje(self, tmp_path: Path, capsys) -> None:
+    def test_2c_multiples_faltantes_en_un_mensaje(self, tmp_path: Path) -> None:
         """2-C: varios faltantes → todos listados en un solo mensaje de error."""
         from odev.commands._helpers import validar_modulos
         from odev.core.detect import RepoLayout, TipoRepo
@@ -292,16 +351,13 @@ class TestValidarModulos:
         )
 
         with patch("odev.commands._helpers.detectar_layout", return_value=fake_layout):
-            with pytest.raises((SystemExit, typer.Exit)) as exc_info:
+            with pytest.raises(ValueError) as exc_info:
                 validar_modulos(["ghost1", "sale", "ghost2"], ctx, no_validate=False)
 
-        exc = exc_info.value
-        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
-        assert code == 2
-        captured = capsys.readouterr()
-        # Ambos nombres deben aparecer en el stderr
-        assert "ghost1" in captured.err
-        assert "ghost2" in captured.err
+        # Ambos nombres deben aparecer en el mensaje
+        mensaje = str(exc_info.value)
+        assert "ghost1" in mensaje
+        assert "ghost2" in mensaje
 
     def test_2a_todos_validos_no_error(self, tmp_path: Path) -> None:
         """2-A: todos los modulos existen → retorna None sin error."""
@@ -325,7 +381,7 @@ class TestValidarModulos:
             validar_modulos(["sale", "crm"], ctx, no_validate=False)
         # No debe haber raise
 
-    def test_mixto_builtin_presente_faltante(self, tmp_path: Path, capsys) -> None:
+    def test_mixto_builtin_presente_faltante(self, tmp_path: Path) -> None:
         """Mezcla builtin + presente + faltante → solo el faltante en error."""
         from odev.commands._helpers import validar_modulos
         from odev.core.detect import RepoLayout, TipoRepo
@@ -343,20 +399,128 @@ class TestValidarModulos:
         )
 
         with patch("odev.commands._helpers.detectar_layout", return_value=fake_layout):
-            with pytest.raises((SystemExit, typer.Exit)) as exc_info:
+            with pytest.raises(ValueError) as exc_info:
                 validar_modulos(
                     ["base", "my_module", "ghost_mod"],
                     ctx,
                     no_validate=False,
                 )
 
-        exc = exc_info.value
-        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
-        assert code == 2
+        mensaje = str(exc_info.value)
+        assert "ghost_mod" in mensaje
+        assert "base" not in mensaje
+        assert "my_module" not in mensaje
+
+
+# ---------------------------------------------------------------------------
+# A2/U1 — update y addon-install convierten el ValueError de las funciones
+# compartidas en stderr + exit 2, sin cambiar el contrato observable.
+# (La cobertura equivalente para 'test' vive en test_test_cmd.py.)
+# ---------------------------------------------------------------------------
+
+
+class TestValidatorsCliContractUpdateInstall:
+    """A2: parsear_modulos_csv/validar_modulos lanzan ValueError; update y
+    addon-install lo atrapan y lo presentan exactamente como antes.
+    """
+
+    def _make_ctx(self, tmp_path: Path) -> MagicMock:
+        ctx = MagicMock()
+        ctx.directorio_config = tmp_path
+        ctx.nombre = "test-project"
+        ctx.config = MagicMock()
+        ctx.config.rutas_addons = None
+        return ctx
+
+    def _run_comando(
+        self,
+        comando,
+        tmp_path: Path,
+        module: str,
+        modulos_disponibles: set[str],
+    ):
+        """Invoca `update` o `install` con requerir_proyecto/docker mockeados."""
+        import typer
+
+        modname = comando.__module__
+        ctx = self._make_ctx(tmp_path)
+        mock_dc = MagicMock()
+
+        exc = None
+        with (
+            patch(f"{modname}.requerir_proyecto", return_value=ctx),
+            patch(f"{modname}.obtener_docker", return_value=mock_dc),
+            patch(f"{modname}.obtener_rutas") as mock_rutas,
+            patch(f"{modname}.load_env", return_value={"DB_NAME": "test_db"}),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch(
+                "odev.commands._helpers.listar_modulos_disponibles",
+                return_value=modulos_disponibles,
+            ),
+        ):
+            mock_rutas.return_value.env_file = tmp_path / ".env"
+            try:
+                comando(module=module, no_validate=False, verbose=False)
+            except (SystemExit, typer.Exit) as e:
+                exc = e
+
+        return exc, mock_dc
+
+    @staticmethod
+    def _exit_code(exc) -> int | None:
+        if exc is None:
+            return None
+        return exc.code if isinstance(exc, SystemExit) else exc.exit_code
+
+    def test_update_modulo_desconocido_stderr_y_exit_2(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """update con modulo inexistente: mismo mensaje, mismo exit 2."""
+        from odev.commands.update import update
+
+        exc, mock_dc = self._run_comando(update, tmp_path, "ghost_mod", {"sale", "crm"})
+
+        assert self._exit_code(exc) == 2
         captured = capsys.readouterr()
-        assert "ghost_mod" in captured.err
-        assert "base" not in captured.err
-        assert "my_module" not in captured.err
+        assert "Modulos no encontrados: ghost_mod" in captured.err
+        mock_dc.exec_capture.assert_not_called()
+
+    def test_addon_install_modulo_desconocido_stderr_y_exit_2(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """addon-install con modulo inexistente: mismo mensaje, mismo exit 2."""
+        from odev.commands.install import install
+
+        exc, mock_dc = self._run_comando(install, tmp_path, "ghost_mod", {"sale", "crm"})
+
+        assert self._exit_code(exc) == 2
+        captured = capsys.readouterr()
+        assert "Modulos no encontrados: ghost_mod" in captured.err
+        mock_dc.exec_capture.assert_not_called()
+
+    def test_update_all_mezclado_stderr_y_exit_2(self, tmp_path: Path, capsys) -> None:
+        """update 'sale,all': mismo mensaje sobre 'all', mismo exit 2."""
+        from odev.commands.update import update
+
+        exc, mock_dc = self._run_comando(update, tmp_path, "sale,all", set())
+
+        assert self._exit_code(exc) == 2
+        captured = capsys.readouterr()
+        assert "'all' no puede combinarse con otros modulos" in captured.err
+        mock_dc.exec_capture.assert_not_called()
+
+    def test_addon_install_lista_vacia_stderr_y_exit_2(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """addon-install con lista vacia: mismo mensaje, mismo exit 2."""
+        from odev.commands.install import install
+
+        exc, mock_dc = self._run_comando(install, tmp_path, ",,,,", set())
+
+        assert self._exit_code(exc) == 2
+        captured = capsys.readouterr()
+        assert "Lista de modulos vacia" in captured.err
+        mock_dc.exec_capture.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

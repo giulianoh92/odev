@@ -75,8 +75,13 @@ def parsear_modulos_csv(valor: str) -> list[str]:
       - Split por coma, strip whitespace, descarta vacios.
       - Dedup preservando el orden de primera aparicion.
       - 'all' permitido SOLO como token unico — mezclado con otros
-        levanta typer.Exit(2).
+        levanta ValueError.
       - CSV de un solo elemento ('mod1') retorna ['mod1'] — backward-compat.
+
+    Funcion compartida entre CLI y MCP (patron MCP-safe, igual que
+    `_resolve_contexto`): senaliza con excepciones de dominio y deja que
+    cada frontend decida como presentarlas. La CLI la convierte a stderr +
+    typer.Exit(2); MCP la deja propagar tal cual.
 
     Argumentos:
         valor: cadena tal cual la entrega Typer (un solo token shell).
@@ -85,14 +90,13 @@ def parsear_modulos_csv(valor: str) -> list[str]:
         Lista de nombres de modulo normalizados.
 
     Raises:
-        typer.Exit(2): si la lista es vacia o 'all' aparece con otros tokens.
+        ValueError: si la lista es vacia o 'all' aparece con otros tokens.
     """
     partes = [p.strip() for p in valor.split(",")]
     partes = [p for p in partes if p]
 
     if not partes:
-        sys.stderr.write("Lista de modulos vacia\n")
-        raise typer.Exit(2)
+        raise ValueError("Lista de modulos vacia")
 
     seen: set[str] = set()
     result: list[str] = []
@@ -102,8 +106,7 @@ def parsear_modulos_csv(valor: str) -> list[str]:
             result.append(p)
 
     if "all" in result and len(result) > 1:
-        sys.stderr.write("'all' no puede combinarse con otros modulos\n")
-        raise typer.Exit(2)
+        raise ValueError("'all' no puede combinarse con otros modulos")
 
     return result
 
@@ -152,6 +155,43 @@ def listar_modulos_disponibles(contexto: ProjectContext) -> set[str]:
     return nombres
 
 
+def resolver_addon_dir(nombre: str, contexto: ProjectContext) -> Path | None:
+    """Ubica el directorio de un addon puntual en el addons-path.
+
+    Reusa las mismas fuentes de resolucion que listar_modulos_disponibles
+    (paths.addons del config, con fallback a detectar_layout), pero en vez
+    de enumerar todos los nombres disponibles busca el directorio de un
+    modulo especifico. Pensado para el lint de descubrimiento de tests
+    (A1-b): necesita el Path real de <modulo>/tests/, no solo saber si el
+    nombre existe.
+
+    Argumentos:
+        nombre: nombre tecnico del modulo.
+        contexto: contexto del proyecto resuelto.
+
+    Retorna:
+        Path al directorio del addon, o None si no se pudo ubicar (modulo
+        builtin sin presencia en el addons-path, layout desconocido, etc.).
+    """
+    rutas_config = (contexto.config.rutas_addons if contexto.config else None) or []
+    for ruta in rutas_config:
+        p = Path(ruta)
+        dir_addons = p if p.is_absolute() else contexto.directorio_config / p
+        if not dir_addons.is_dir():
+            continue
+        candidato = dir_addons / nombre
+        if (candidato / "__manifest__.py").exists():
+            return candidato
+
+    layout = detectar_layout(contexto.directorio_config)
+    for ruta_addons in layout.rutas_addons:
+        candidato = ruta_addons / nombre
+        if (candidato / "__manifest__.py").exists():
+            return candidato
+
+    return None
+
+
 def validar_modulos(
     nombres: list[str],
     contexto: ProjectContext,
@@ -164,7 +204,12 @@ def validar_modulos(
       - no_validate=True: bypass total (parsing ya corrio).
       - Cada nombre se valida; los builtins en MODULOS_BUILTIN se aceptan.
       - Si layout es desconocido (set vacio), no bloquea (fallback existente).
-      - En error: raise typer.Exit(2) con la lista COMPLETA de faltantes.
+      - En error: raise ValueError con la lista COMPLETA de faltantes.
+
+    Funcion compartida entre CLI y MCP (patron MCP-safe, igual que
+    `_resolve_contexto`): senaliza con excepciones de dominio y deja que
+    cada frontend decida como presentarlas. La CLI la convierte a stderr +
+    typer.Exit(2); MCP la deja propagar tal cual.
 
     Argumentos:
         nombres: lista normalizada (post parsear_modulos_csv).
@@ -172,7 +217,7 @@ def validar_modulos(
         no_validate: si True, omite validacion contra disco.
 
     Raises:
-        typer.Exit(2): si uno o mas modulos no existen y no son builtin.
+        ValueError: si uno o mas modulos no existen y no son builtin.
     """
     if nombres == ["all"]:
         return
@@ -191,8 +236,7 @@ def validar_modulos(
 
     faltantes = [n for n in a_validar if n not in disponibles]
     if faltantes:
-        sys.stderr.write(f"Modulos no encontrados: {', '.join(faltantes)}\n")
-        raise typer.Exit(2)
+        raise ValueError(f"Modulos no encontrados: {', '.join(faltantes)}")
 
 
 def requerir_proyecto(nombre_proyecto: str | None = None) -> ProjectContext:
@@ -337,6 +381,6 @@ def validar_modulo_existe(nombre: str, contexto: ProjectContext) -> None:
         contexto: Contexto del proyecto para detectar addons-path.
 
     Raises:
-        typer.Exit(2): cuando el modulo no se encuentra y no es builtin.
+        ValueError: cuando el modulo no se encuentra y no es builtin.
     """
     validar_modulos([nombre], contexto, no_validate=False)

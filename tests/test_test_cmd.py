@@ -1513,17 +1513,18 @@ class TestBuildTestTags:
         assert _build_test_tags(["all"], None, "sale") == ["sale"]
 
     def test_shorthand_con_tags_es_error_de_uso(self) -> None:
-        """Combinar shorthand y --tags sale 2 en vez de descartar uno en silencio."""
-        import typer
+        """Combinar shorthand y --tags lanza ValueError, no se descarta en silencio.
 
+        A2/U1: _build_test_tags senaliza con ValueError; es _run_test quien
+        lo convierte a stderr + exit 2 (ver TestVerboseJsonRejection/etc.).
+        """
         from odev.commands.test import _build_test_tags
 
-        with pytest.raises((typer.Exit, SystemExit)) as exc_info:
+        with pytest.raises(ValueError) as exc_info:
             _build_test_tags(["mod"], "TestFoo", "alpha")
 
-        exc = exc_info.value
-        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
-        assert code == 2
+        assert "shorthand" in str(exc_info.value)
+        assert "--tags" in str(exc_info.value)
 
     def test_ninguna_salida_contiene_prefijo_junto_a_tags(self) -> None:
         """Invariante del bug: prefijo y expresion del usuario nunca coexisten.
@@ -1535,3 +1536,509 @@ class TestBuildTestTags:
         for modulos in (["m1"], ["m1", "m2"], ["all"]):
             specs = _build_test_tags(modulos, None, "alpha")
             assert not any(s.startswith("/m") for s in specs), specs
+
+
+# ---------------------------------------------------------------------------
+# A2/U1 — _parse_test_target lanza ValueError; _run_test lo convierte a
+# stderr + exit 2. El caso CSV+colon a nivel CLI ya lo cubre
+# TestTargetShorthand.test_csv_con_colon_rechazado_exit_2; aca se agregan
+# las llamadas directas y el caso 'all:Class' a nivel CLI que faltaban.
+# ---------------------------------------------------------------------------
+
+
+class TestParseTestTargetErrors:
+    """_parse_test_target: las dos combinaciones invalidas, llamadas directo."""
+
+    def test_csv_con_colon_lanza_valueerror(self) -> None:
+        """CSV+colon ('mod1,mod2:Class.method') lanza ValueError con mensaje."""
+        from odev.commands.test import _parse_test_target
+
+        with pytest.raises(ValueError) as exc_info:
+            _parse_test_target("mod1,mod2:TestFoo.test_bar")
+
+        mensaje = str(exc_info.value)
+        assert "CSV" in mensaje
+        assert "--tags" in mensaje
+
+    def test_all_con_clase_lanza_valueerror(self) -> None:
+        """'all:Class' lanza ValueError: 'all' no soporta filtro de clase."""
+        from odev.commands.test import _parse_test_target
+
+        with pytest.raises(ValueError) as exc_info:
+            _parse_test_target("all:TestFoo")
+
+        assert "'all'" in str(exc_info.value)
+
+    def test_bare_module_no_lanza(self) -> None:
+        """Sin ':' no hay nada que rechazar (ruta backward-compat)."""
+        from odev.commands.test import _parse_test_target
+
+        assert _parse_test_target("mymod") == ("mymod", None)
+
+
+class TestParseTestTargetCliContract:
+    """Mismos rechazos, vistos desde _run_test: stderr + exit 2, Odoo no llamado."""
+
+    def test_all_con_clase_rechazado_cli_exit_2_y_stderr(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """'odev test all:TestFoo' → exit 2, mensaje sobre 'all' en stderr."""
+        import typer as ty
+
+        from odev.commands.test import _run_test
+
+        ctx = _make_contexto(tmp_path)
+        mock_dc = MagicMock()
+
+        with (
+            patch("odev.commands.test.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.test.obtener_rutas") as mock_rutas,
+            patch("odev.commands.test.obtener_docker", return_value=mock_dc),
+            patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+        ):
+            mock_rutas.return_value.env_file = tmp_path / ".env"
+            with pytest.raises((SystemExit, ty.Exit)) as exc_info:
+                _run_test(
+                    module="all:TestFoo",
+                    log_level="test",
+                    summary=True,
+                    failures_only=False,
+                    json_out=False,
+                    tags=None,
+                    save_log=None,
+                )
+
+        exc = exc_info.value
+        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
+        assert code == 2
+        mock_dc.exec_cmd_stream.assert_not_called()
+        captured = capsys.readouterr()
+        assert "'all'" in captured.err
+
+    def test_shorthand_con_tags_rechazado_cli_exit_2_y_stderr(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """'odev test mymod:TestFoo --tags alpha' → exit 2, mensaje en stderr."""
+        import typer as ty
+
+        from odev.commands.test import _run_test
+
+        ctx = _make_contexto(tmp_path)
+        mock_dc = MagicMock()
+
+        with (
+            patch("odev.commands.test.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.test.obtener_rutas") as mock_rutas,
+            patch("odev.commands.test.obtener_docker", return_value=mock_dc),
+            patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands.test.validar_modulos", return_value=None),
+        ):
+            mock_rutas.return_value.env_file = tmp_path / ".env"
+            with pytest.raises((SystemExit, ty.Exit)) as exc_info:
+                _run_test(
+                    module="mymod:TestFoo",
+                    log_level="test",
+                    summary=True,
+                    failures_only=False,
+                    json_out=False,
+                    tags="alpha",
+                    save_log=None,
+                )
+
+        exc = exc_info.value
+        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
+        assert code == 2
+        mock_dc.exec_cmd_stream.assert_not_called()
+        captured = capsys.readouterr()
+        assert "shorthand" in captured.err
+        assert "--tags" in captured.err
+
+    def test_modulo_no_encontrado_cli_mensaje_completo_en_stderr(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """A2: el mensaje completo de validar_modulos llega a stderr, no un '2'.
+
+        Es la regresion concreta de A2: antes de este cambio typer.Exit(2)
+        se comia el mensaje real y solo dejaba pasar el codigo de salida.
+        """
+        import typer as ty
+
+        from odev.commands.test import _run_test
+        from odev.core.detect import RepoLayout, TipoRepo
+
+        ctx = _make_contexto(tmp_path)
+        mock_dc = MagicMock()
+        fake_layout = RepoLayout(
+            tipo=TipoRepo.DESCONOCIDO,
+            rutas_addons=[],
+            modulos_encontrados=0,
+        )
+
+        with (
+            patch("odev.commands.test.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.test.obtener_rutas") as mock_rutas,
+            patch("odev.commands.test.obtener_docker", return_value=mock_dc),
+            patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch(
+                "odev.commands._helpers.listar_modulos_disponibles",
+                return_value={"sale", "crm"},
+            ),
+            patch("odev.commands._helpers.detectar_layout", return_value=fake_layout),
+        ):
+            mock_rutas.return_value.env_file = tmp_path / ".env"
+            with pytest.raises((SystemExit, ty.Exit)) as exc_info:
+                _run_test(
+                    module="ghost_mod",
+                    log_level="test",
+                    summary=True,
+                    failures_only=False,
+                    json_out=False,
+                    tags=None,
+                    save_log=None,
+                )
+
+        exc = exc_info.value
+        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
+        assert code == 2
+        mock_dc.exec_cmd_stream.assert_not_called()
+        captured = capsys.readouterr()
+        assert "Modulos no encontrados: ghost_mod" in captured.err
+
+
+# ---------------------------------------------------------------------------
+# C3 (mitad test) — el rechazo temprano de --verbose honra --json
+# ---------------------------------------------------------------------------
+
+
+class TestVerboseJsonRejection:
+    """El rechazo de --verbose + --json/--summary/--failures va al formato pedido."""
+
+    def test_verbose_json_emite_json_en_stderr_nada_en_stdout(self, capsys) -> None:
+        """'odev test mod --verbose --json' → JSON en stderr, stdout vacio."""
+        import typer
+
+        from odev.commands.test import _run_test
+
+        with pytest.raises((SystemExit, typer.Exit)) as exc_info:
+            _run_test(
+                module="mod",
+                log_level="test",
+                summary=False,
+                failures_only=False,
+                json_out=True,
+                tags=None,
+                save_log=None,
+                verbose=True,
+            )
+
+        exc = exc_info.value
+        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
+        assert code == 2
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        payload = json.loads(captured.err)
+        assert "error" in payload
+        assert "--verbose" in payload["error"]
+
+    def test_verbose_summary_sin_json_va_a_stderr(self, capsys) -> None:
+        """Sin --json, el mensaje humano tambien va a stderr, nunca a stdout."""
+        import typer
+
+        from odev.commands.test import _run_test
+
+        with pytest.raises((SystemExit, typer.Exit)) as exc_info:
+            _run_test(
+                module="mod",
+                log_level="test",
+                summary=True,
+                failures_only=False,
+                json_out=False,
+                tags=None,
+                save_log=None,
+                verbose=True,
+            )
+
+        exc = exc_info.value
+        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
+        assert code == 2
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "--verbose" in captured.err
+
+    def test_verbose_failures_sin_json_va_a_stderr(self, capsys) -> None:
+        """Idem con --failures en vez de --summary: mismo destino, stderr."""
+        import typer
+
+        from odev.commands.test import _run_test
+
+        with pytest.raises((SystemExit, typer.Exit)) as exc_info:
+            _run_test(
+                module="mod",
+                log_level="test",
+                summary=False,
+                failures_only=True,
+                json_out=False,
+                tags=None,
+                save_log=None,
+                verbose=True,
+            )
+
+        exc = exc_info.value
+        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
+        assert code == 2
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "--verbose" in captured.err
+
+
+# ---------------------------------------------------------------------------
+# A1-a (U2) — warning por stderr cuando la corrida ejecuto cero tests
+# ---------------------------------------------------------------------------
+
+
+class TestZeroTestWarning:
+    """0 tests ejecutados es indistinguible de exito si nadie avisa."""
+
+    def test_total_cero_emite_warning_en_stderr(self, tmp_path: Path, capsys) -> None:
+        """total==0 y parse_failed==False → warning nombrando el filtro efectivo."""
+        from odev.core.test_parser import TestResult
+
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        with patch(
+            "odev.commands.test.parse_odoo_test_output",
+            return_value=TestResult(total=0, duration=0.05),
+        ):
+            _call_run_test(tmp_path, mock_dc, module="sale")
+
+        captured = capsys.readouterr()
+        assert "0 tests" in captured.err
+        assert "sale" in captured.err
+
+    def test_total_mayor_a_cero_no_emite_warning(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """Una corrida con tests reales no dispara el warning de cero tests."""
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        _call_run_test(tmp_path, mock_dc, module="sale")
+
+        captured = capsys.readouterr()
+        assert "0 tests" not in captured.err
+
+    def test_warning_no_contamina_stdout_en_json(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """Con --json, el warning va a stderr y stdout sigue siendo JSON puro."""
+        from odev.core.test_parser import TestResult
+
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        with patch(
+            "odev.commands.test.parse_odoo_test_output",
+            return_value=TestResult(total=0, duration=0.05),
+        ):
+            _call_run_test(tmp_path, mock_dc, module="sale", json_out=True)
+
+        captured = capsys.readouterr()
+        payload = json.loads(captured.out)
+        assert payload["total"] == 0
+        assert "0 tests" in captured.err
+
+    def test_parse_failed_no_duplica_el_warning(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """parse_failed==True ya tiene su propio aviso; no se agrega el de A1-a."""
+        from odev.core.test_parser import TestResult
+
+        fake_popen = FakePopen(_FIXTURE_MALFORMED, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        with patch(
+            "odev.commands.test.parse_odoo_test_output",
+            return_value=TestResult(total=0, parse_failed=True, raw_output="boom"),
+        ):
+            _call_run_test(tmp_path, mock_dc, module="sale")
+
+        captured = capsys.readouterr()
+        assert "Filtro efectivo" not in captured.err
+
+    def test_modulo_legitimamente_sin_tests_sigue_saliendo_0(
+        self, tmp_path: Path
+    ) -> None:
+        """El warning es advertencia, no error: exit code se mantiene en 0."""
+        import typer
+
+        from odev.core.test_parser import TestResult
+
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        with patch(
+            "odev.commands.test.parse_odoo_test_output",
+            return_value=TestResult(total=0, duration=0.05),
+        ):
+            exc = _call_run_test(tmp_path, mock_dc, module="sale")
+
+        assert isinstance(exc, (type(None), typer.Exit))
+        if exc is not None:
+            assert exc.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# A1-b (U2) — lint de descubrimiento: test_*.py huerfanos de __init__.py
+# ---------------------------------------------------------------------------
+
+
+class TestLintDescubrimientoTests:
+    """Compara tests/test_*.py contra lo importado en tests/__init__.py."""
+
+    def _make_ctx(self, tmp_path: Path) -> MagicMock:
+        ctx = MagicMock()
+        ctx.directorio_config = tmp_path
+        return ctx
+
+    def test_detecta_archivo_huerfano(self, tmp_path: Path, capsys) -> None:
+        """Un test_*.py no importado dispara un warning que lo nombra."""
+        from odev.commands.test import _lint_descubrimiento_tests
+
+        addon_dir = tmp_path / "mymod"
+        tests_dir = addon_dir / "tests"
+        tests_dir.mkdir(parents=True)
+        (tests_dir / "test_imported.py").write_text("class T:\n    pass\n")
+        (tests_dir / "test_orphan.py").write_text("class T:\n    pass\n")
+        (tests_dir / "__init__.py").write_text("from . import test_imported\n")
+
+        ctx = self._make_ctx(tmp_path)
+        with patch("odev.commands.test.resolver_addon_dir", return_value=addon_dir):
+            _lint_descubrimiento_tests(["mymod"], ctx)
+
+        captured = capsys.readouterr()
+        assert "test_orphan" in captured.err
+        assert "test_imported" not in captured.err
+
+    def test_todo_importado_no_avisa(self, tmp_path: Path, capsys) -> None:
+        """'from . import a' en lineas separadas: ambos cuentan como importados."""
+        from odev.commands.test import _lint_descubrimiento_tests
+
+        addon_dir = tmp_path / "mymod"
+        tests_dir = addon_dir / "tests"
+        tests_dir.mkdir(parents=True)
+        (tests_dir / "test_a.py").write_text("class T:\n    pass\n")
+        (tests_dir / "test_b.py").write_text("class T:\n    pass\n")
+        (tests_dir / "__init__.py").write_text(
+            "from . import test_a\nfrom . import test_b\n"
+        )
+
+        ctx = self._make_ctx(tmp_path)
+        with patch("odev.commands.test.resolver_addon_dir", return_value=addon_dir):
+            _lint_descubrimiento_tests(["mymod"], ctx)
+
+        assert capsys.readouterr().err == ""
+
+    def test_import_csv_en_una_linea_no_reporta_huerfano(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """'from . import a, b' en una sola linea: ambos cuentan como importados."""
+        from odev.commands.test import _lint_descubrimiento_tests
+
+        addon_dir = tmp_path / "mymod"
+        tests_dir = addon_dir / "tests"
+        tests_dir.mkdir(parents=True)
+        (tests_dir / "test_a.py").write_text("class T:\n    pass\n")
+        (tests_dir / "test_b.py").write_text("class T:\n    pass\n")
+        (tests_dir / "__init__.py").write_text("from . import test_a, test_b\n")
+
+        ctx = self._make_ctx(tmp_path)
+        with patch("odev.commands.test.resolver_addon_dir", return_value=addon_dir):
+            _lint_descubrimiento_tests(["mymod"], ctx)
+
+        assert capsys.readouterr().err == ""
+
+    def test_import_condicional_cuenta_como_importado(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """Un import dentro de un 'if': ast.walk lo encuentra igual."""
+        from odev.commands.test import _lint_descubrimiento_tests
+
+        addon_dir = tmp_path / "mymod"
+        tests_dir = addon_dir / "tests"
+        tests_dir.mkdir(parents=True)
+        (tests_dir / "test_a.py").write_text("class T:\n    pass\n")
+        (tests_dir / "__init__.py").write_text(
+            "import sys\nif sys.version_info >= (3, 0):\n    from . import test_a\n"
+        )
+
+        ctx = self._make_ctx(tmp_path)
+        with patch("odev.commands.test.resolver_addon_dir", return_value=addon_dir):
+            _lint_descubrimiento_tests(["mymod"], ctx)
+
+        assert capsys.readouterr().err == ""
+
+    def test_init_no_parseable_omite_en_silencio(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """__init__.py con SyntaxError: se omite el lint, no se adivina."""
+        from odev.commands.test import _lint_descubrimiento_tests
+
+        addon_dir = tmp_path / "mymod"
+        tests_dir = addon_dir / "tests"
+        tests_dir.mkdir(parents=True)
+        (tests_dir / "test_orphan.py").write_text("class T:\n    pass\n")
+        (tests_dir / "__init__.py").write_text("def broken(:\n")
+
+        ctx = self._make_ctx(tmp_path)
+        with patch("odev.commands.test.resolver_addon_dir", return_value=addon_dir):
+            _lint_descubrimiento_tests(["mymod"], ctx)
+
+        assert capsys.readouterr().err == ""
+
+    def test_sin_carpeta_tests_no_avisa(self, tmp_path: Path, capsys) -> None:
+        """Modulo legitimamente sin tests/: no hay nada que lintear."""
+        from odev.commands.test import _lint_descubrimiento_tests
+
+        addon_dir = tmp_path / "mymod"
+        addon_dir.mkdir()
+
+        ctx = self._make_ctx(tmp_path)
+        with patch("odev.commands.test.resolver_addon_dir", return_value=addon_dir):
+            _lint_descubrimiento_tests(["mymod"], ctx)
+
+        assert capsys.readouterr().err == ""
+
+    def test_target_all_omite_el_lint_por_completo(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """'all' nunca dispara el lint: ni siquiera resuelve addon dirs."""
+        from odev.commands.test import _lint_descubrimiento_tests
+
+        ctx = self._make_ctx(tmp_path)
+        with patch("odev.commands.test.resolver_addon_dir") as mock_resolver:
+            _lint_descubrimiento_tests(["all"], ctx)
+            mock_resolver.assert_not_called()
+
+        assert capsys.readouterr().err == ""
+
+    def test_addon_dir_no_resuelto_no_avisa(self, tmp_path: Path, capsys) -> None:
+        """Modulo sin presencia en el addons-path (p.ej. builtin): se omite."""
+        from odev.commands.test import _lint_descubrimiento_tests
+
+        ctx = self._make_ctx(tmp_path)
+        with patch("odev.commands.test.resolver_addon_dir", return_value=None):
+            _lint_descubrimiento_tests(["mymod"], ctx)
+
+        assert capsys.readouterr().err == ""
