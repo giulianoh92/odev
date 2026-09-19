@@ -413,9 +413,20 @@ odev addon-install nuevo_modulo --no-validate
 # Testear multiples modulos: genera -u sale,crm --test-tags /sale,/crm
 odev test sale,crm
 
-# Agregar filtro de tag extra (se agrega al final del --test-tags auto-generado)
+# Filtrar por tag: --tags REEMPLAZA los prefijos auto-generados
 odev test sale,crm --tags :test_create
-# Resultado: --test-tags /sale,/crm,:test_create
+# Resultado: -u sale,crm --test-tags :test_create
+
+# Por que reemplaza y no se suma: Odoo UNE los specs separados por coma, no los
+# intersecta. '--test-tags /sale,/crm,:test_create' significaria "todos los tests
+# de sale" O "todos los de crm" O "los llamados test_create", y correria los
+# modulos enteros ignorando el filtro. El '-u sale,crm' ya acota los modulos,
+# asi que la expresion sola filtra exactamente dentro de ellos.
+
+# El shorthand y --tags no se combinan (ambos definen el filtro): exit 2
+odev test sale:TestFoo.test_bar        # OK
+odev test sale --tags ':test_bar'      # OK
+odev test sale:TestFoo --tags fast     # exit 2
 
 # Saltar validacion previa de modulos
 odev test sale,crm --no-validate

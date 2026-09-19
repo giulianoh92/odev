@@ -1006,7 +1006,13 @@ class TestTagsMerge:
     def test_modulo_y_tags_produce_un_solo_test_tags(
         self, tmp_path: Path, monkeypatch
     ) -> None:
-        """module='my_mod' + tags='MyClass' → exactamente un --test-tags /my_mod,MyClass."""
+        """module='my_mod' + tags='MyClass' → un solo --test-tags, y su valor es 'MyClass'.
+
+        El prefijo '/my_mod' NO se emite: Odoo une los specs separados por coma,
+        asi que '/my_mod,MyClass' significaria "todos los tests de my_mod" O "los
+        tagueados MyClass", corriendo el modulo entero. El '-u my_mod' ya acota
+        los modulos.
+        """
         monkeypatch.setattr("sys.stdout.isatty", lambda: False)
 
         fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
@@ -1021,7 +1027,9 @@ class TestTagsMerge:
         assert len(test_tags_indices) == 1, (
             f"Expected exactly 1 --test-tags, got {len(test_tags_indices)}: {cmd_list}"
         )
-        assert cmd_list[test_tags_indices[0] + 1] == "/my_mod,MyClass"
+        assert cmd_list[test_tags_indices[0] + 1] == "MyClass"
+        # El modulo se acota por -u, no por el prefijo de tags.
+        assert "-u" in cmd_list and cmd_list[cmd_list.index("-u") + 1] == "my_mod"
 
     def test_modulo_sin_tags_produce_solo_prefijo(
         self, tmp_path: Path, monkeypatch
@@ -1212,10 +1220,15 @@ class TestCSVModules:
         idx_tt = cmd.index("--test-tags")
         assert cmd[idx_tt + 1] == "/m1,/m2"
 
-    def test_5c_tags_append_a_prefijos(
+    def test_5c_tags_reemplaza_prefijos(
         self, tmp_path: Path, monkeypatch
     ) -> None:
-        """5-C: _run_test('m1,m2', tags='/X:Cls') → --test-tags /m1,/m2,/X:Cls (append)."""
+        """5-C: _run_test('m1,m2', tags='/X:Cls') → --test-tags /X:Cls (reemplaza).
+
+        Los prefijos NO se agregan: Odoo une los specs por coma, asi que
+        '/m1,/m2,/X:Cls' correria m1 y m2 enteros ademas del filtro. Los modulos
+        siguen acotados por '-u m1,m2'.
+        """
         monkeypatch.setattr("sys.stdout.isatty", lambda: False)
 
         fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
@@ -1231,7 +1244,8 @@ class TestCSVModules:
 
         cmd = mock_dc.exec_cmd_stream.call_args[0][1]
         idx_tt = cmd.index("--test-tags")
-        assert cmd[idx_tt + 1] == "/m1,/m2,/X:Cls"
+        assert cmd[idx_tt + 1] == "/X:Cls"
+        assert cmd[cmd.index("-u") + 1] == "m1,m2"
 
     def test_5d_all_solo_sin_u_sin_test_tags(
         self, tmp_path: Path, monkeypatch
@@ -1444,3 +1458,80 @@ class TestTargetShorthand:
         code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
         assert code == 2
         mock_dc.exec_cmd_stream.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# T-tagbuild — _build_test_tags: la coma de --test-tags es OR, no AND
+# ---------------------------------------------------------------------------
+
+
+class TestBuildTestTags:
+    """Regresion del bug de union en --test-tags.
+
+    Odoo une los specs separados por coma (odoo/tests/tag_selector.py: check()
+    hace any(...) sobre los includes). Emitir el prefijo '/modulo' junto a la
+    expresion del usuario ampliaba la seleccion en vez de acotarla, y corria el
+    modulo entero ignorando el filtro.
+    """
+
+    def test_tags_reemplaza_prefijos_de_modulo(self) -> None:
+        """El caso del bug: un modulo + tag NO debe emitir '/modulo'."""
+        from odev.commands.test import _build_test_tags
+
+        assert _build_test_tags(["tagtest"], None, "alpha") == ["alpha"]
+
+    def test_tags_reemplaza_prefijos_con_csv(self) -> None:
+        """CSV + tag: tampoco se emiten prefijos; '-u' acota los modulos."""
+        from odev.commands.test import _build_test_tags
+
+        assert _build_test_tags(["m1", "m2"], None, "alpha") == ["alpha"]
+
+    def test_sin_tags_emite_prefijos_por_modulo(self) -> None:
+        """Sin expresion del usuario, los prefijos siguen siendo el filtro."""
+        from odev.commands.test import _build_test_tags
+
+        assert _build_test_tags(["m1", "m2"], None, None) == ["/m1", "/m2"]
+
+    def test_shorthand_sin_tags_produce_spec_unico(self) -> None:
+        """El shorthand ya era correcto: un solo spec, tag Y clase Y metodo."""
+        from odev.commands.test import _build_test_tags
+
+        assert _build_test_tags(["mod"], "TestFoo.test_bar", None) == [
+            "/mod:TestFoo.test_bar"
+        ]
+
+    def test_all_sin_tags_no_emite_nada(self) -> None:
+        """'all' sin tags: no hay --test-tags que emitir."""
+        from odev.commands.test import _build_test_tags
+
+        assert _build_test_tags(["all"], None, None) == []
+
+    def test_all_con_tags_emite_solo_la_expresion(self) -> None:
+        """'all' + tags ya era correcto; el fix lo deja igual."""
+        from odev.commands.test import _build_test_tags
+
+        assert _build_test_tags(["all"], None, "sale") == ["sale"]
+
+    def test_shorthand_con_tags_es_error_de_uso(self) -> None:
+        """Combinar shorthand y --tags sale 2 en vez de descartar uno en silencio."""
+        import typer
+
+        from odev.commands.test import _build_test_tags
+
+        with pytest.raises((typer.Exit, SystemExit)) as exc_info:
+            _build_test_tags(["mod"], "TestFoo", "alpha")
+
+        exc = exc_info.value
+        code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
+        assert code == 2
+
+    def test_ninguna_salida_contiene_prefijo_junto_a_tags(self) -> None:
+        """Invariante del bug: prefijo y expresion del usuario nunca coexisten.
+
+        Es la propiedad que hacia que Odoo corriera el modulo completo.
+        """
+        from odev.commands.test import _build_test_tags
+
+        for modulos in (["m1"], ["m1", "m2"], ["all"]):
+            specs = _build_test_tags(modulos, None, "alpha")
+            assert not any(s.startswith("/m") for s in specs), specs
