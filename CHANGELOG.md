@@ -43,8 +43,10 @@ Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
 ## [0.11.0] - 2026-09-19
 
 Release enfocada en una sola clase de defecto: **odev sabia algo que quien lo
-invocaba no sabia, y no lo decia**. Ver `docs/FALLAS-SILENCIOSAS.md` para el
-relevamiento completo, el razonamiento y las alternativas descartadas.
+invocaba no sabia, y no lo decia**. Los principios de diseno que salieron de ese
+relevamiento viven en [ARCHITECTURE.md](ARCHITECTURE.md); el detalle de cada
+defecto, con su razonamiento y las alternativas descartadas, esta en las
+entradas de abajo.
 
 ### Cambiado
 
@@ -488,7 +490,7 @@ Sin cambios de codigo. Pure docs release.
 
 ### Documentacion
 
-- Especificaciones SDD completas en `docs/sdd/` (proposal, spec, design, tasks)
+- Especificaciones SDD completas del ciclo (proposal, spec, design, tasks)
 
 ## [0.1.0] - 2026-03-19
 

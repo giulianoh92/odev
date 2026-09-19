@@ -22,6 +22,10 @@ htmlcov/
 uv.lock
 
 # La skill de Claude Code se versiona con el codigo que documenta.
-# Muchos entornos ignoran .claude/ globalmente (core.excludesFile); esta
-# negacion local tiene precedencia y la vuelve a incluir.
+# Muchos entornos ignoran .claude/ globalmente (core.excludesFile); estas
+# reglas locales tienen precedencia. Se re-incluye SOLO la skill: el resto
+# de .claude/ es estado local de la herramienta (worktrees de agentes,
+# settings personales) y no pertenece al repo.
 !.claude/
+.claude/*
+!.claude/skills/
