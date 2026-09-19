@@ -19,6 +19,7 @@ Modos de salida:
 
 from __future__ import annotations
 
+import ast
 import json
 import subprocess
 import sys
@@ -26,12 +27,15 @@ from pathlib import Path
 from typing import Optional
 
 import typer
+from rich.console import Console
 
 from odev.commands._helpers import (
+    MODULOS_BUILTIN,
     obtener_docker,
     obtener_rutas,
     parsear_modulos_csv,
     requerir_proyecto,
+    resolver_addon_dir,
     validar_modulo_existe,  # noqa: F401  # re-exported for test mocks
     validar_modulos,
 )
@@ -56,10 +60,14 @@ def _parse_test_target(raw: str) -> tuple[str, str | None]:
     Reglas de uso (D8):
       - Un solo token con ':' → ('module', 'Class.method') o ('module', 'Class').
       - Sin ':' → ('module', None) — ruta backward-compat.
-      - CSV + colon → RECHAZADO con typer.Exit(2); mensaje a stderr.
+      - CSV + colon → RECHAZADO con ValueError.
         Ejemplo invalido: 'mod1,mod2:TestFoo.test_bar'
-      - 'all:Class' → RECHAZADO con typer.Exit(2); el pseudo-modulo 'all'
+      - 'all:Class' → RECHAZADO con ValueError; el pseudo-modulo 'all'
         no soporta filtrado por clase.
+
+    Funcion compartida entre CLI y MCP: senaliza con ValueError y deja que
+    cada frontend decida como presentarlo. La CLI (_run_test) la convierte
+    a stderr + typer.Exit(2); el path MCP (_execute_test) la deja propagar.
 
     Argumentos:
         raw: Token de modulo tal como lo entrega Typer.
@@ -68,7 +76,7 @@ def _parse_test_target(raw: str) -> tuple[str, str | None]:
         Tupla (module_name, tag_suffix_or_None).
 
     Raises:
-        typer.Exit(2): si la combinacion es invalida.
+        ValueError: si la combinacion es invalida.
     """
     if ":" not in raw:
         return raw, None
@@ -76,18 +84,16 @@ def _parse_test_target(raw: str) -> tuple[str, str | None]:
     # Hay ':', validar que no sea CSV+colon
     module, _, tag = raw.partition(":")
     if "," in module:
-        sys.stderr.write(
+        raise ValueError(
             "Shorthand ':Class.method' requiere un solo modulo destino; "
-            "se recibio CSV. Usa --tags directamente para filtrar en multiples modulos.\n"
+            "se recibio CSV. Usa --tags directamente para filtrar en multiples modulos."
         )
-        raise typer.Exit(2)
 
     if module == "all":
-        sys.stderr.write(
+        raise ValueError(
             "El pseudo-modulo 'all' no soporta filtrado ':Class.method'. "
-            "Usa --tags para filtrar por clase en todos los modulos.\n"
+            "Usa --tags para filtrar por clase en todos los modulos."
         )
-        raise typer.Exit(2)
 
     return module, tag
 
@@ -122,17 +128,16 @@ def _build_test_tags(
         Los specs a unir con comas. Vacio significa: no emitir --test-tags.
 
     Raises:
-        typer.Exit(2): si se combinan el shorthand y --tags.
+        ValueError: si se combinan el shorthand y --tags.
     """
     if shorthand_tag is not None and tags is not None:
-        sys.stderr.write(
+        raise ValueError(
             "El shorthand 'modulo:Clase.metodo' y --tags no se pueden combinar: "
             "los dos definen el filtro de tests, y Odoo uniria ambos en vez de "
             "intersectarlos.\n"
             "Elegi uno: 'odev test modulo:Clase.metodo' o "
-            "'odev test modulo --tags \"<expresion>\"'.\n"
+            "'odev test modulo --tags \"<expresion>\"'."
         )
-        raise typer.Exit(2)
 
     if tags is not None:
         # '-u' ya acota los modulos. Agregar '/modulo' aca haria OR con la
@@ -356,6 +361,106 @@ def _execute_test(
     }
 
 
+def _advertir_cero_tests(modulos: list[str], tag_parts: list[str]) -> None:
+    """Avisa por stderr cuando la corrida ejecuto cero tests (A1-a).
+
+    Un solo chequeo que cubre las causas usuales: un test_*.py no importado
+    en tests/__init__.py, un nombre de modulo mal escrito que igual pasa la
+    validacion de addons-path, o una expresion de --tags que no matchea
+    nada. Un modulo legitimamente sin tests tambien cae aca, y es un caso
+    valido: por eso esto es un warning por stderr, nunca un error ni un
+    exit distinto de cero. Convertirlo en error rompe `odev test all`
+    sobre un proyecto con modulos sin tests.
+
+    Argumentos:
+        modulos:   Modulo(s) efectivamente pasados a Odoo (o ['all']).
+        tag_parts: Specs de --test-tags efectivamente pasados a Odoo.
+    """
+    filtro_tags = ",".join(tag_parts) if tag_parts else "(ninguno)"
+    sys.stderr.write(
+        "WARN: la corrida ejecuto 0 tests. "
+        f"Filtro efectivo: modulos={','.join(modulos)}, --test-tags={filtro_tags}. "
+        "Causas usuales: un test_*.py no importado en tests/__init__.py, "
+        "un nombre de modulo mal escrito, o una expresion de --tags que no "
+        "matcheo nada. Un modulo legitimamente sin tests tambien produce "
+        "esto: no es un error.\n"
+    )
+
+
+def _lint_descubrimiento_tests(modulos: list[str], contexto) -> None:
+    """Lint de descubrimiento: test_*.py huerfanos de tests/__init__.py (A1-b).
+
+    Odoo solo descubre los modulos de test que tests/__init__.py importa
+    explicitamente: get_test_modules() usa inspect.getmembers(mod,
+    inspect.ismodule), y un submodulo solo es atributo del paquete si
+    alguien lo importo. Un test_*.py que nadie importa aporta cero tests,
+    sin error ni warning de Odoo.
+
+    Parsea tests/__init__.py con `ast`, no con regex, para poder manejar
+    'from . import a, b', 'from . import a' en lineas separadas, e imports
+    dentro de condicionales (ast.walk recorre el arbol completo). Si el
+    archivo no se puede parsear, omite el lint para ese modulo en silencio:
+    un lint que reporta huerfanos falsos es peor que ningun lint.
+
+    Se omite por completo cuando el destino es 'all'. Reusa
+    resolver_addon_dir (misma resolucion de addons-path que validar_modulos)
+    en vez de reimplementarla. Los builtins (MODULOS_BUILTIN) tambien se
+    omiten: viven en el core de Odoo, no en el addons-path del proyecto,
+    igual que el bypass que ya hace validar_modulos.
+
+    Argumentos:
+        modulos:  Lista de modulos destino (post parsear_modulos_csv).
+        contexto: Contexto del proyecto resuelto.
+    """
+    if modulos == ["all"]:
+        return
+
+    for nombre in modulos:
+        if nombre in MODULOS_BUILTIN:
+            continue
+        addon_dir = resolver_addon_dir(nombre, contexto)
+        if addon_dir is None:
+            continue
+
+        tests_dir = addon_dir / "tests"
+        if not tests_dir.is_dir():
+            continue
+
+        archivos_test = {p.stem for p in tests_dir.glob("test_*.py")}
+        if not archivos_test:
+            continue
+
+        init_path = tests_dir / "__init__.py"
+        if not init_path.is_file():
+            continue
+
+        try:
+            arbol = ast.parse(init_path.read_text(encoding="utf-8"))
+        except (SyntaxError, OSError, UnicodeDecodeError, ValueError):
+            continue  # no se puede parsear: omitir en silencio, no adivinar
+
+        importados: set[str] = set()
+        for nodo in ast.walk(arbol):
+            if isinstance(nodo, ast.ImportFrom):
+                if (nodo.level or 0) < 1:
+                    continue  # import absoluto: no aplica al paquete tests/
+                if nodo.module:
+                    importados.add(nodo.module.split(".")[0])
+                else:
+                    for alias in nodo.names:
+                        importados.add(alias.name.split(".")[0])
+            elif isinstance(nodo, ast.Import):
+                for alias in nodo.names:
+                    importados.add(alias.name.split(".")[0])
+
+        for huerfano in sorted(archivos_test - importados):
+            sys.stderr.write(
+                f"WARN: {tests_dir / f'{huerfano}.py'} existe pero no esta "
+                f"importado en {init_path}. Odoo solo descubre modulos de "
+                "test importados; este archivo va a aportar cero tests.\n"
+            )
+
+
 def _run_test(
     module: str,
     log_level: str,
@@ -386,23 +491,41 @@ def _run_test(
     from odev.main import obtener_nombre_proyecto
 
     # --verbose contradice los modos parseados/compactos: rechazar temprano.
+    # C3: el rechazo debe honrar el formato pedido, siempre por stderr —
+    # error() de core.console usa un Console sin destino explicito y termina
+    # en stdout, lo que rompe a un consumidor --json.
     if verbose and (json_out or summary or failures_only):
-        error(
+        mensaje = (
             "--verbose es incompatible con --json/--summary/--failures: "
             "el stream crudo no se parsea. Usa --verbose solo, o quita el flag."
         )
+        if json_out:
+            sys.stderr.write(json.dumps({"error": mensaje}) + "\n")
+        else:
+            Console(stderr=True).print(f"[bold red]ERROR[/] {mensaje}")
         raise typer.Exit(2)
 
     contexto = requerir_proyecto(obtener_nombre_proyecto())
 
-    # D8: detectar shorthand 'module:Class.method' antes de parsear CSV.
-    # _parse_test_target valida y rechaza combinaciones invalidas (CSV+colon).
-    module_name, shorthand_tag = _parse_test_target(module)
+    try:
+        # D8: detectar shorthand 'module:Class.method' antes de parsear CSV.
+        # _parse_test_target valida y rechaza combinaciones invalidas
+        # (CSV+colon, 'all:Class') con ValueError.
+        module_name, shorthand_tag = _parse_test_target(module)
 
-    # Pre-flight: parsear y validar modulo(s)
-    # Si habia shorthand, el module_name es el modulo limpio (sin ":...")
-    modulos = parsear_modulos_csv(module_name)
-    validar_modulos(modulos, contexto, no_validate=no_validate)
+        # Pre-flight: parsear y validar modulo(s)
+        # Si habia shorthand, el module_name es el modulo limpio (sin ":...")
+        modulos = parsear_modulos_csv(module_name)
+        validar_modulos(modulos, contexto, no_validate=no_validate)
+    except ValueError as exc:
+        # A2: las funciones compartidas senalizan con ValueError; la CLI es
+        # la que decide presentarlo como stderr + exit 2.
+        sys.stderr.write(f"{exc}\n")
+        raise typer.Exit(2) from exc
+
+    # A1-b: lint de descubrimiento antes de lanzar Odoo. Solo advierte por
+    # stderr, nunca bloquea la corrida.
+    _lint_descubrimiento_tests(modulos, contexto)
 
     rutas = obtener_rutas(contexto)
 
@@ -428,7 +551,11 @@ def _run_test(
     if modulos != ["all"]:
         comando.extend(["-u", ",".join(modulos)])
 
-    tag_parts = _build_test_tags(modulos, shorthand_tag, tags)
+    try:
+        tag_parts = _build_test_tags(modulos, shorthand_tag, tags)
+    except ValueError as exc:
+        sys.stderr.write(f"{exc}\n")
+        raise typer.Exit(2) from exc
     if tag_parts:
         comando.extend(["--test-tags", ",".join(tag_parts)])
 
@@ -465,6 +592,12 @@ def _run_test(
     # 1 si hay failures/errors/parse_failed). Un returncode != 0 del
     # proceso siempre manda (incluye el caso puerto ocupado → 3).
     returncode = returncode if returncode != 0 else result.returncode_hint
+
+    # A1-a: 0 tests ejecutados es indistinguible de exito si nadie avisa.
+    # Warning por stderr, nunca error: nunca cambia returncode ni contamina
+    # stdout (donde --json espera JSON puro).
+    if result.total == 0 and not result.parse_failed:
+        _advertir_cero_tests(modulos, tag_parts)
 
     if json_out:
         # D1: --json + --failures son composables.

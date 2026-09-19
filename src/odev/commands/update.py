@@ -1,5 +1,7 @@
 """Comando 'update': actualiza (upgrade) uno o varios modulos Odoo."""
 
+import sys
+
 import typer
 
 from odev.commands._helpers import (
@@ -40,8 +42,12 @@ def update(
     from odev.main import obtener_nombre_proyecto
 
     contexto = requerir_proyecto(obtener_nombre_proyecto())
-    modulos = parsear_modulos_csv(module)
-    validar_modulos(modulos, contexto, no_validate=no_validate)
+    try:
+        modulos = parsear_modulos_csv(module)
+        validar_modulos(modulos, contexto, no_validate=no_validate)
+    except ValueError as exc:
+        sys.stderr.write(f"{exc}\n")
+        raise typer.Exit(2) from exc
 
     rutas = obtener_rutas(contexto)
     valores_env = load_env(rutas.env_file)
