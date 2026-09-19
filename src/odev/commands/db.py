@@ -96,6 +96,11 @@ def restore(
         "-y",
         help="Saltar la confirmacion interactiva. Util para uso en agentes/CI.",
     ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Mostrar que se haria sin ejecutar la operacion.",
+    ),
 ) -> None:
     """Restaura la base de datos desde un snapshot.
 
@@ -109,6 +114,12 @@ def restore(
     if not ruta_archivo:
         error(f"No se encontro ningun snapshot que coincida con '{name}'.")
         raise typer.Exit(1)
+
+    if dry_run:
+        info("Modo --dry-run: no se ejecutara ninguna operacion.")
+        info(f"  Se restauraria la base de datos: {nombre_bd}")
+        info(f"  Desde el snapshot: {ruta_archivo.name}")
+        return
 
     dc = obtener_docker(contexto)
 
@@ -181,7 +192,19 @@ def list_snapshots() -> None:
 
 
 @app.command(epilog=EPILOG_EXIT_CODES)
-def anonymize() -> None:
+def anonymize(
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Saltar la confirmacion interactiva. Util para uso en agentes/CI.",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Mostrar que se haria sin ejecutar la operacion.",
+    ),
+) -> None:
     """Anonimiza datos personales en la base de datos.
 
     Ejecuta un script SQL que reemplaza nombres, emails, telefonos y
@@ -190,18 +213,25 @@ def anonymize() -> None:
     """
     usuario_bd, nombre_bd, rutas, contexto = _obtener_info_bd()
 
-    dc = obtener_docker(contexto)
-
-    warning("Esto anonimizara los datos de partners y reseteara las passwords de usuarios!")
-    confirmacion = typer.confirm("Continuar?", default=False)
-    if not confirmacion:
-        info("Operacion cancelada.")
-        raise typer.Exit()
-
     archivo_sql = get_sql_templates_dir() / "anonymize.sql"
     if not archivo_sql.exists():
         error(f"No se encontro el script de anonimizacion: {archivo_sql}")
         raise typer.Exit(1)
+
+    if dry_run:
+        info("Modo --dry-run: no se ejecutara ninguna operacion.")
+        info(f"  Se anonimizarian los partners de la base de datos: {nombre_bd}")
+        info("  Se resetearian las passwords de todos los usuarios a 'admin'.")
+        return
+
+    dc = obtener_docker(contexto)
+
+    warning("Esto anonimizara los datos de partners y reseteara las passwords de usuarios!")
+    if not yes:
+        confirmacion = typer.confirm("Continuar?", default=False)
+        if not confirmacion:
+            info("Operacion cancelada.")
+            raise typer.Exit()
 
     datos_sql = archivo_sql.read_bytes()
     info("Ejecutando anonimizacion...")

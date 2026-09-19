@@ -54,7 +54,7 @@ class TestRestoreStreaming:
         ):
             from odev.commands.db import restore
 
-            restore("mi_backup")
+            restore("mi_backup", dry_run=False)
 
         # exec_cmd_file DEBE haberse llamado con stdin_file=dump_file
         mock_dc.exec_cmd_file.assert_called_once()
@@ -101,7 +101,7 @@ class TestRestoreStreaming:
         ):
             from odev.commands.db import restore
 
-            restore("mi_backup")
+            restore("mi_backup", dry_run=False)
 
         assert read_bytes_llamado == [], (
             f"read_bytes() fue llamado sobre el dump: {read_bytes_llamado}"
@@ -154,7 +154,7 @@ class TestRestoreYes:
         ):
             from odev.commands.db import restore
 
-            restore("mi_backup", yes=True)
+            restore("mi_backup", yes=True, dry_run=False)
 
         # Con --yes, typer.confirm NO debe haberse llamado
         mock_confirm.assert_not_called()
@@ -187,8 +187,185 @@ class TestRestoreYes:
             from odev.commands.db import restore
 
             with pytest.raises((SystemExit, typer.Exit)) as exc_info:
-                restore("dump_inexistente", yes=True)
+                restore("dump_inexistente", yes=True, dry_run=False)
 
         exc = exc_info.value
         code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
         assert code == 1
+
+
+class TestRestoreDryRun:
+    """U4 — 'db restore --dry-run' no ejecuta ninguna operacion destructiva."""
+
+    @pytest.fixture
+    def contexto_con_dump(self, tmp_path):
+        """Prepara snapshots dir con un dump valido."""
+        snapshots_dir = tmp_path / "snapshots"
+        snapshots_dir.mkdir()
+        dump_file = snapshots_dir / "mi_backup_20260101_120000.dump"
+        dump_file.write_bytes(b"fake dump content")
+        return tmp_path, snapshots_dir, dump_file
+
+    def test_dry_run_no_ejecuta_ni_confirma(self, contexto_con_dump, tmp_path) -> None:
+        """Con --dry-run: no se llama a typer.confirm ni se toca docker."""
+        _tmp, snapshots_dir, dump_file = contexto_con_dump
+
+        mock_dc = MagicMock()
+        mock_context = MagicMock()
+        mock_rutas = MagicMock()
+        mock_rutas.snapshots_dir = snapshots_dir
+        mock_rutas.env_file = tmp_path / ".env"
+        (tmp_path / ".env").write_text("DB_USER=odoo\nDB_NAME=odoo_db\n")
+
+        with (
+            patch("odev.commands.db.requerir_proyecto", return_value=mock_context),
+            patch("odev.commands.db.obtener_rutas", return_value=mock_rutas),
+            patch(
+                "odev.commands.db.load_env",
+                return_value={"DB_USER": "odoo", "DB_NAME": "odoo_db"},
+            ),
+            patch("odev.commands.db.obtener_docker", return_value=mock_dc) as mock_obtener_docker,
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands.db.typer.confirm") as mock_confirm,
+        ):
+            from odev.commands.db import restore
+
+            restore("mi_backup", dry_run=True)
+
+        mock_confirm.assert_not_called()
+        mock_obtener_docker.assert_not_called()
+        mock_dc.exec_cmd_file.assert_not_called()
+        mock_dc.exec_cmd.assert_not_called()
+        mock_dc.stop.assert_not_called()
+
+    def test_dry_run_menciona_nombre_bd_y_snapshot(self, contexto_con_dump, tmp_path) -> None:
+        """El mensaje de --dry-run menciona la base de datos y el snapshot objetivo."""
+        _tmp, snapshots_dir, dump_file = contexto_con_dump
+
+        mock_context = MagicMock()
+        mock_rutas = MagicMock()
+        mock_rutas.snapshots_dir = snapshots_dir
+        mock_rutas.env_file = tmp_path / ".env"
+        (tmp_path / ".env").write_text("DB_USER=odoo\nDB_NAME=odoo_db\n")
+
+        with (
+            patch("odev.commands.db.requerir_proyecto", return_value=mock_context),
+            patch("odev.commands.db.obtener_rutas", return_value=mock_rutas),
+            patch(
+                "odev.commands.db.load_env",
+                return_value={"DB_USER": "odoo", "DB_NAME": "odoo_db"},
+            ),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands.db.info") as mock_info,
+        ):
+            from odev.commands.db import restore
+
+            restore("mi_backup", dry_run=True)
+
+        all_msgs = " ".join(str(c) for c in mock_info.call_args_list)
+        assert "odoo_db" in all_msgs
+        assert dump_file.name in all_msgs
+
+
+class TestAnonymize:
+    """U4 — anonymize gana -y/--yes y --dry-run, espejando reset_db/load_backup."""
+
+    def _mock_info_bd(self, tmp_path):
+        mock_context = MagicMock()
+        mock_rutas = MagicMock()
+        mock_rutas.env_file = tmp_path / ".env"
+        (tmp_path / ".env").write_text("DB_USER=odoo\nDB_NAME=odoo_db\n")
+        return mock_context, mock_rutas
+
+    def test_yes_salta_typer_confirm(self, tmp_path) -> None:
+        """Con --yes, anonymize corre sin pedir confirmacion interactiva."""
+        mock_context, mock_rutas = self._mock_info_bd(tmp_path)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd.return_value = MagicMock(returncode=0, stdout=b"", stderr=b"")
+
+        with (
+            patch("odev.commands.db.requerir_proyecto", return_value=mock_context),
+            patch("odev.commands.db.obtener_rutas", return_value=mock_rutas),
+            patch(
+                "odev.commands.db.load_env",
+                return_value={"DB_USER": "odoo", "DB_NAME": "odoo_db"},
+            ),
+            patch("odev.commands.db.obtener_docker", return_value=mock_dc),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands.db.typer.confirm") as mock_confirm,
+        ):
+            from odev.commands.db import anonymize
+
+            anonymize(yes=True, dry_run=False)
+
+        mock_confirm.assert_not_called()
+        mock_dc.exec_cmd.assert_called_once()
+
+    def test_sin_yes_pide_confirmacion(self, tmp_path) -> None:
+        """Sin --yes, anonymize sigue pidiendo confirmacion interactiva (comportamiento previo)."""
+        mock_context, mock_rutas = self._mock_info_bd(tmp_path)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd.return_value = MagicMock(returncode=0, stdout=b"", stderr=b"")
+
+        with (
+            patch("odev.commands.db.requerir_proyecto", return_value=mock_context),
+            patch("odev.commands.db.obtener_rutas", return_value=mock_rutas),
+            patch(
+                "odev.commands.db.load_env",
+                return_value={"DB_USER": "odoo", "DB_NAME": "odoo_db"},
+            ),
+            patch("odev.commands.db.obtener_docker", return_value=mock_dc),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands.db.typer.confirm", return_value=True) as mock_confirm,
+        ):
+            from odev.commands.db import anonymize
+
+            anonymize(yes=False, dry_run=False)
+
+        mock_confirm.assert_called_once()
+        mock_dc.exec_cmd.assert_called_once()
+
+    def test_dry_run_no_ejecuta_sql_ni_confirma(self, tmp_path) -> None:
+        """Con --dry-run: no se llama a typer.confirm ni se ejecuta el SQL de anonimizacion."""
+        mock_context, mock_rutas = self._mock_info_bd(tmp_path)
+        mock_dc = MagicMock()
+
+        with (
+            patch("odev.commands.db.requerir_proyecto", return_value=mock_context),
+            patch("odev.commands.db.obtener_rutas", return_value=mock_rutas),
+            patch(
+                "odev.commands.db.load_env",
+                return_value={"DB_USER": "odoo", "DB_NAME": "odoo_db"},
+            ),
+            patch("odev.commands.db.obtener_docker", return_value=mock_dc) as mock_obtener_docker,
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands.db.typer.confirm") as mock_confirm,
+        ):
+            from odev.commands.db import anonymize
+
+            anonymize(yes=False, dry_run=True)
+
+        mock_confirm.assert_not_called()
+        mock_obtener_docker.assert_not_called()
+        mock_dc.exec_cmd.assert_not_called()
+
+    def test_dry_run_menciona_nombre_bd(self, tmp_path) -> None:
+        """El mensaje de --dry-run menciona la base de datos objetivo."""
+        mock_context, mock_rutas = self._mock_info_bd(tmp_path)
+
+        with (
+            patch("odev.commands.db.requerir_proyecto", return_value=mock_context),
+            patch("odev.commands.db.obtener_rutas", return_value=mock_rutas),
+            patch(
+                "odev.commands.db.load_env",
+                return_value={"DB_USER": "odoo", "DB_NAME": "odoo_db"},
+            ),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+            patch("odev.commands.db.info") as mock_info,
+        ):
+            from odev.commands.db import anonymize
+
+            anonymize(yes=False, dry_run=True)
+
+        all_msgs = " ".join(str(c) for c in mock_info.call_args_list)
+        assert "odoo_db" in all_msgs
