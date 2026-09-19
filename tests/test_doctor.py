@@ -681,8 +681,9 @@ class TestDoctorJsonOutput:
     def test_c1_s4_default_rich_path_untouched(self, tmp_path):
         """C1-S4: without --json, Rich output printed (no JSON on stdout)."""
         import json as _json
-        import typer
         from unittest.mock import patch
+
+        import typer
 
         # Simular que no hay proyecto (requerir_proyecto falla) para el path Rich
         req_patch = patch(
@@ -891,7 +892,6 @@ class TestDoctorProjectResolutionRefactor:
         from unittest.mock import MagicMock, patch
 
         import odev.core.compat as compat_mod
-
         from odev.commands.doctor import _execute_doctor
 
         fake_ctx = MagicMock()
