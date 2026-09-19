@@ -6,6 +6,64 @@ El formato esta basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 y este proyecto adhiere a [Versionado Semantico](https://semver.org/spec/v2.0.0.html).
 Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
 
+## [0.13.0] - 2026-09-19
+
+### Cambiado
+
+- **BREAKING: `addon-install`, `update` y `test` normalizan el exit code de
+  Odoo.** Los tres publican `EPILOG_EXIT_CODES` en su `--help` (0 exito / 1
+  error de runtime / 2 error de uso / 3 error de entorno) y `addon-install`/
+  `update` lo violaban: propagaban tal cual el codigo del proceso Odoo del
+  contenedor, que puede ser 3, 137 o cualquier cosa que devuelva Odoo o el OOM
+  killer. Un caller no podia decidir si reintentar, porque un 3 significaba
+  "error de entorno" en el resto de la CLI y "lo que dijo Odoo" en estos dos.
+  Ahora cualquier fallo sale con 1. El codigo crudo no se pierde: queda en el
+  mensaje de stderr, que es el canal disponible porque ninguno de los dos
+  tiene `--json`. Un script que discriminaba por ese codigo debe leer stderr.
+  `test` tenia el mismo defecto — un returncode de proceso fuera del contrato
+  (137, 139, lo que sea) salia tal cual en vez del 1 prometido — y se corrige
+  con el mismo mapeo (`normalizar_exit_code_odoo`, unico punto de verdad). A
+  diferencia de los otros dos, `test` tiene `--json`: el codigo crudo
+  ahora tambien queda expuesto como `process_exit_code` en el payload,
+  presente en toda corrida (exitosa o no), no solo en el mensaje de stderr.
+  El caso de puerto ocupado sigue saliendo 3 sin pasar por este mapeo: ese 3
+  lo decide odev mismo, no viene del proceso Odoo.
+
+### Corregido
+
+- **`modules --json`, `status --json` y `doctor --json` emitian dos diagnosticos
+  para el mismo fallo.** Sin proyecto resuelto salian el mensaje humano de
+  `requerir_proyecto` y ademas el JSON del propio comando, los dos por stderr. Un
+  consumidor que parsea linea por linea se comia el humano y fallaba con un error
+  que no tenia nada que ver con la causa. `requerir_proyecto(silencioso=True)`
+  deja que el caller arme el unico diagnostico parseable; el path humano por
+  default no cambia.
+- **`doctor --json` devolvia `no project context`,** que no le dice a nadie que
+  hacer. Ahora da el mismo mensaje accionable que los otros dos comandos.
+- **El contenedor dejaba `__pycache__` de root en `./addons`.** El proceso Odoo
+  corre como root hasta el `setpriv` del entrypoint, asi que los `.pyc` que
+  escribia sobre el bind mount quedaban `root:root` y el usuario no podia borrar
+  su propio proyecto sin sudo. `PYTHONDONTWRITEBYTECODE=1` en el servicio web lo
+  evita de raiz, sin costo real en un stack de desarrollo donde el codigo cambia
+  todo el tiempo. `regenerar_configuracion()` corre en cada `odev up`, asi que los
+  proyectos ya creados la reciben sin regenerarse enteros.
+
+### Agregado
+
+- `ARCHITECTURE.md`: el diseno global en un solo lugar — los dos frontends sobre
+  un core comun, la resolucion de proyecto, el modelo de privilegios del
+  contenedor, los contratos que un caller puede dar por sentado y las decisiones
+  que no conviene relitigar.
+
+### Eliminado
+
+- `ROADMAP.md`, `docs/IMPROVEMENT-PLAN.md`, `docs/FALLAS-SILENCIOSAS.md` y
+  `docs/sdd/`. Eran documentacion de proceso que describia trabajo ya hecho, y
+  que envejecia para el lado peor: afirmaba con seguridad cosas que habian dejado
+  de ser ciertas. Lo durable de esos documentos quedo en `ARCHITECTURE.md`. La
+  documentacion del repo es README, CHANGELOG, VERSIONING, la Guia de Uso, la
+  skill y ARCHITECTURE.
+
 ## [0.12.0] - 2026-09-19
 
 ### Cambiado
