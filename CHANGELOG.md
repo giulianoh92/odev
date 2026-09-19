@@ -6,6 +6,25 @@ El formato esta basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 y este proyecto adhiere a [Versionado Semantico](https://semver.org/spec/v2.0.0.html).
 Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
 
+## [0.10.0] - 2026-09-19
+
+### Cambiado
+
+- **BREAKING: el extra `mcp` pasa de `mcp>=1.0.0,<2` a `mcp>=2,<3`.** El SDK 2.0 elimino `mcp.server.fastmcp`: FastMCP se llama ahora `MCPServer` y vive en `mcp.server`. Los decoradores (`tool`, `resource`, `prompt`) y `run(transport=..., port=...)` conservan la firma, asi que las 9 tools, 4 resources y 3 prompts se registran igual. Lo que si cambia es la senalizacion de errores: 2.x separa el fallo anticipado (`ToolError` / `ResourceError`, cuyo mensaje llega al cliente) del crash (cualquier otra excepcion, de la que el cliente solo ve `Error executing tool <name>` mientras el detalle queda en el log). Quien tenga el extra instalado necesita reinstalarlo.
+- **BREAKING: `odev test --tags` ahora REEMPLAZA los prefijos de modulo auto-generados en vez de sumarse a ellos.** `odev test sale --tags foo` emite `-u sale --test-tags foo`, no `--test-tags /sale,foo`. El `--test-tags` emitido cambia, y con el cambia lo que se ejecuta: antes corria el modulo entero, ahora filtra. Ver la seccion **Corregido** para el porque.
+
+### Corregido
+
+- **`odev test --tags` filtra de verdad.** Odoo **une** (OR) los specs de `--test-tags` separados por coma, no los intersecta. Al concatenar el prefijo auto-generado con la expresion del usuario, `--test-tags /sale,foo` significaba "todos los tests standard de sale" O "todos los tagueados foo", de modo que el modulo entero corria y el filtro quedaba silenciosamente inutil. El `-u` ya acota que modulos se testean, asi que la expresion sola filtra exactamente dentro de ellos. La construccion estaba duplicada en las rutas MCP (`_execute_test`) y CLI (`_run_test`), que es lo que permitio que el bug existiera dos veces; ahora ambas llaman a un unico `_build_test_tags()`.
+- **El shorthand `modulo:Clase.metodo` combinado con `--tags` sale con exit 2.** Los dos definen el filtro y Odoo uniria ambos en vez de intersectarlos. En vez de descartar el shorthand en silencio, el comando ahora rechaza la combinacion y nombra las dos salidas, igual que ya hacia con `--verbose` + `--json` o con `all` mezclado con nombres de modulo.
+- **La documentacion de `odev py` decia exactamente lo contrario de lo que pasa.** README, el help del comando y la plantilla `claude-md.j2` advertian que los side-effects del ORM se commitean. No se commitean: `odoo/cli/shell.py` ejecuta `cr.rollback()` **despues** de cerrar la consola, asi que todo write sin `cr.commit()` explicito se descarta. La advertencia invertida llevaba a agentes a creer que ya habian persistido cambios que en realidad se perdian.
+- **El guard del servidor MCP distingue el paquete ausente de la API incompatible.** `_import_fastmcp()` atrapaba cualquier `ImportError` y siempre respondia "'mcp' package not installed", mandando a reinstalar un paquete que ya estaba instalado. Ahora sondea `import mcp` primero y separa los dos fallos, que piden acciones distintas: ausente, instalar el extra; presente con API rota, reportar la version instalada y nombrar el simbolo que falta.
+- **`pytest` resuelve odev desde `src/`.** Los tests importaban el odev que hubiera en site-packages, asi que una instalacion vieja hacia fallar la coleccion con `ImportError` sobre simbolos que si existen en el repo, y sin ninguna instalacion fallaba por no encontrar el paquete. Ninguno de los dos casos tenia que ver con el codigo. `pythonpath = ["src"]` hace que `pytest` funcione sin `PYTHONPATH` ni venv de desarrollo.
+
+### Agregado
+
+- **El repo trae su propia skill de Claude Code, en `.claude/skills/odev/SKILL.md`.** Queda versionada junto al codigo que documenta, asi que deja de desincronizarse con cada release. Se activa sola para agentes que trabajan dentro de este repo, y se instala global con `cp -r .claude/skills/odev ~/.claude/skills/` para que aplique a cualquier proyecto Odoo gestionado con odev. Cubre la trampa transaccional de `odev py`, la resolucion de proyecto, cuando usar MCP y cuando la CLI, los guards destructivos no uniformes, los exit codes, y un protocolo de una sola corrida para los tests.
+
 ## [0.9.0] - 2026-08-20
 
 ### Corregido
