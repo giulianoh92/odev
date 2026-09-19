@@ -3,6 +3,14 @@
 Global options on every command: `--project/-p <name>` (also `ODEV_PROJECT` env
 var, flag wins), `--version/-V`, `--debug` (DEBUG-level logging).
 
+## Stream contract
+
+stdout carries data only: command results, and the JSON emitted under `--json`.
+Every error and warning goes to stderr, including the ones that reject an
+argument before the command runs. Parse stdout without filtering it; read stderr
+for diagnostics. Progress and success lines (`INFO`, `OK`) are on stdout and are
+the only non-data text there — commands with `--json` do not emit them.
+
 ## Exit code contract
 
 | Code | Meaning |
