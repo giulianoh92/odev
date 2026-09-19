@@ -97,6 +97,7 @@ def _execute_doctor(contexto: ProjectContext | None) -> dict:
         _verificar_odoo_conf,
         _verificar_addons,
         _verificar_version_compatible,
+        _verificar_subcomandos,
     ]
 
     resultados: list[CheckResult] = []
@@ -192,6 +193,7 @@ def doctor(
         _verificar_odoo_conf,
         _verificar_addons,
         _verificar_version_compatible,
+        _verificar_subcomandos,
     ]
 
     total_fallos = 0
@@ -811,3 +813,40 @@ def _verificar_version_compatible(contexto: ProjectContext | None = None) -> Che
     except (FileNotFoundError, Exception) as exc:
         msg = f"odev version {__version__} (no se pudo verificar compatibilidad: {exc})"
         return {"name": "version", "status": "warn", "message": msg, "hint": None}
+
+
+def _verificar_subcomandos(contexto: ProjectContext | None = None) -> CheckResult:
+    """Verifica si algun subcomando opcional no pudo cargarse (D3).
+
+    adopt, reconfigure, projects y enterprise se registran en main.py
+    dentro de un try/except ImportError: si el import falla, el subcomando
+    simplemente no existe y el usuario ve "comando desconocido" sin ninguna
+    pista de que algo se rompio. main.py registra cada fallo en
+    SUBCOMANDOS_NO_DISPONIBLES al cargar el modulo; este check lo vuelve
+    visible en vez de dejarlo en silencio.
+
+    Args:
+        contexto: Contexto del proyecto (no usado; parametro para uniformidad del dispatcher).
+
+    Returns:
+        CheckResult dict: ok si todos los subcomandos opcionales cargaron,
+        warn con el detalle de cada fallo si no.
+    """
+    from odev.main import SUBCOMANDOS_NO_DISPONIBLES  # noqa: PLC0415
+
+    if not SUBCOMANDOS_NO_DISPONIBLES:
+        return {
+            "name": "subcomandos",
+            "status": "ok",
+            "message": "Todos los subcomandos opcionales se cargaron correctamente.",
+            "hint": None,
+        }
+
+    nombres = ", ".join(nombre for nombre, _detalle in SUBCOMANDOS_NO_DISPONIBLES)
+    detalle = "; ".join(f"{nombre}: {razon}" for nombre, razon in SUBCOMANDOS_NO_DISPONIBLES)
+    return {
+        "name": "subcomandos",
+        "status": "warn",
+        "message": f"Subcomando(s) no disponible(s) por fallo de import: {nombres}.",
+        "hint": f"{detalle}. Ejecuta con --debug para ver el detalle en el log.",
+    }

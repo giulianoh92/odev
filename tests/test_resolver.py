@@ -45,6 +45,18 @@ def _crear_odev_yaml(directorio: Path, nombre: str, version: str = "19.0") -> Pa
     return ruta
 
 
+def _crear_odev_yaml_sin_punto(directorio: Path, nombre: str, version: str = "19.0") -> Path:
+    """Helper: crea un odev.yaml (sin punto) minimo en el directorio dado."""
+    config = {
+        "project": {"name": nombre},
+        "odoo": {"version": version},
+        "paths": {"addons": ["./addons"]},
+    }
+    ruta = directorio / "odev.yaml"
+    ruta.write_text(yaml.dump(config, default_flow_style=False, allow_unicode=True))
+    return ruta
+
+
 class TestResolverProyecto:
     """Tests para resolver_proyecto()."""
 
@@ -168,6 +180,56 @@ class TestResolverProyecto:
         """Lanza error si el nombre explicito no esta en el registro."""
         with pytest.raises(ProyectoNoEncontradoError):
             resolver_proyecto(cwd=tmp_path, nombre_proyecto="fantasma")
+
+    def test_inline_detection_sin_punto(self, clean_registry: Path, tmp_path: Path) -> None:
+        """D2: un 'odev.yaml' sin punto tambien ancla un proyecto INLINE.
+
+        Antes del fix, el walk inline buscaba solo '.odev.yaml' con punto:
+        un 'odev.yaml' sin punto era invisible como ancla, aunque ambos
+        nombres son validos en el resto del codigo (resolver_ruta_yaml).
+        """
+        project_dir = tmp_path / "sin-punto"
+        project_dir.mkdir()
+        _crear_odev_yaml_sin_punto(project_dir, "sin-punto-test")
+        (project_dir / "addons").mkdir()
+
+        ctx = resolver_proyecto(cwd=project_dir)
+
+        assert ctx.modo == ModoProyecto.INLINE
+        assert ctx.nombre == "sin-punto-test"
+
+    def test_inline_walkup_sin_punto(self, clean_registry: Path, tmp_path: Path) -> None:
+        """D2: el walk ascendente tambien encuentra 'odev.yaml' sin punto."""
+        project_dir = tmp_path / "sin-punto-walkup"
+        project_dir.mkdir()
+        _crear_odev_yaml_sin_punto(project_dir, "sin-punto-walkup-test")
+        (project_dir / "addons").mkdir()
+
+        sub = project_dir / "addons" / "mi_modulo" / "models"
+        sub.mkdir(parents=True)
+
+        ctx = resolver_proyecto(cwd=sub)
+
+        assert ctx.modo == ModoProyecto.INLINE
+        assert ctx.nombre == "sin-punto-walkup-test"
+
+    def test_odev_yaml_con_punto_gana_si_ambos_existen(
+        self, clean_registry: Path, tmp_path: Path
+    ) -> None:
+        """D2: si '.odev.yaml' y 'odev.yaml' coexisten, gana el que tiene punto.
+
+        Misma prioridad que ya establece resolver_ruta_yaml.
+        """
+        project_dir = tmp_path / "ambos"
+        project_dir.mkdir()
+        _crear_odev_yaml(project_dir, "con-punto-gana")
+        _crear_odev_yaml_sin_punto(project_dir, "sin-punto-perdedor")
+        (project_dir / "addons").mkdir()
+
+        ctx = resolver_proyecto(cwd=project_dir)
+
+        assert ctx.modo == ModoProyecto.INLINE
+        assert ctx.nombre == "con-punto-gana"
 
     def test_legacy_detection(self, clean_registry: Path, tmp_path: Path) -> None:
         """Detecta proyecto legacy (docker-compose.yml + cli/)."""

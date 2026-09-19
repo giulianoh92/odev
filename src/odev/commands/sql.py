@@ -16,6 +16,7 @@ import json
 import sys
 
 import typer
+from rich.console import Console
 
 from odev.commands._helpers import (
     ejecutar_passthrough,
@@ -24,7 +25,6 @@ from odev.commands._helpers import (
     requerir_proyecto,
 )
 from odev.core.config import load_env
-from odev.core.console import error
 
 # ASCII Unit Separator (0x1F) — separador de campos para psql JSON mode.
 # Nunca aparece en datos SQL normales. Evita problemas de quoting en CSV.
@@ -109,12 +109,23 @@ def _execute_sql(contexto, query: str) -> list[dict]:
 def _run_sql(query: str, csv: bool, json_output: bool = False) -> None:
     from odev.main import obtener_nombre_proyecto
 
+    # C3: estas dos guardas tempranas corren antes de resolver el proyecto,
+    # o sea antes de saber nada del stack -- pero SI ya sabemos el formato
+    # pedido (--json), asi que hay que honrarlo aca. error() de core.console
+    # usa un Console sin destino explicito y termina en stdout, lo que rompe
+    # a un consumidor --json que espera JSON puro ahi. Mismo patron que ya
+    # usa _run_test para el rechazo temprano de --verbose.
     if not query.strip():
-        error("La consulta SQL no puede estar vacia.")
+        mensaje = "La consulta SQL no puede estar vacia."
+        if json_output:
+            sys.stderr.write(json.dumps({"error": mensaje}) + "\n")
+        else:
+            Console(stderr=True).print(f"[bold red]ERROR[/] {mensaje}")
         raise typer.Exit(2)
 
     if json_output and csv:
-        error("--json y --csv son mutuamente excluyentes.")
+        mensaje = "--json y --csv son mutuamente excluyentes."
+        sys.stderr.write(json.dumps({"error": mensaje}) + "\n")
         raise typer.Exit(2)
 
     contexto = requerir_proyecto(obtener_nombre_proyecto())

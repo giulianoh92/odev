@@ -26,24 +26,36 @@ def scaffold(
     Valida que el nombre sea snake_case, copia el template incluido
     en el paquete al directorio addons/ del proyecto, y reemplaza
     los placeholders con el nombre del modulo.
+
+    Codigos de salida:
+
+      0  Modulo creado correctamente
+
+      1  Error de proyecto/runtime (ya existe un modulo con ese nombre)
+
+      2  Error de uso (nombre invalido, no es snake_case)
+
+      3  Error de entorno (directorio de templates faltante en el paquete)
     """
-    # Validar nombre del modulo
+    # Validar nombre del modulo (D4: nombre invalido es un error de uso -> 2)
     if not re.match(r"^[a-z][a-z0-9_]*$", name):
         error(
             "El nombre del modulo debe ser snake_case "
             "(letras minusculas, digitos, guiones bajos, comenzando con una letra)."
         )
-        raise typer.Exit(1)
+        raise typer.Exit(2)
 
     from odev.main import obtener_nombre_proyecto
 
     contexto = requerir_proyecto(obtener_nombre_proyecto())
     rutas = obtener_rutas(contexto)
 
+    # D4: el template faltante es un problema de entorno (paquete mal
+    # instalado o corrupto), no de uso ni de proyecto -> 3.
     directorio_template = get_module_template_dir()
     if not directorio_template.exists():
         error(f"No se encontro el directorio de templates: {directorio_template}")
-        raise typer.Exit(1)
+        raise typer.Exit(3)
 
     directorio_destino = rutas.addons_dir / name
     if directorio_destino.exists():

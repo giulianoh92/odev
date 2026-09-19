@@ -16,6 +16,7 @@ from odev.commands.doctor import (
     _verificar_docker,
     _verificar_docker_compose,
     _verificar_python,
+    _verificar_subcomandos,
 )
 
 
@@ -71,6 +72,64 @@ class TestVerificarDocker:
 
         assert isinstance(resultado, dict)
         assert resultado["status"] == "fail"
+
+
+class TestVerificarSubcomandos:
+    """D3: subcomandos opcionales que fallaron al importar deben ser visibles.
+
+    adopt, reconfigure, projects y enterprise se registran en main.py dentro
+    de try/except ImportError. Antes de este check, un import fallido hacia
+    desaparecer el subcomando en silencio -- "comando desconocido" sin
+    ninguna pista de que algo se rompio.
+    """
+
+    def test_ok_cuando_no_hay_subcomandos_caidos(self):
+        """Lista vacia -> status ok."""
+        with patch("odev.main.SUBCOMANDOS_NO_DISPONIBLES", []):
+            resultado = _verificar_subcomandos()
+
+        assert isinstance(resultado, dict)
+        assert resultado["status"] == "ok"
+
+    def test_warn_y_detalle_cuando_hay_subcomandos_caidos(self):
+        """Un import fallido se refleja como warn, con el nombre en el mensaje."""
+        fallos = [("adopt", "No module named 'algo'")]
+        with patch("odev.main.SUBCOMANDOS_NO_DISPONIBLES", fallos):
+            resultado = _verificar_subcomandos()
+
+        assert resultado["status"] == "warn"
+        assert "adopt" in resultado["message"]
+        assert "No module named 'algo'" in resultado["hint"]
+
+    def test_multiples_subcomandos_caidos_aparecen_todos(self):
+        """Con varios fallos, todos los nombres aparecen en el mensaje."""
+        fallos = [
+            ("adopt", "boom"),
+            ("enterprise", "kaboom"),
+        ]
+        with patch("odev.main.SUBCOMANDOS_NO_DISPONIBLES", fallos):
+            resultado = _verificar_subcomandos()
+
+        assert resultado["status"] == "warn"
+        assert "adopt" in resultado["message"]
+        assert "enterprise" in resultado["message"]
+
+    def test_visible_a_traves_de_execute_doctor(self):
+        """D3 end-to-end: _execute_doctor incluye el check de subcomandos.
+
+        Este es el camino real por el que --json y odev_doctor (MCP) se
+        entera de la degradacion: sin este check, un import fallido queda
+        completamente invisible fuera del log.
+        """
+        from odev.commands.doctor import _execute_doctor
+
+        fallos = [("projects", "circular import")]
+        with patch("odev.main.SUBCOMANDOS_NO_DISPONIBLES", fallos):
+            resultado = _execute_doctor(None)
+
+        check = next(c for c in resultado["checks"] if c["name"] == "subcomandos")
+        assert check["status"] == "warn"
+        assert "projects" in check["message"]
 
 
 class TestVerificarDockerCompose:

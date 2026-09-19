@@ -209,13 +209,18 @@ class TestEnterpriseLinkUpdatesYaml:
             config=config,
         )
 
+        import typer
+
         with (
             patch("odev.commands.enterprise.ENTERPRISE_DIR", enterprise_dir),
             patch("odev.commands.enterprise.requerir_proyecto", return_value=contexto),
             patch("odev.main._nombre_proyecto", None),
-            pytest.raises(SystemExit),
+            pytest.raises(typer.Exit) as exc_info,
         ):
             enterprise_link(version="19.0")
+
+        # D4: typer.Exit, no SystemExit -- consistente con el resto del archivo.
+        assert exc_info.value.exit_code == 1
 
 
 class TestAdoptSharedEnterprise:

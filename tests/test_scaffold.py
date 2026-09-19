@@ -98,9 +98,13 @@ class TestScaffoldValidacion:
         ],
     )
     def test_rechaza_nombres_no_snake_case(self, nombre_invalido):
-        """Rechaza nombres de modulo que no son snake_case."""
-        with pytest.raises(typer.Exit):
+        """Rechaza nombres de modulo que no son snake_case con exit code 2 (D4).
+
+        D4: un nombre invalido es un error de uso, no de proyecto/runtime.
+        """
+        with pytest.raises(typer.Exit) as exc_info:
             scaffold(name=nombre_invalido)
+        assert exc_info.value.exit_code == 2
 
     @pytest.mark.parametrize(
         "nombre_valido",
@@ -139,8 +143,9 @@ class TestScaffoldValidacion:
             try:
                 scaffold(name=nombre_valido)
             except typer.Exit as e:
-                # Exit con code 1 es error de validacion; code 0 o None es ok
-                if e.exit_code == 1:
+                # D4: exit 2 es error de validacion del nombre; code 0/1/None es ok
+                # (1 es el proyecto/destino, que no es lo que esta test verifica).
+                if e.exit_code == 2:
                     pytest.fail(f"Nombre '{nombre_valido}' fue rechazado incorrectamente")
 
     def test_rechaza_directorio_existente(self, tmp_path, monkeypatch):
@@ -161,3 +166,22 @@ class TestScaffoldValidacion:
                 scaffold(name="mi_modulo")
 
             assert exc_info.value.exit_code == 1
+
+    def test_rechaza_template_faltante_con_exit_3(self, tmp_path, monkeypatch):
+        """D4: template faltante en el paquete es un error de entorno -> exit 3.
+
+        Antes de este fix salia con 1, igual que el destino ya existente --
+        eran dos causas completamente distintas con el mismo codigo.
+        """
+        (tmp_path / ".odev.yaml").write_text("odev_min_version: 0.1.0\n")
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "addons").mkdir()
+
+        with patch("odev.commands.scaffold.get_module_template_dir") as mock_template:
+            # No se crea el directorio: simula un paquete pip mal instalado.
+            mock_template.return_value = tmp_path / "templates" / "module"
+
+            with pytest.raises(typer.Exit) as exc_info:
+                scaffold(name="mi_modulo")
+
+            assert exc_info.value.exit_code == 3

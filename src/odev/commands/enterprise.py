@@ -230,7 +230,8 @@ def enterprise_link(
             f"No hay addons enterprise compartidos para {version}. "
             f"Importar primero: odev enterprise import {version} /ruta/a/enterprise/"
         )
-        raise SystemExit(1)
+        # D4: typer.Exit, no SystemExit -- consistente con el resto del archivo.
+        raise typer.Exit(1)
 
     # Actualizar odev.yaml (usar la ruta exacta que cargo ProjectConfig)
     ruta_yaml = contexto.config.ruta_archivo

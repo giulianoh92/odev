@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
-from odev.core.project import ProjectConfig
+from odev.core.project import ProjectConfig, resolver_ruta_yaml
 from odev.core.registry import Registry
 
 logger = logging.getLogger(__name__)
@@ -102,10 +102,17 @@ def _modo_desde_string(valor: str) -> ModoProyecto:
 
 
 def _buscar_inline(cwd: Path) -> ProjectContext | None:
-    """Busca .odev.yaml subiendo por el arbol de directorios.
+    """Busca .odev.yaml (o odev.yaml) subiendo por el arbol de directorios.
 
-    Recorre desde *cwd* hacia la raiz buscando un archivo ``.odev.yaml``.
-    Si lo encuentra, carga la configuracion y retorna un contexto INLINE.
+    Recorre desde *cwd* hacia la raiz buscando un archivo de configuracion
+    del proyecto. Acepta ambos nombres validos en el resto del codigo (D2):
+    ``.odev.yaml`` y ``odev.yaml`` sin punto. Delega en
+    ``resolver_ruta_yaml``, que ya establece la prioridad — si ambos
+    existen en el mismo directorio, gana ``.odev.yaml`` — para no duplicar
+    esa logica ni arriesgar que se desincronice.
+
+    Antes de esto, un ``odev.yaml`` sin punto era invisible para este walk:
+    "no se encontro proyecto" sobre un directorio que claramente tenia uno.
 
     Argumentos:
         cwd: Directorio de inicio para la busqueda ascendente.
@@ -115,8 +122,7 @@ def _buscar_inline(cwd: Path) -> ProjectContext | None:
     """
     actual = cwd.resolve()
     while True:
-        odev_yaml = actual / ".odev.yaml"
-        if odev_yaml.is_file():
+        if resolver_ruta_yaml(actual) is not None:
             config = ProjectConfig(actual)
             nombre = config.nombre_proyecto or actual.name
             return ProjectContext(
@@ -249,7 +255,8 @@ def resolver_proyecto(
     1. **Nombre explicito** — si se pasa *nombre_proyecto*, se busca en
        el registro global. Si no existe, lanza ``ProyectoNoEncontradoError``.
     2. **INLINE busqueda ascendente** — desde *cwd*, sube por el arbol de directorios
-       buscando ``.odev.yaml``.
+       buscando ``.odev.yaml`` u ``odev.yaml`` (D2; gana ``.odev.yaml`` si ambos
+       existen en el mismo directorio).
     3. **EXTERNAL registro** — consulta el registro global por directorio
        de trabajo. Si hay multiples coincidencias, lanza ``ProyectoAmbiguoError``.
     4. **LEGACY** — detecta el patron viejo (docker-compose.yml + cli/).
