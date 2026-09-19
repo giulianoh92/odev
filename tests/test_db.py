@@ -8,6 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from tests._helpers import call_command
+
 
 class TestRestoreStreaming:
     """Verifica que db restore NO carga el dump completo en RAM.
@@ -54,7 +56,7 @@ class TestRestoreStreaming:
         ):
             from odev.commands.db import restore
 
-            restore("mi_backup", dry_run=False)
+            call_command(restore, "mi_backup", dry_run=False)
 
         # exec_cmd_file DEBE haberse llamado con stdin_file=dump_file
         mock_dc.exec_cmd_file.assert_called_once()
@@ -101,7 +103,7 @@ class TestRestoreStreaming:
         ):
             from odev.commands.db import restore
 
-            restore("mi_backup", dry_run=False)
+            call_command(restore, "mi_backup", dry_run=False)
 
         assert read_bytes_llamado == [], (
             f"read_bytes() fue llamado sobre el dump: {read_bytes_llamado}"
