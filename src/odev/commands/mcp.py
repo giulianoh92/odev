@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import subprocess
 import sys
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
@@ -41,11 +42,15 @@ def _mcp_version() -> str:
 
 
 def _import_mcpserver():
-    """Lazy import of the MCPServer API (mcp SDK 2.x). Returns class or exits 2.
+    """Lazy import of the MCPServer API (mcp SDK 2.x). Returns class or exits 3.
 
     The two failure modes need different fixes, so they get different
     messages. Reporting a version mismatch as "not installed" sends the
     operator to reinstall a package that is already there.
+
+    D4: both failure modes are environment problems -- a missing or
+    incompatible dependency, not a usage or project error -- so they exit
+    3, matching EPILOG_EXIT_CODES.
     """
     try:
         import mcp  # noqa: F401, PLC0415
@@ -55,7 +60,7 @@ def _import_mcpserver():
             "Install with: pipx install --force 'odev[mcp]'\n"
             "Or: pip install 'mcp>=2,<3'\n"
         )
-        raise typer.Exit(2) from None
+        raise typer.Exit(3) from None
 
     try:
         from mcp.server import MCPServer  # noqa: PLC0415
@@ -68,7 +73,7 @@ def _import_mcpserver():
             "Reinstall the pinned extra: pipx install --force 'odev[mcp]'\n"
             "Or: pip install 'mcp>=2,<3'\n"
         )
-        raise typer.Exit(2) from None
+        raise typer.Exit(3) from None
 
     return MCPServer
 
@@ -158,9 +163,11 @@ def _build_server(MCPServer):
 # ---------------------------------------------------------------------------
 
 # How the _execute_* layer signals an operational failure: bad input
-# (ValueError) or an unusable environment (RuntimeError). Anything else that
-# escapes is a bug in odev, and the SDK is right to treat it as a crash.
-FALLOS_OPERATIVOS = (ValueError, RuntimeError)
+# (ValueError), an unusable environment (RuntimeError), or a docker/subprocess
+# command that failed (CalledProcessError) -- e.g. the stack is not running.
+# Anything else that escapes is a bug in odev, and the SDK is right to treat
+# it as a crash.
+FALLOS_OPERATIVOS = (ValueError, RuntimeError, subprocess.CalledProcessError)
 
 
 def _anticipado(error_cls):
@@ -183,6 +190,13 @@ def _anticipado(error_cls):
         def wrapper(*args, **kwargs):
             try:
                 return fn(*args, **kwargs)
+            except subprocess.CalledProcessError as exc:
+                # A3: the raw str() of a CalledProcessError is a command line
+                # and a return code -- it tells nobody anything. The most
+                # common cause, by far, is that the stack is not running; the
+                # same message _execute_model_info already uses for the same
+                # case keeps the wording consistent across the tool surface.
+                raise error_cls("Stack not running or DB unavailable") from exc
             except FALLOS_OPERATIVOS as exc:
                 raise error_cls(str(exc)) from exc
 
@@ -232,7 +246,10 @@ def _register_tools(server) -> None:
     from odev.commands.logs import _execute_logs  # noqa: PLC0415
     from odev.commands.model_info import _execute_model_info  # noqa: PLC0415
     from odev.commands.modules import _execute_modules  # noqa: PLC0415
-    from odev.commands.py import _execute_py  # noqa: PLC0415
+    from odev.commands.py import (  # noqa: PLC0415
+        _execute_py,
+        _expresion_parece_escribir,
+    )
     from odev.commands.shell import _execute_shell  # noqa: PLC0415
     from odev.commands.sql import _execute_sql  # noqa: PLC0415
     from odev.commands.status import _execute_status  # noqa: PLC0415
@@ -258,9 +275,33 @@ def _register_tools(server) -> None:
 
     @server.tool()
     @_anticipado(ToolError)
-    def odev_py(expression: str) -> str:
-        """Evaluate Python expression in odoo shell (banner-stripped)."""
-        return _execute_py(_resolve_contexto(), expression)
+    def odev_py(expression: str, commit: bool = False) -> dict:
+        """Evaluate Python expression in odoo shell (banner-stripped).
+
+        odoo shell rolls back on close: ORM writes (.create/.write/.unlink/
+        .copy) are discarded unless commit=True. Returns a dict with three
+        keys:
+
+          result: the banner-stripped output of the expression (same value
+            this tool returned before, now nested under a key).
+          committed: True if commit=True was passed (the transaction was
+            committed after evaluating the expression), False otherwise.
+          warning: text warning when the expression looks like it writes
+            and commit=False -- odoo shell will discard those changes on
+            close -- otherwise null. This is a best-effort, static text
+            heuristic over the expression (.create(/.write(/.unlink(/
+            .copy(), not a guarantee: a write hidden inside a business
+            method call is not detected.
+        """
+        result = _execute_py(_resolve_contexto(), expression, commit=commit)
+        warning = None
+        if not commit and _expresion_parece_escribir(expression):
+            warning = (
+                "La expresion parece escribir (.create/.write/.unlink/.copy) "
+                "y no se paso commit=True. odoo shell hace rollback al "
+                "cerrar: los cambios se van a descartar."
+            )
+        return {"result": result, "committed": commit, "warning": warning}
 
     @server.tool()
     @_anticipado(ToolError)
