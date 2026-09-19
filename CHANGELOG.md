@@ -6,6 +6,40 @@ El formato esta basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 y este proyecto adhiere a [Versionado Semantico](https://semver.org/spec/v2.0.0.html).
 Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
 
+## [0.12.0] - 2026-09-19
+
+### Cambiado
+
+- **BREAKING: `error()` y `warning()` escriben a stderr, no a stdout.** stdout es
+  el canal de datos: lo parsean los consumidores de `--json` y los pipes. Un
+  diagnostico ahi rompe el parseo con un fallo que no tiene nada que ver con la
+  causa real. Alcanza a las ~70 llamadas de todos los comandos. `info()` y
+  `success()` se quedan en stdout: son el comando contando lo que hizo, no un
+  diagnostico, y varios se leen como salida humana. Quien capture stdout para
+  detectar fallos necesita capturar stderr.
+
+### Eliminado
+
+- `error_stderr` y `warning_stderr` de `odev.core.console`. Existian como arreglo
+  acotado mientras `error`/`warning` seguian en stdout; ahora sobran. Un helper
+  que solo acierta cuando uno se acuerda de usarlo es peor contrato que una
+  funcion que acierta siempre.
+
+### Corregido
+
+- **Los rechazos tempranos de `sql` y `test` dejaban de emitir texto con formato
+  por stdout.** Ambos tenian un rodeo manual escribiendo a stderr por su cuenta;
+  con `error()` ya correcto, vuelven a la ruta comun.
+
+### Interno
+
+- `tests/_helpers.py::call_command()` resuelve los defaults de Typer al invocar
+  un comando directamente. Sin el, un parametro booleano omitido conserva el
+  objeto `typer.Option(...)`, que es **truthy**: el test ejercita la rama opuesta
+  a la que aparenta y pasa igual. No era teorico — `up()` se llamaba pelado con
+  `build` y `watch` como sentinels, testeando `--build --watch` mientras parecia
+  testear el default.
+
 ## [0.11.0] - 2026-09-19
 
 Release enfocada en una sola clase de defecto: **odev sabia algo que quien lo
