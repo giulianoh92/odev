@@ -578,6 +578,26 @@ class TestExitCodesEpilog:
         )
 
 
+class TestNormalizarExitCodeOdoo:
+    """T4 (pulido-final): 0 se mantiene, cualquier otro codigo de Odoo mapea a 1.
+
+    'addon-install' y 'update' propagaban el codigo de proceso de Odoo tal
+    cual (3, 137, lo que sea) en vez de respetar el contrato 0/1/2/3 que
+    EPILOG_EXIT_CODES publica para el resto de los comandos.
+    """
+
+    def test_cero_se_mantiene(self) -> None:
+        from odev.commands._helpers import normalizar_exit_code_odoo
+
+        assert normalizar_exit_code_odoo(0) == 0
+
+    @pytest.mark.parametrize("codigo", [1, 2, 3, 127, 137, 255])
+    def test_no_cero_mapea_a_1(self, codigo: int) -> None:
+        from odev.commands._helpers import normalizar_exit_code_odoo
+
+        assert normalizar_exit_code_odoo(codigo) == 1
+
+
 class TestListarModulosDisponiblesConfig:
     """paths.addons del .odev.yaml es la fuente de verdad para la validacion.
 

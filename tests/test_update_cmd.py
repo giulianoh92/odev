@@ -403,3 +403,54 @@ class TestInstallCompactoDefault:
         assert _exit_code(exc) == 0
         mock_dc.exec_cmd.assert_called_once()
         mock_dc.exec_capture.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# T4 (pulido-final) — normalizacion del exit code al contrato 0/1/2/3
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateExitCodeNormalizado:
+    """update: cualquier codigo Odoo != 0 sale como 1, sin perder el crudo."""
+
+    def test_codigo_no_estandar_se_normaliza_a_1(self, tmp_path: Path) -> None:
+        """Proceso Odoo exit 3 (no 0/1) → update sale con 1, no con 3."""
+        exc, _ = _call_update(tmp_path, "sale", capture=(b"", _LOG_OK, 3))
+
+        assert _exit_code(exc) == 1
+
+    def test_codigo_oom_se_normaliza_a_1(self, tmp_path: Path) -> None:
+        """Proceso Odoo exit 137 (OOM killer) → update sale con 1, no con 137."""
+        exc, _ = _call_update(tmp_path, "sale", capture=(b"", _LOG_OK, 137))
+
+        assert _exit_code(exc) == 1
+
+    def test_codigo_crudo_de_odoo_queda_en_stderr(self, tmp_path: Path, capsys) -> None:
+        """El codigo crudo de Odoo (137) no se pierde: queda en el mensaje de stderr."""
+        _call_update(tmp_path, "sale", capture=(b"", _LOG_OK, 137))
+
+        captured = capsys.readouterr()
+        assert "137" in captured.err
+
+
+class TestInstallExitCodeNormalizado:
+    """addon-install: mismo contrato de exit code que update (T4)."""
+
+    def test_codigo_no_estandar_se_normaliza_a_1(self, tmp_path: Path) -> None:
+        """Proceso Odoo exit 3 (no 0/1) → addon-install sale con 1, no con 3."""
+        exc, _ = _call_install(tmp_path, "sale", capture=(b"", _LOG_OK, 3))
+
+        assert _exit_code(exc) == 1
+
+    def test_codigo_oom_se_normaliza_a_1(self, tmp_path: Path) -> None:
+        """Proceso Odoo exit 137 (OOM killer) → addon-install sale con 1, no con 137."""
+        exc, _ = _call_install(tmp_path, "sale", capture=(b"", _LOG_OK, 137))
+
+        assert _exit_code(exc) == 1
+
+    def test_codigo_crudo_de_odoo_queda_en_stderr(self, tmp_path: Path, capsys) -> None:
+        """El codigo crudo de Odoo (137) no se pierde: queda en el mensaje de stderr."""
+        _call_install(tmp_path, "sale", capture=(b"", _LOG_OK, 137))
+
+        captured = capsys.readouterr()
+        assert "137" in captured.err

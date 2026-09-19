@@ -371,6 +371,37 @@ def ejecutar_odoo_compacto(
     return returncode if returncode != 0 else filtrado.returncode_hint
 
 
+def normalizar_exit_code_odoo(codigo: int) -> int:
+    """Normaliza el codigo de retorno de Odoo al contrato de exit codes de odev.
+
+    'addon-install' y 'update' corren un proceso Odoo dentro del contenedor.
+    Antes de esta normalizacion propagaban el codigo de ese proceso tal cual
+    (3, 137, lo que haya devuelto Odoo o el OOM killer), rompiendo el
+    contrato que el resto de los comandos respeta via EPILOG_EXIT_CODES
+    (0 exito / 1 error de proyecto-runtime / 2 error de uso / 3 error de
+    entorno). Con codigos arbitrarios un caller no puede decidir si
+    reintentar: no sabe si 1 significa "error de uso" o "fallo de runtime"
+    segun el comando que lo devolvio.
+
+    Unico punto de mapeo, compartido por 'addon-install' y 'update' (ambos
+    llaman a ejecutar_odoo_compacto y despues a esta funcion).
+
+    Argumentos:
+        codigo: valor devuelto por ejecutar_odoo_compacto — el codigo del
+            proceso Odoo si fallo, o el hint derivado del log si el proceso
+            salio en 0 pero el log tiene Traceback/CRITICAL.
+
+    Retorna:
+        0 si codigo es 0 (exito); 1 en cualquier otro caso (error de
+        runtime, mismo contrato que el resto de los comandos). El valor
+        crudo de 'codigo' no se descarta aca: es responsabilidad del caller
+        preservarlo en el mensaje de stderr y en el log, que son los unicos
+        canales disponibles porque ni 'addon-install' ni 'update' tienen
+        --json.
+    """
+    return 0 if codigo == 0 else 1
+
+
 def validar_modulo_existe(nombre: str, contexto: ProjectContext) -> None:
     """Wrapper retro-compatible; delega en validar_modulos.
 
