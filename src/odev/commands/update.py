@@ -6,6 +6,7 @@ import typer
 
 from odev.commands._helpers import (
     ejecutar_odoo_compacto,
+    normalizar_exit_code_odoo,
     obtener_docker,
     obtener_rutas,
     parsear_modulos_csv,
@@ -74,8 +75,14 @@ def update(
     _reasegurar_configuracion_local(dc, valores_env)
 
     if codigo_final != 0:
-        error(f"Actualizacion de '{modulos_csv}' termino con errores (exit {codigo_final}).")
-        raise typer.Exit(codigo_final)
+        exit_code = normalizar_exit_code_odoo(codigo_final)
+        mensaje = (
+            f"Actualizacion de '{modulos_csv}' termino con errores: odev "
+            f"reporta un fallo de runtime (exit {exit_code}); el proceso "
+            f"Odoo devolvio el codigo {codigo_final}."
+        )
+        error(mensaje)
+        raise typer.Exit(exit_code)
     success(f"Modulo(s) '{modulos_csv}' actualizado(s) y servicio web reiniciado.")
 
 
