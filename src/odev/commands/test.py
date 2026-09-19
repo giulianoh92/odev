@@ -30,6 +30,7 @@ import typer
 
 from odev.commands._helpers import (
     MODULOS_BUILTIN,
+    normalizar_exit_code_odoo,
     obtener_docker,
     obtener_rutas,
     parsear_modulos_csv,
@@ -254,7 +255,7 @@ def render_failures(result: TestResult) -> None:
             console.print(failure.traceback)
 
 
-def render_json(result: TestResult) -> None:
+def render_json(result: TestResult, process_exit_code: int) -> None:
     """Escribe un objeto JSON en stdout. No usa Rich.
 
     Compatible con D1: la propiedad failures[] del parser ya contiene
@@ -262,6 +263,13 @@ def render_json(result: TestResult) -> None:
 
     Argumentos:
         result: Resultado parseado de la corrida de tests.
+        process_exit_code: Codigo crudo devuelto por el proceso Odoo, antes
+            de cualquier normalizacion (0 en una corrida limpia). Un
+            consumidor de --json necesita este valor para diagnosticar un
+            proceso que murio por una causa que 'returncode_hint' no puede
+            expresar (OOM killer, segfault): el campo 'returncode' del
+            comando ya vino normalizado al contrato de exit codes, asi que
+            sin este campo esa informacion se perderia.
     """
     payload = {
         "total": result.total,
@@ -272,6 +280,7 @@ def render_json(result: TestResult) -> None:
         "parse_failed": result.parse_failed,
         "raw_summary_line": result.raw_summary_line,
         "fallback_counters_used": result.fallback_counters_used,
+        "process_exit_code": process_exit_code,
         "failures": [
             {
                 "class": f.test_class,
@@ -576,21 +585,48 @@ def _run_test(
     lines, returncode = _stream_and_collect(popen, save_log_path=save_log, echo=verbose)
     result = parse_odoo_test_output(lines)
 
-    # Defensa en profundidad: si Odoo saly con 0 pero el parseo fallo
+    # Se preserva el codigo crudo del proceso ANTES de cualquier mapeo:
+    # normalizar_exit_code_odoo() y el caso puerto-ocupado de abajo pisan
+    # 'returncode', y este valor es el unico canal (mensaje de stderr +
+    # 'process_exit_code' del JSON) por el que ese numero sigue siendo
+    # visible para un caller una vez terminado el comando.
+    codigo_proceso = returncode
+
+    # Defensa en profundidad: si Odoo salio con 0 pero el parseo fallo
     # y el stream contiene "Address already in use" → forzar exit 3.
     # Con --no-http esto ya no deberia ocurrir, pero se mantiene por
-    # si el modulo bajo test arranca su propio servidor.
+    # si el modulo bajo test arranca su propio servidor. Este 3 lo decide
+    # odev mismo (no viene del proceso), asi que queda fuera del mapeo
+    # generico de mas abajo.
+    puerto_ocupado = False
     if returncode == 0 and result.parse_failed:
         if any("Address already in use" in ln for ln in lines):
             error("Puerto ocupado durante la ejecucion de Odoo (revisar test)")
             returncode = 3
+            puerto_ocupado = True
 
     # Contrato de exit codes: Odoo 19 con --test-enable --stop-after-init
-    # devuelve 0 aunque haya tests fallidos. Si el proceso salio con 0,
-    # el codigo final se deriva del resultado parseado (returncode_hint:
-    # 1 si hay failures/errors/parse_failed). Un returncode != 0 del
-    # proceso siempre manda (incluye el caso puerto ocupado → 3).
-    returncode = returncode if returncode != 0 else result.returncode_hint
+    # devuelve 0 aunque haya tests fallidos, asi que un proceso en 0 deriva
+    # el codigo final del resultado parseado (returncode_hint: 1 si hay
+    # failures/errors/parse_failed). El puerto ocupado ya quedo resuelto
+    # arriba y sobrevive tal cual. Cualquier otro codigo de proceso (137 del
+    # OOM killer, 139 de un segfault, lo que sea) no tiene lugar en el
+    # contrato (0/1/2/3) que EPILOG_EXIT_CODES publica, asi que se normaliza
+    # con el mismo mapeo que 'addon-install' y 'update' — unico punto de
+    # verdad, ver normalizar_exit_code_odoo().
+    if returncode == 0:
+        returncode = result.returncode_hint
+    elif not puerto_ocupado:
+        codigo_normalizado = normalizar_exit_code_odoo(returncode)
+        if codigo_normalizado != returncode:
+            modulos_csv = ",".join(modulos)
+            mensaje = (
+                f"Ejecucion de tests de '{modulos_csv}' termino con errores: "
+                f"odev reporta un fallo de runtime (exit {codigo_normalizado}); "
+                f"el proceso Odoo devolvio el codigo {returncode}."
+            )
+            error(mensaje)
+        returncode = codigo_normalizado
 
     # A1-a: 0 tests ejecutados es indistinguible de exito si nadie avisa.
     # Warning por stderr, nunca error: nunca cambia returncode ni contamina
@@ -602,7 +638,7 @@ def _run_test(
         # D1: --json + --failures son composables.
         # failures[] ya contiene solo fallos/errores (no passing tests)
         # por diseno del parser, por lo que la composicion es natural.
-        render_json(result)
+        render_json(result, codigo_proceso)
     elif failures_only:
         render_failures(result)
     elif not verbose:
@@ -691,7 +727,7 @@ def test(
 
       0  Tests pasaron sin failures ni errores
 
-      1  Hubo failures o errores en tests
+      1  Hubo failures o errores en tests, o el proceso Odoo murio
 
       2  Error de uso (modulo no existe)
 

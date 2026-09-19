@@ -23,12 +23,20 @@ three full runs at 5-10 minutes each — and two of the three are avoidable.
    one case where the JSON cannot tell you anything about the run, and the
    raw log is the fallback.
 
-4. **After fixing, re-run only what failed — never the whole battery.**
+4. **Check `process_exit_code` when the result looks wrong for no reason
+   visible in `failures[]`.** It carries the raw code the Odoo process
+   exited with — `0` on every normal run, including one with test
+   failures, since Odoo itself exits 0 in that case. A nonzero value here
+   (137 from the OOM killer, 139 from a segfault) means the process died
+   outright rather than a test failing cleanly, and no traceback will
+   explain it.
+
+5. **After fixing, re-run only what failed — never the whole battery.**
    - One test: `odev test <module>:<Class>.<method>`
    - Several: the comma-OR form on `--tags` —
      `odev test <module> --tags ":<ClassA>.<test_x>,:<ClassB>.<test_y>"`
 
-5. **Run the full battery one final time only when the fix could plausibly
+6. **Run the full battery one final time only when the fix could plausibly
    regress something outside its blast radius.** Not reflexively, on every
    fix.
 

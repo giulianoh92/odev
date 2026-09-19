@@ -694,6 +694,145 @@ class TestExitCodeContrato:
 
 
 # ---------------------------------------------------------------------------
+# T8c — D11-bis: normalizacion del codigo crudo del proceso Odoo
+# ---------------------------------------------------------------------------
+
+
+class TestNormalizacionExitCodeProceso:
+    """Un codigo de proceso fuera del contrato (0/1/2/3) se normaliza a 1.
+
+    'odev test' corria un proceso Odoo dentro del contenedor y propagaba su
+    codigo de retorno crudo (137 del OOM killer, 139 de un segfault, lo que
+    sea) tal cual, rompiendo el contrato de EPILOG_EXIT_CODES que el resto
+    de los comandos respeta. El mapeo es el mismo que usan 'addon-install'
+    y 'update' via normalizar_exit_code_odoo: el numero crudo no se pierde,
+    queda nombrado en el mensaje de stderr y en 'process_exit_code' del
+    JSON.
+
+    Se patchea _stream_and_collect directamente (en vez de FakePopen.returncode)
+    porque es el limite exacto donde el codigo de proceso crudo entra a
+    _run_test — el mismo boundary que usan los tests de arriba.
+    """
+
+    @staticmethod
+    def _lineas_ok() -> list[str]:
+        return _FIXTURE_ALL_PASS.splitlines(keepends=True)
+
+    def test_codigo_137_normaliza_a_1(self, tmp_path: Path, monkeypatch) -> None:
+        """returncode=137 (OOM killer) del proceso Odoo → exit 1, no 137."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+        mock_dc = MagicMock()
+
+        with patch(
+            "odev.commands.test._stream_and_collect",
+            return_value=(self._lineas_ok(), 137),
+        ):
+            exc = _call_run_test(tmp_path, mock_dc)
+
+        assert TestExitCodeContrato._codigo(exc) == 1
+
+    def test_codigo_139_normaliza_a_1(self, tmp_path: Path, monkeypatch) -> None:
+        """returncode=139 (segfault) del proceso Odoo → exit 1, no 139."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+        mock_dc = MagicMock()
+
+        with patch(
+            "odev.commands.test._stream_and_collect",
+            return_value=(self._lineas_ok(), 139),
+        ):
+            exc = _call_run_test(tmp_path, mock_dc)
+
+        assert TestExitCodeContrato._codigo(exc) == 1
+
+    def test_codigo_crudo_aparece_en_stderr(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """El 137 no se descarta: queda nombrado en el diagnostico de stderr."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+        mock_dc = MagicMock()
+
+        with patch(
+            "odev.commands.test._stream_and_collect",
+            return_value=(self._lineas_ok(), 137),
+        ):
+            _call_run_test(tmp_path, mock_dc)
+
+        captured = capsys.readouterr()
+        assert "137" in captured.err
+
+    def test_codigo_crudo_aparece_en_json_process_exit_code(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """El JSON preserva el codigo crudo del proceso en 'process_exit_code'
+        aunque el exit code final ya haya sido normalizado a 1."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+        mock_dc = MagicMock()
+
+        with patch(
+            "odev.commands.test._stream_and_collect",
+            return_value=(self._lineas_ok(), 137),
+        ):
+            exc = _call_run_test(tmp_path, mock_dc, json_out=True)
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["process_exit_code"] == 137
+        assert TestExitCodeContrato._codigo(exc) == 1
+
+    def test_run_limpio_process_exit_code_cero(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """Corrida limpia (returncode=0): 'process_exit_code' tambien es 0,
+        presente en el payload igual que en cualquier otra corrida."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+        fake_popen = FakePopen(_FIXTURE_ALL_PASS, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        exc = _call_run_test(tmp_path, mock_dc, json_out=True)
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["process_exit_code"] == 0
+        assert TestExitCodeContrato._codigo(exc) == 0
+
+    def test_returncode_hint_con_process_exit_code_cero(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """returncode=0 con tests fallidos: el exit final sigue viniendo de
+        returncode_hint (1), y 'process_exit_code' sigue siendo 0 porque el
+        proceso Odoo en si no fallo (D8b, sin regresion)."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+        fake_popen = FakePopen(_FIXTURE_ONE_FAIL, returncode=0)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = fake_popen
+
+        exc = _call_run_test(tmp_path, mock_dc, json_out=True)
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["process_exit_code"] == 0
+        assert TestExitCodeContrato._codigo(exc) == 1
+
+    def test_puerto_ocupado_no_pasa_por_normalizacion_generica(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """El 3 de puerto ocupado sigue sobreviviendo: no regresion del caso
+        ya cubierto por TestExitCodeContrato.test_puerto_ocupado_sigue_saliendo_3,
+        verificado aca tambien contra el boundary de _stream_and_collect."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+        mock_dc = MagicMock()
+
+        with patch(
+            "odev.commands.test._stream_and_collect",
+            return_value=(_FIXTURE_PORT_CONFLICT.splitlines(keepends=True), 0),
+        ):
+            exc = _call_run_test(tmp_path, mock_dc)
+
+        assert TestExitCodeContrato._codigo(exc) == 3
+
+
+# ---------------------------------------------------------------------------
 # T9 — D1: --json + --failures composable
 # ---------------------------------------------------------------------------
 

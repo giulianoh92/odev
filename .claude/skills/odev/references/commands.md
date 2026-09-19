@@ -11,9 +11,15 @@ argument before the command runs. Parse stdout without filtering it; read stderr
 for diagnostics. Progress and success lines (`INFO`, `OK`) are on stdout and are
 the only non-data text there — commands with `--json` do not emit them.
 
-Under `--json`, a failure produces exactly one machine-readable line on stderr
-and nothing on stdout. Read that line as JSON; do not expect a human-formatted
-message next to it.
+Under `--json`, a failure that prevents the command from producing any data at
+all — no project resolved — produces exactly one machine-readable line on
+stderr and nothing on stdout: `modules --json`, `status --json` and
+`doctor --json` each emit exactly one JSON line on stderr in that case. That is
+not the general rule, though: `test --json` with failing tests writes the full
+JSON envelope to stdout as usual, and may also write a human diagnostic to
+stderr alongside it (see the exit code contract below). Read stdout for the
+JSON payload and stderr for diagnostics; do not assume the two are mutually
+exclusive.
 
 ## Exit code contract
 
@@ -24,11 +30,21 @@ message next to it.
 | 2 | Usage error — bad argument, unknown module, `all` mixed with names, conflicting flags |
 | 3 | Environment error — port busy, DB unavailable, Docker unavailable, stack down, `mcp` extra missing or incompatible |
 
-`addon-install` and `update` honour this table like every other command: any
-failure is 1. Odoo's own process return code is not forwarded — it is preserved
-in the stderr message instead, since neither command has `--json`. A run that
-exits 0 but whose captured log contains a traceback or a CRITICAL line is also 1
-(same philosophy as `test`'s `returncode_hint`).
+`shell -c`, `sql` and `py` are transparent pass-throughs by design (same idea
+as `docker exec`, documented in the README): whatever the underlying process
+or query returns comes back as-is, raw process code included. Every other
+command is an odev operation and honours this table instead of forwarding a
+raw process code.
+
+`test`, `addon-install` and `update` all run an Odoo process inside the
+container and honour this table like every other odev operation: any failure
+is 1. Odoo's own process return code is not forwarded as the exit code — it is
+preserved elsewhere instead. `addon-install` and `update` have no `--json`, so
+it only survives in the stderr message. `test` has `--json`, so it also
+survives as `process_exit_code` in the JSON payload (see `testing.md`) on
+every run, successful or not. A run that exits 0 but whose captured log
+contains a traceback or a CRITICAL line is also 1 (same philosophy as `test`'s
+`returncode_hint`).
 
 `model-info` on a nonexistent model is 1, not 2: it took a live ORM query to
 find out, so it's a runtime fact, not a usage mistake made upfront.
