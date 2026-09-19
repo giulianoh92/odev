@@ -40,7 +40,7 @@ from odev.commands._helpers import (
     validar_modulos,
 )
 from odev.core.config import load_env
-from odev.core.console import error, info
+from odev.core.console import error_stderr, info
 from odev.core.docker import USUARIO_ODOO
 from odev.core.test_parser import TestResult, parse_odoo_test_output
 
@@ -583,7 +583,7 @@ def _run_test(
     # si el modulo bajo test arranca su propio servidor.
     if returncode == 0 and result.parse_failed:
         if any("Address already in use" in ln for ln in lines):
-            error("Puerto ocupado durante la ejecucion de Odoo (revisar test)")
+            error_stderr("Puerto ocupado durante la ejecucion de Odoo (revisar test)")
             returncode = 3
 
     # Contrato de exit codes: Odoo 19 con --test-enable --stop-after-init

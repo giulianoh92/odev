@@ -651,3 +651,55 @@ class TestListarModulosDisponiblesConfig:
             resultado = listar_modulos_disponibles(ctx)
 
         assert resultado == {"mod_heuristico"}
+
+
+# ---------------------------------------------------------------------------
+# requerir_proyecto — el diagnostico no debe contaminar stdout
+# ---------------------------------------------------------------------------
+
+
+class TestRequerirProyectoEscribeAStderr:
+    """requerir_proyecto lo llaman ~20 comandos, varios con --json.
+
+    Escribir el diagnostico en stdout rompia el parseo de todos ellos: el
+    consumidor recibia texto con codigos de color donde esperaba JSON, y
+    explotaba con un error que no tenia nada que ver con la causa real.
+    """
+
+    def test_proyecto_no_encontrado_no_contamina_stdout(self, capsys) -> None:
+        """El error de proyecto ausente sale por stderr, no por stdout."""
+        import typer
+
+        from odev.commands._helpers import requerir_proyecto
+        from odev.core.resolver import ProyectoNoEncontradoError
+
+        with patch(
+            "odev.commands._helpers.resolver_proyecto",
+            side_effect=ProyectoNoEncontradoError("no hay proyecto aca"),
+        ):
+            with pytest.raises(typer.Exit) as exc:
+                requerir_proyecto()
+
+        assert exc.value.exit_code == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "no hay proyecto aca" in captured.err
+
+    def test_proyecto_ambiguo_no_contamina_stdout(self, capsys) -> None:
+        """La advertencia de ambiguedad sale por stderr, no por stdout."""
+        import typer
+
+        from odev.commands._helpers import requerir_proyecto
+        from odev.core.resolver import ProyectoAmbiguoError
+
+        with patch(
+            "odev.commands._helpers.resolver_proyecto",
+            side_effect=ProyectoAmbiguoError(Path("/tmp/x"), ["uno", "dos"]),
+        ):
+            with pytest.raises(typer.Exit) as exc:
+                requerir_proyecto()
+
+        assert exc.value.exit_code == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "uno" in captured.err and "dos" in captured.err
