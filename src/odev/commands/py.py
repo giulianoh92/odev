@@ -137,8 +137,9 @@ def py(
         ...,
         help=(
             "Expresion Python a evaluar en odoo shell. "
-            "Cuidado: side-effects ORM (.create/.write) se commitean. "
-            "El banner de Odoo se elimina automaticamente del stdout."
+            "Cuidado: side-effects ORM (.create/.write) NO se commitean; "
+            "odoo shell hace cr.rollback() al cerrar. Terminar con env.cr.commit() "
+            "para persistir. El banner de Odoo se elimina automaticamente del stdout."
         ),
     ),
     keep_banner: bool = typer.Option(
