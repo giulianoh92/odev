@@ -27,7 +27,6 @@ from pathlib import Path
 from typing import Optional
 
 import typer
-from rich.console import Console
 
 from odev.commands._helpers import (
     MODULOS_BUILTIN,
@@ -40,7 +39,7 @@ from odev.commands._helpers import (
     validar_modulos,
 )
 from odev.core.config import load_env
-from odev.core.console import error_stderr, info
+from odev.core.console import error, info
 from odev.core.docker import USUARIO_ODOO
 from odev.core.test_parser import TestResult, parse_odoo_test_output
 
@@ -491,9 +490,9 @@ def _run_test(
     from odev.main import obtener_nombre_proyecto
 
     # --verbose contradice los modos parseados/compactos: rechazar temprano.
-    # C3: el rechazo debe honrar el formato pedido, siempre por stderr —
-    # error() de core.console usa un Console sin destino explicito y termina
-    # en stdout, lo que rompe a un consumidor --json.
+    # C3: el rechazo debe honrar el formato pedido. En modo --json el
+    # diagnostico va como JSON por stderr; si no, error() ya escribe por
+    # stderr y no rompe a un consumidor --json.
     if verbose and (json_out or summary or failures_only):
         mensaje = (
             "--verbose es incompatible con --json/--summary/--failures: "
@@ -502,7 +501,7 @@ def _run_test(
         if json_out:
             sys.stderr.write(json.dumps({"error": mensaje}) + "\n")
         else:
-            Console(stderr=True).print(f"[bold red]ERROR[/] {mensaje}")
+            error(mensaje)
         raise typer.Exit(2)
 
     contexto = requerir_proyecto(obtener_nombre_proyecto())
@@ -583,7 +582,7 @@ def _run_test(
     # si el modulo bajo test arranca su propio servidor.
     if returncode == 0 and result.parse_failed:
         if any("Address already in use" in ln for ln in lines):
-            error_stderr("Puerto ocupado durante la ejecucion de Odoo (revisar test)")
+            error("Puerto ocupado durante la ejecucion de Odoo (revisar test)")
             returncode = 3
 
     # Contrato de exit codes: Odoo 19 con --test-enable --stop-after-init

@@ -118,5 +118,6 @@ class TestStatusJson:
         code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
         assert code == 1
         captured = capsys.readouterr()
+        assert captured.out == "", f"stdout debe quedar vacio, got: {captured.out!r}"
         err_data = json.loads(captured.err)
         assert "error" in err_data

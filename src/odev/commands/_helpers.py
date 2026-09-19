@@ -9,7 +9,7 @@ from typing import NoReturn
 
 import typer
 
-from odev.core.console import error_stderr, info, warning_stderr
+from odev.core.console import error, info, warning
 from odev.core.detect import detectar_layout
 from odev.core.docker import USUARIO_ODOO, DockerCompose
 from odev.core.paths import ProjectPaths
@@ -257,13 +257,13 @@ def requerir_proyecto(nombre_proyecto: str | None = None) -> ProjectContext:
     try:
         return resolver_proyecto(nombre_proyecto=nombre_proyecto)
     except ProyectoNoEncontradoError as e:
-        # Por stderr: requerir_proyecto lo llaman ~20 comandos, varios con
-        # --json. Escribir el diagnostico en stdout rompia el parseo de todos
-        # ellos antes de que su propio except pudiera emitir el error en JSON.
-        error_stderr(str(e))
+        # requerir_proyecto lo llaman ~20 comandos, varios con --json.
+        # error() escribe por stderr, asi que no rompe el parseo de ninguno
+        # de ellos antes de que su propio except pueda emitir el error en JSON.
+        error(str(e))
         raise typer.Exit(1) from e
     except ProyectoAmbiguoError as e:
-        warning_stderr(str(e))
+        warning(str(e))
         raise typer.Exit(1) from e
 
 

@@ -95,7 +95,7 @@ class TestModulesJson:
             assert code == 0
 
     def test_sin_proyecto_exit_1(self, tmp_path: Path, capsys) -> None:
-        """C9-3: sin proyecto → exit 1."""
+        """C9-3: sin proyecto → exit 1, stdout limpio, diagnostico JSON por stderr."""
         from odev.core.resolver import ProyectoNoEncontradoError
 
         with (
@@ -115,6 +115,11 @@ class TestModulesJson:
         assert exc is not None
         code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
         assert code == 1
+
+        captured = capsys.readouterr()
+        assert captured.out == "", f"stdout no esta limpio: {captured.out!r}"
+        data = json.loads(captured.err)
+        assert "no project" in data["error"]
 
 
 class TestModulesTableDefault:
