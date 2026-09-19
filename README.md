@@ -337,7 +337,7 @@ odev py "env['product.template'].search_count([('active', '=', True)])"
 
 Caveats:
 - El banner de Odoo se elimina automaticamente del stdout desde 0.5.0. Usar `--keep-banner` para conservar la salida raw (debug).
-- Side-effects ORM (`.create()`, `.write()`) se commitean. Usar `env.cr.rollback()` si se necesita dry-run.
+- Side-effects ORM (`.create()`, `.write()`) **NO se commitean**: `odoo shell` ejecuta `cr.rollback()` al cerrar la sesion, asi que dry-run es el comportamiento por defecto. Para persistir hay que terminar la expresion con `env.cr.commit()`, por ejemplo `odev py "(env['res.partner'].create({'name': 'X'}), env.cr.commit())"`.
 
 Codigos de salida: `0` exito, `1` error en odoo shell, `2` expresion vacia.
 
