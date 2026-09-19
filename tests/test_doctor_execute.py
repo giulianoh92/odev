@@ -71,3 +71,18 @@ class TestExecuteDoctor:
         assert isinstance(summary["ok"], int)
         assert isinstance(summary["warn"], int)
         assert isinstance(summary["fail"], int)
+
+    def test_version_matches_installed_package(self) -> None:
+        """version debe ser la version instalada real, no un literal hardcodeado (C1).
+
+        Un literal hardcodeado ("0.6.2") es exactamente el tipo de dato que se
+        desincroniza en silencio; comparar contra importlib.metadata lo mantiene
+        honesto.
+        """
+        import importlib.metadata
+
+        from odev.commands.doctor import _execute_doctor
+
+        result = _execute_doctor(None)
+
+        assert result["version"] == importlib.metadata.version("odev")

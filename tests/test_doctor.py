@@ -181,7 +181,13 @@ def registry_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 class TestVerificarPuertosMailhog:
-    """Verifica que MAILHOG_PORT se incluye en la verificacion de puertos."""
+    """Verifica que MAILHOG_PORT se incluye en la verificacion de puertos.
+
+    Desde C2, _verificar_puertos delega la clasificacion de puertos ocupados
+    en classify_bound_port (via verificar_puertos_pre_up) — la misma logica
+    que 'odev up'. Estos tests mockean obtener_docker/Registry en vez del
+    puerto_disponible local, que ya no existe en este modulo.
+    """
 
     def test_verificar_puertos_includes_mailhog(self, tmp_path: Path, monkeypatch) -> None:
         """_verificar_puertos verifica MAILHOG_PORT del .env.
@@ -201,8 +207,9 @@ class TestVerificarPuertosMailhog:
 
         fake_ctx = MagicMock()
         fake_ctx.directorio_config = tmp_path
+        fake_ctx.nombre = "proyecto-fake"
 
-        with patch("odev.commands.doctor.puerto_disponible", return_value=True):
+        with patch("odev.core.preflight.puerto_disponible", return_value=True):
             resultado = _verificar_puertos(fake_ctx)
 
         # Debe retornar CheckResult ok (todos disponibles) sin crashear por MAILHOG_PORT
@@ -226,9 +233,9 @@ class TestVerificarPuertosMailhog:
     def test_verificar_puertos_mailhog_conflict_reported(
         self, tmp_path: Path
     ) -> None:
-        """Cuando MAILHOG_PORT esta ocupado, doctor reporta el conflicto.
+        """Cuando MAILHOG_PORT esta ocupado por un proceso ajeno, doctor reporta el conflicto.
 
-        REQ-DC-1 Scenario: MAILHOG conflict detected.
+        REQ-DC-1 Scenario: MAILHOG conflict detected (proceso ajeno desconocido).
         """
         from unittest.mock import MagicMock
 
@@ -239,15 +246,104 @@ class TestVerificarPuertosMailhog:
 
         fake_ctx = MagicMock()
         fake_ctx.directorio_config = tmp_path
+        fake_ctx.nombre = "proyecto-fake"
+
+        dc_mock = MagicMock()
+        dc_mock.ps_parsed.return_value = []  # nadie del propio proyecto ocupa el puerto
+
+        registry_mock = MagicMock()
+        registry_mock._leer.return_value = {}  # nadie registrado ocupa el puerto
 
         def mock_puerto_disponible(puerto: int) -> bool:
             return puerto != 8025  # MAILHOG_PORT ocupado
 
-        with patch("odev.commands.doctor.puerto_disponible", side_effect=mock_puerto_disponible):
+        with (
+            patch("odev.core.preflight.puerto_disponible", side_effect=mock_puerto_disponible),
+            patch("odev.commands._helpers.obtener_docker", return_value=dc_mock),
+            patch("odev.core.registry.Registry", return_value=registry_mock),
+        ):
             resultado = _verificar_puertos(fake_ctx)
 
         assert isinstance(resultado, dict)
         assert resultado["status"] == "fail"
+        assert "8025" in resultado["message"]
+
+    def test_verificar_puertos_own_running_is_not_fail(self, tmp_path: Path) -> None:
+        """Puerto ocupado por el propio stack del proyecto no debe ser FAIL (C2).
+
+        classify_bound_port clasifica esto como own_running; el mapeo a status
+        debe ser ok o info, nunca fail.
+        """
+        from unittest.mock import MagicMock
+
+        from odev.commands.doctor import _verificar_puertos
+
+        env_file = tmp_path / ".env"
+        env_file.write_text("WEB_PORT=8069\n")
+
+        fake_ctx = MagicMock()
+        fake_ctx.directorio_config = tmp_path
+        fake_ctx.nombre = "mi-proyecto"
+
+        contenedor_propio = {
+            "Project": "mi-proyecto",
+            "Publishers": [{"PublishedPort": 8069}],
+        }
+        dc_mock = MagicMock()
+        dc_mock.ps_parsed.return_value = [contenedor_propio]
+
+        registry_mock = MagicMock()
+        registry_mock._leer.return_value = {}
+
+        with (
+            patch("odev.core.preflight.puerto_disponible", return_value=False),
+            patch("odev.commands._helpers.obtener_docker", return_value=dc_mock),
+            patch("odev.core.registry.Registry", return_value=registry_mock),
+        ):
+            resultado = _verificar_puertos(fake_ctx)
+
+        assert isinstance(resultado, dict)
+        assert resultado["status"] in ("ok", "info")
+        assert resultado["status"] != "fail"
+
+    def test_verificar_puertos_foreign_known_reports_owner(self, tmp_path: Path) -> None:
+        """Puerto ocupado por otro proyecto registrado falla y nombra al propietario."""
+        from unittest.mock import MagicMock
+
+        from odev.commands.doctor import _verificar_puertos
+        from odev.core.registry import RegistryEntry
+
+        env_file = tmp_path / ".env"
+        env_file.write_text("WEB_PORT=8069\n")
+
+        fake_ctx = MagicMock()
+        fake_ctx.directorio_config = tmp_path
+        fake_ctx.nombre = "mi-proyecto"
+
+        dc_mock = MagicMock()
+        dc_mock.ps_parsed.return_value = []
+
+        entry_ajena = RegistryEntry(
+            nombre="otro-proyecto",
+            directorio_trabajo=tmp_path,
+            directorio_config=tmp_path,
+            modo="inline",
+            version_odoo="18.0",
+            fecha_creacion="2026-01-01",
+            ports={"WEB_PORT": 8069},
+        )
+        registry_mock = MagicMock()
+        registry_mock._leer.return_value = {"otro-proyecto": entry_ajena}
+
+        with (
+            patch("odev.core.preflight.puerto_disponible", return_value=False),
+            patch("odev.commands._helpers.obtener_docker", return_value=dc_mock),
+            patch("odev.core.registry.Registry", return_value=registry_mock),
+        ):
+            resultado = _verificar_puertos(fake_ctx)
+
+        assert resultado["status"] == "fail"
+        assert "otro-proyecto" in resultado["message"]
 
 
 class TestDoctorBackfill:

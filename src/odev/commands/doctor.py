@@ -34,7 +34,7 @@ import typer
 
 from odev import __version__
 from odev.core.console import console
-from odev.core.ports import PORT_KEYS, puerto_disponible
+from odev.core.ports import PORT_KEYS
 from odev.core.resolver import ProjectContext
 
 _logger = logging.getLogger(__name__)
@@ -113,7 +113,7 @@ def _execute_doctor(contexto: ProjectContext | None) -> dict:
 
     exit_code = 1 if summary["fail"] > 0 else 0
     return {
-        "version": "0.6.2",
+        "version": __version__,
         "checks": resultados,
         "summary": summary,
         "exit_code": exit_code,
@@ -544,7 +544,11 @@ def _verificar_addons(contexto: ProjectContext | None = None) -> CheckResult:
 def _verificar_puertos(contexto: ProjectContext | None = None) -> CheckResult:
     """Verifica la disponibilidad de los puertos configurados.
 
-    Lee los puertos del .env del proyecto y verifica si estan libres.
+    Lee los puertos del .env del proyecto y, para cada uno ocupado, lo
+    clasifica con classify_bound_port (via verificar_puertos_pre_up) — la
+    misma logica que ya usa 'odev up' (C2). Un puerto ocupado por el propio
+    stack del proyecto (own_running) nunca es fail: solo lo son los puertos
+    en uso por otro proyecto registrado o por un proceso ajeno desconocido.
 
     Args:
         contexto: Contexto del proyecto resuelto. Si None, retorna INFO.
@@ -563,7 +567,10 @@ def _verificar_puertos(contexto: ProjectContext | None = None) -> CheckResult:
         msg = "Puertos: no se puede verificar sin archivo .env."
         return {"name": "puertos", "status": "info", "message": msg, "hint": None}
 
+    from odev.commands._helpers import obtener_docker
     from odev.core.config import load_env
+    from odev.core.preflight import verificar_puertos_pre_up
+    from odev.core.registry import Registry
 
     valores_env = load_env(ruta_env)
 
@@ -576,34 +583,67 @@ def _verificar_puertos(contexto: ProjectContext | None = None) -> CheckResult:
         "MAILHOG_PORT": "Mailhog",
     }
 
-    todos_disponibles = True
-    for clave_env, nombre_servicio in puertos_a_verificar.items():
+    puertos: dict[str, int] = {}
+    for clave_env in puertos_a_verificar:
         valor_puerto = valores_env.get(clave_env)
         if valor_puerto is None:
             continue
-
         try:
-            puerto = int(valor_puerto)
+            puertos[clave_env] = int(valor_puerto)
         except (ValueError, TypeError):
             continue
 
-        if not puerto_disponible(puerto):
-            todos_disponibles = False
-
-    if todos_disponibles:
+    if not puertos:
         return {
             "name": "puertos",
             "status": "ok",
             "message": "Todos los puertos disponibles.",
             "hint": None,
         }
-    else:
+
+    dc = obtener_docker(contexto)
+    registry = Registry()
+    resultado = verificar_puertos_pre_up(contexto, dc, registry, puertos)
+
+    if not resultado.fails:
+        if resultado.warnings:
+            propios = ", ".join(
+                f"{status.puerto} ({puertos_a_verificar.get(status.nombre, status.nombre)})"
+                for status in resultado.warnings
+            )
+            msg = f"Puertos en uso por el propio stack del proyecto: {propios}."
+            return {"name": "puertos", "status": "info", "message": msg, "hint": None}
+
         return {
             "name": "puertos",
-            "status": "fail",
-            "message": "Uno o mas puertos configurados estan en uso.",
-            "hint": "Verifica que no haya otros proyectos odev corriendo en los mismos puertos.",
+            "status": "ok",
+            "message": "Todos los puertos disponibles.",
+            "hint": None,
         }
+
+    detalles = []
+    hay_propietario_conocido = False
+    for status in resultado.fails:
+        etiqueta = puertos_a_verificar.get(status.nombre, status.nombre)
+        if status.propietario:
+            hay_propietario_conocido = True
+            detalles.append(
+                f"{status.puerto} ({etiqueta}) usado por el proyecto '{status.propietario}'"
+            )
+        else:
+            detalles.append(f"{status.puerto} ({etiqueta}) usado por un proceso ajeno desconocido")
+
+    if hay_propietario_conocido:
+        hint = "Ejecuta 'odev --project <nombre> down' sobre el proyecto que ocupa el puerto."
+    else:
+        hint = "Identifica el proceso que ocupa el puerto (ej. 'lsof -i :<puerto>') y liberalo."
+
+    return {
+        "name": "puertos",
+        "status": "fail",
+        "message": "Puerto(s) en uso por otro proceso: " + "; ".join(detalles) + ".",
+        "hint": hint,
+    }
 
 
 # Q10: use PORT_KEYS from core/ports.py as single source of truth
