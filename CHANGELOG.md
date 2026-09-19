@@ -6,6 +6,112 @@ El formato esta basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 y este proyecto adhiere a [Versionado Semantico](https://semver.org/spec/v2.0.0.html).
 Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
 
+## [0.11.0] - 2026-09-19
+
+Release enfocada en una sola clase de defecto: **odev sabia algo que quien lo
+invocaba no sabia, y no lo decia**. Ver `docs/FALLAS-SILENCIOSAS.md` para el
+relevamiento completo, el razonamiento y las alternativas descartadas.
+
+### Cambiado
+
+- **BREAKING: `odev down -v` ahora pide confirmacion.** Borraba los volumenes de
+  DB y filestore sin preguntar nada, siendo el comando destructivo mas corto de
+  tipear y el unico sin guarda. Esa asimetria volvia enganosa la guarda de los
+  otros cuatro: quien generalizaba "odev pregunta antes de destruir" acertaba en
+  cuatro de cinco casos. Ahora avisa, confirma y acepta `-y/--yes`. **La guarda
+  dispara solo con `-v`**: `odev down` pelado no destruye nada persistente y
+  sigue igual que siempre. Los scripts que usen `down -v` necesitan agregar
+  `--yes`; sin el fallan cerrado con un mensaje claro, no se cuelgan.
+- **BREAKING: `odev modules` emite una tabla legible en vez de JSON.** El flag
+  `--json` se declaraba con default `True` y el cuerpo nunca leia su valor, asi
+  que la salida era siempre JSON. Todos los demas comandos con `-j/--json` de
+  este repo tienen salida legible por default y optan a JSON. Para seguir
+  obteniendo JSON, pasar `-j/--json` explicitamente.
+- **BREAKING: la tool MCP `odev_py` devuelve un objeto en vez de un string.**
+  Ahora entrega `{result, committed, warning}`. Alinea la tool con las otras
+  siete que ya devolvian dict o lista, y hace imposible pasar por alto el aviso
+  de escritura descartada sin mezclarlo con el resultado.
+- **BREAKING: exit codes alineados al contrato que el propio repo publica**
+  (`0` exito, `1` proyecto/runtime, `2` uso, `3` entorno). `scaffold` usaba `1`
+  para errores de uso; `mcp serve` usaba `2` para problemas de entorno. El exit
+  code es la unica senal estructurada que tiene un script antes de parsear nada:
+  si `1` significa a veces "error de uso" y a veces "runtime", no se puede
+  automatizar el reintento, porque las dos situaciones piden respuestas
+  opuestas. `addon-install` y `update` siguen reenviando el returncode de Odoo.
+
+### Agregado
+
+- **Aviso cuando una corrida de tests ejecuto cero tests.** Antes reportaba
+  verde, que es indistinguible del exito. Cuatro causas convergian en el mismo
+  silencio: un archivo no importado en `tests/__init__.py`, un nombre de modulo
+  mal escrito, una expresion de `--tags` que no matchea, o un modulo sin tests.
+  Ahora avisa por stderr nombrando el filtro efectivo. Va por stderr y no cambia
+  el exit code: cero tests es legitimo a veces, y `odev test all` tiene que
+  seguir andando sobre proyectos con modulos sin tests.
+- **Lint de descubrimiento de tests.** Antes de lanzar, compara los `test_*.py`
+  del addon contra lo realmente importado en su `tests/__init__.py`, parseado
+  con `ast`. Odoo solo descubre los modulos de test importados, asi que un
+  archivo huerfano aporta cero tests sin ningun error.
+- **`odev py --commit`.** `odoo shell` hace `cr.rollback()` al cerrar, asi que
+  las escrituras se descartan salvo commit explicito. Eso se mantiene: el uso
+  dominante es de lectura, y commitear por default convertiria cada expresion
+  exploratoria en una mutacion potencial. El flag agrega el commit para no tener
+  que escribir `env.cr.commit()` a mano dentro de la expresion.
+- **Aviso cuando una expresion de `py` parece escribir sin `--commit`.** El
+  problema nunca fue que descarte, que es defendible: es que descartaba sin
+  decirlo, y quien la invocaba reportaba trabajo hecho que no existia. Es una
+  heuristica estatica sobre el texto (`.create(`, `.write(`, `.unlink(`,
+  `.copy(`) con falsos negativos conocidos — una escritura dentro de un metodo
+  de negocio no se detecta — pero cubre el caso dominante y convierte el modo de
+  falla de silencioso a ruidoso.
+- **`-y/--yes` y `--dry-run` en `db anonymize`**, que tenia prompt pero ninguna
+  forma de saltearlo, al reves de su caso de uso: existe para preparar copias
+  seguras dentro de pipelines. **`--dry-run` en `db restore`**, que le faltaba.
+  Con esto los cinco comandos destructivos tienen las mismas cuatro guardas.
+- **Check de subcomandos en `odev doctor`.** Los subcomandos opcionales se
+  registran dentro de `try/except ImportError`; si el import fallaba, el
+  subcomando no existia y el usuario recibia "comando desconocido" sin ninguna
+  pista. La degradacion elegante esta bien; la invisible no.
+- **`console_err`, `error_stderr` y `warning_stderr`** en `odev.core.console`.
+
+### Corregido
+
+- **La tool MCP `odev_test` devolvia `ToolError("2")`**, literalmente el digito.
+  Los validadores compartidos lanzaban `typer.Exit(2)`, que hereda de
+  `RuntimeError` y por lo tanto `_anticipado` atrapaba — pero `Exit.__init__`
+  nunca llama a `super().__init__(mensaje)`, asi que `str()` devuelve el codigo
+  de salida. El mensaje accionable quedaba en el log del servidor. Ahora
+  `_parse_test_target`, `_build_test_tags`, `parsear_modulos_csv` y
+  `validar_modulos` lanzan `ValueError` con el mensaje, y cada frontend decide
+  como presentarlo. El contrato de la CLI no cambia.
+- **`odev_status` y `odev_py` crasheaban sin traducir con el stack apagado.**
+  Sus rutas terminan en `check=True` y lanzan `subprocess.CalledProcessError`,
+  que no estaba en `FALLOS_OPERATIVOS`. El cliente veia `Error executing tool
+  <name>`. Es la condicion de error mas comun y la mas accionable — solo hay que
+  correr `odev up` — y presentarla como crash sacaba justo la informacion que
+  permitia resolverla.
+- **`doctor` reportaba `"version": "0.6.2"` hardcodeada.** El primer paso de
+  cualquier diagnostico es saber que version se esta mirando; ese campo mandaba
+  a leer el changelog equivocado. Hay un test que lo compara contra la version
+  instalada, porque es la clase de literal que se vuelve a desincronizar.
+- **`doctor` marcaba FAIL en los puertos del propio stack levantado.** Hacia un
+  `socket.bind` crudo sin distinguir de quien era el puerto. Un falso positivo
+  en la herramienta de diagnostico ensena a ignorarla, y el dia que el conflicto
+  sea real ese FAIL ya no significa nada. Ahora reusa la clasificacion que `up`
+  ya tenia resuelta.
+- **Los diagnosticos contaminaban stdout, que es el canal de datos.** Las
+  guardas tempranas de `sql` y `test`, y sobre todo `requerir_proyecto` — que
+  llaman ~20 comandos — escribian el error con Rich por stdout antes de lanzar.
+  El `except` de `status`, `doctor` y `modules` quedaba como codigo muerto para
+  ese caso: emitian su error en JSON por stderr correctamente, pero stdout ya
+  llevaba la linea con codigos de color, y el consumidor explotaba con un fallo
+  que no tenia nada que ver con la causa real.
+- **`odev.yaml` sin punto era invisible al walk inline**, que buscaba solo
+  `.odev.yaml`. odev respondia "no encontre proyecto" sobre un directorio que
+  claramente tenia uno.
+- **`enterprise link` y `projects remove` usaban `SystemExit(1)`** donde el
+  resto de sus archivos usa `typer.Exit`.
+
 ## [0.10.0] - 2026-09-19
 
 ### Cambiado
