@@ -317,9 +317,10 @@ def dependientes_directos_instalados(
     """Devuelve los modulos instalados que dependen directamente de `modulos`.
 
     El ejecutor se inyecta para que core/ no dependa de commands/: el
-    frontend pasa su camino SQL de siempre (`_execute_sql`), y sus errores
-    (RuntimeError de psql, CalledProcessError de docker) se propagan tal
-    cual.
+    frontend pasa su camino SQL de siempre (`_execute_sql`). Esta funcion
+    no traduce sus errores (RuntimeError de psql, CalledProcessError de
+    docker): los propaga tal cual, y el frontend los envuelve en un
+    RuntimeError con el contexto de --with-dependents.
 
     Argumentos:
         modulos:      Nombres tecnicos de la seleccion.

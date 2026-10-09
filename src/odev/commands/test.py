@@ -239,7 +239,10 @@ def _seleccionar_modulos_cambiados(
     Raises:
         ValueError: si `base` no es una referencia valida.
         RuntimeError: sin git, fuera de un repo, o si la consulta de
-            dependientes falla (DB no disponible).
+            dependientes falla. Una consulta fallida siempre llega como
+            RuntimeError con el contexto de --with-dependents, tambien
+            cuando la causa es un CalledProcessError de docker (encadenado
+            con 'from').
     """
     deteccion = detectar_modulos_cambiados(contexto.directorio_trabajo, base)
     advertencias = list(deteccion.advertencias)
@@ -260,9 +263,17 @@ def _seleccionar_modulos_cambiados(
             dependientes = dependientes_directos_instalados(
                 seleccion, lambda consulta: _execute_sql(contexto, consulta)
             )
-        except RuntimeError as exc:
+        except (RuntimeError, subprocess.CalledProcessError) as exc:
+            # El str() crudo de un CalledProcessError es una linea de comando
+            # y un codigo: no dice nada. La causa usual es el stack caido.
+            detalle = (
+                "el stack no esta levantado o la DB no esta disponible "
+                f"(docker salio con {exc.returncode})"
+                if isinstance(exc, subprocess.CalledProcessError)
+                else str(exc)
+            )
             raise RuntimeError(
-                f"--with-dependents no pudo consultar los modulos instalados: {exc}"
+                f"--with-dependents no pudo consultar los modulos instalados: {detalle}"
             ) from exc
         for nombre in dependientes:
             # Mismo criterio de aceptacion que validar_modulos.
@@ -506,7 +517,8 @@ def _execute_test(
         ValueError: If module is empty, the combination is invalid, or the
             base ref does not resolve.
         RuntimeError: With changed=True, if git is missing, the project is
-            not inside a git repository, or the dependents query fails.
+            not inside a git repository, or the dependents query fails
+            (a docker CalledProcessError there is wrapped, never raised raw).
     """
     _validar_seleccion(module, changed, base, with_dependents)
 

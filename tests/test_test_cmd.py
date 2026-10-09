@@ -2616,7 +2616,39 @@ class TestChangedDependientes:
 
         assert _exit_code(exc) == 3
         mock_dc.exec_cmd_stream.assert_not_called()
-        assert 'service "db" is not running' in capsys.readouterr().err
+        err = capsys.readouterr().err
+        assert "--with-dependents no pudo consultar los modulos instalados" in err
+        assert 'service "db" is not running' in err
+
+    def test_fallo_de_docker_en_la_consulta_lleva_el_mismo_contexto(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """Un CalledProcessError de docker se envuelve igual que un RuntimeError."""
+        import subprocess
+
+        from odev.core.changed_modules import DeteccionCambios
+
+        ctx = _proyecto_con_addons(tmp_path, "mod_a")
+        deteccion = DeteccionCambios(modulos=[_detectado(tmp_path, "mod_a")])
+        mock_dc = MagicMock()
+
+        exc, _ = _call_test_changed(
+            tmp_path,
+            mock_dc,
+            ctx,
+            deteccion=deteccion,
+            sql_filas=subprocess.CalledProcessError(1, ["docker", "compose", "exec"]),
+            with_dependents=True,
+            json_out=True,
+        )
+
+        assert _exit_code(exc) == 3
+        mock_dc.exec_cmd_stream.assert_not_called()
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        mensaje = json.loads(captured.err)["error"]
+        assert "--with-dependents no pudo consultar los modulos instalados" in mensaje
+        assert "DB" in mensaje
 
 
 class TestChangedGitReal:

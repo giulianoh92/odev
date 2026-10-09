@@ -955,3 +955,26 @@ class TestMcpTestChanged:
                     self._call_tool(server, "odev_test", {"changed": True})
 
         assert "repositorio git" in str(exc.value)
+
+    def test_fallo_de_docker_en_dependientes_llega_con_contexto(self):
+        """El CalledProcessError de la consulta de dependientes no pierde el contexto."""
+        from mcp.server.mcpserver.exceptions import ToolError
+
+        import odev.commands.mcp as mcp_module
+        from odev.core.changed_modules import DeteccionCambios, ModuloDetectado
+
+        deteccion = DeteccionCambios(modulos=[ModuloDetectado("mod_a", MagicMock())])
+        with (
+            patch("odev.commands.test.detectar_modulos_cambiados", return_value=deteccion),
+            patch("odev.commands.test.listar_modulos_disponibles", return_value=set()),
+            patch(
+                "odev.commands.test._execute_sql",
+                side_effect=subprocess.CalledProcessError(1, ["docker", "compose", "exec"]),
+            ),
+            patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()),
+        ):
+            server = self._build_server()
+            with pytest.raises(ToolError) as exc:
+                self._call_tool(server, "odev_test", {"changed": True, "with_dependents": True})
+
+        assert "--with-dependents no pudo consultar los modulos instalados" in str(exc.value)
