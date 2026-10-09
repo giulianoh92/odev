@@ -15,6 +15,10 @@ Modos de salida:
 | --save-log    | Log crudo a archivo + summary en stdout                 |
 
 --verbose es incompatible con --json/--summary/--failures (exit 2).
+
+--changed reemplaza el argumento de modulo: toma los modulos tocados por el
+diff de git (ver odev.core.changed_modules) y los corre por el mismo camino
+que 'odev test m1,m2'.
 """
 
 from __future__ import annotations
@@ -24,12 +28,13 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import NoReturn, Optional
 
 import typer
 
 from odev.commands._helpers import (
     MODULOS_BUILTIN,
+    listar_modulos_disponibles,
     normalizar_exit_code_odoo,
     obtener_docker,
     obtener_rutas,
@@ -38,6 +43,12 @@ from odev.commands._helpers import (
     resolver_addon_dir,
     validar_modulo_existe,  # noqa: F401  # re-exported for test mocks
     validar_modulos,
+)
+from odev.commands.sql import _execute_sql
+from odev.core.changed_modules import (
+    ModuloDetectado,
+    dependientes_directos_instalados,
+    detectar_modulos_cambiados,
 )
 from odev.core.config import load_env
 from odev.core.console import error, info
@@ -153,6 +164,133 @@ def _build_test_tags(
     return [f"/{m}" for m in modulos]
 
 
+def _validar_seleccion(
+    module: Optional[str],
+    changed: bool,
+    base: Optional[str],
+    with_dependents: bool,
+) -> None:
+    """Valida la combinacion de modulo explicito y --changed.
+
+    Exactamente uno de los dos define que se testea; --base y
+    --with-dependents solo tienen sentido con --changed. Funcion compartida
+    entre CLI y MCP: senaliza con ValueError, igual que _parse_test_target.
+
+    Argumentos:
+        module:          Modulo(s) explicito(s), o None.
+        changed:         Si se pidio --changed.
+        base:            Referencia de --base, o None si no se paso.
+        with_dependents: Si se pidio --with-dependents.
+
+    Raises:
+        ValueError: si la combinacion es invalida.
+    """
+    if module is not None and changed:
+        raise ValueError(
+            "El modulo explicito y --changed son excluyentes: --changed arma la "
+            "lista de modulos a partir del diff de git. Usa uno de los dos."
+        )
+    if module is None and not changed:
+        raise ValueError(
+            "Falta el modulo a testear: indica 'odev test <modulo(s)>' o usa "
+            "--changed para tomar los modulos tocados por el diff de git."
+        )
+    if not changed and (base is not None or with_dependents):
+        raise ValueError("--base y --with-dependents solo se pueden usar junto con --changed.")
+
+
+def _en_addons_path(modulo: ModuloDetectado, disponibles: set[str], contexto) -> bool:
+    """True si el addons-path del proyecto resuelve el nombre a ESE directorio.
+
+    Comparar solo el nombre no alcanza: un modulo homonimo fuera del
+    addons-path (p.ej. una copia en vendor/) haria que '-u <nombre>' testee
+    el otro, no el que cambio.
+    """
+    if modulo.nombre not in disponibles:
+        return False
+    addon_dir = resolver_addon_dir(modulo.nombre, contexto)
+    return addon_dir is not None and addon_dir.resolve() == modulo.directorio
+
+
+def _seleccionar_modulos_cambiados(
+    contexto, base: str, with_dependents: bool
+) -> tuple[list[str], list[str]]:
+    """Resuelve la seleccion de --changed: modulos a testear y advertencias.
+
+    Detecta los modulos tocados por el diff (git corre contra el directorio
+    de trabajo del proyecto, donde vive el codigo), descarta los que no estan
+    en el addons-path del proyecto y, con --with-dependents, suma los
+    modulos instalados que dependen directamente de la seleccion. Todo lo que
+    se descarta queda en las advertencias. Con layout desconocido (sin
+    modulos disponibles) no se descarta nada: mismo fallback que
+    validar_modulos, que asi nunca rechaza la seleccion despues.
+
+    Funcion compartida entre CLI y MCP: no imprime ni sale. Las advertencias
+    vuelven como datos para que cada frontend elija el canal.
+
+    Argumentos:
+        contexto:        Contexto del proyecto resuelto.
+        base:            Referencia git para el merge-base.
+        with_dependents: Si se suman los dependientes directos instalados.
+
+    Retorna:
+        Tupla (modulos sin duplicados y ordenados, advertencias).
+
+    Raises:
+        ValueError: si `base` no es una referencia valida.
+        RuntimeError: sin git, fuera de un repo, o si la consulta de
+            dependientes falla (DB no disponible).
+    """
+    deteccion = detectar_modulos_cambiados(contexto.directorio_trabajo, base)
+    advertencias = list(deteccion.advertencias)
+    disponibles = listar_modulos_disponibles(contexto)
+
+    seleccion: set[str] = set()
+    for modulo in deteccion.modulos:
+        if disponibles and not _en_addons_path(modulo, disponibles, contexto):
+            advertencias.append(
+                f"modulo '{modulo.nombre}' ({modulo.directorio}) no esta en el "
+                "addons-path del proyecto, se omite."
+            )
+            continue
+        seleccion.add(modulo.nombre)
+
+    if with_dependents and seleccion:
+        try:
+            dependientes = dependientes_directos_instalados(
+                seleccion, lambda consulta: _execute_sql(contexto, consulta)
+            )
+        except RuntimeError as exc:
+            raise RuntimeError(
+                f"--with-dependents no pudo consultar los modulos instalados: {exc}"
+            ) from exc
+        for nombre in dependientes:
+            # Mismo criterio de aceptacion que validar_modulos.
+            if disponibles and nombre not in disponibles and nombre not in MODULOS_BUILTIN:
+                advertencias.append(
+                    f"dependiente instalado '{nombre}' no esta en el addons-path "
+                    "del proyecto, se omite."
+                )
+                continue
+            seleccion.add(nombre)
+
+    return sorted(seleccion), advertencias
+
+
+def _rechazar(mensaje: str, json_out: bool, codigo: int) -> NoReturn:
+    """Emite un diagnostico por stderr en el formato pedido y sale.
+
+    Mismo criterio que el rechazo temprano de --verbose (C3): en modo --json
+    el diagnostico va como JSON por stderr; si no, como texto plano por
+    stderr (sin Rich: el mensaje puede traer refs o rutas con corchetes).
+    """
+    if json_out:
+        sys.stderr.write(json.dumps({"error": mensaje}) + "\n")
+    else:
+        sys.stderr.write(f"{mensaje}\n")
+    raise typer.Exit(codigo)
+
+
 def _stream_and_collect(
     popen: subprocess.Popen,
     save_log_path: Optional[Path] = None,
@@ -255,7 +393,11 @@ def render_failures(result: TestResult) -> None:
             console.print(failure.traceback)
 
 
-def render_json(result: TestResult, process_exit_code: int) -> None:
+def render_json(
+    result: TestResult,
+    process_exit_code: Optional[int],
+    modulos: Optional[list[str]] = None,
+) -> None:
     """Escribe un objeto JSON en stdout. No usa Rich.
 
     Compatible con D1: la propiedad failures[] del parser ya contiene
@@ -269,7 +411,12 @@ def render_json(result: TestResult, process_exit_code: int) -> None:
             proceso que murio por una causa que 'returncode_hint' no puede
             expresar (OOM killer, segfault): el campo 'returncode' del
             comando ya vino normalizado al contrato de exit codes, asi que
-            sin este campo esa informacion se perderia.
+            sin este campo esa informacion se perderia. None (null en el
+            JSON) solo cuando no se lanzo ningun proceso: --changed con
+            seleccion vacia.
+        modulos: Solo con --changed: la seleccion efectiva, que el caller
+            no eligio y necesita conocer. None omite la clave, asi el payload
+            de 'odev test m1,m2 --json' no cambia.
     """
     payload = {
         "total": result.total,
@@ -292,6 +439,8 @@ def render_json(result: TestResult, process_exit_code: int) -> None:
             for f in result.failures
         ],
     }
+    if modulos is not None:
+        payload["modules"] = modulos
     sys.stdout.write(json.dumps(payload) + "\n")
 
 
@@ -470,7 +619,7 @@ def _lint_descubrimiento_tests(modulos: list[str], contexto) -> None:
 
 
 def _run_test(
-    module: str,
+    module: Optional[str],
     log_level: str,
     summary: bool,
     failures_only: bool,
@@ -479,6 +628,9 @@ def _run_test(
     save_log: Optional[Path],
     no_validate: bool = False,
     verbose: bool = False,
+    changed: bool = False,
+    base: Optional[str] = None,
+    with_dependents: bool = False,
 ) -> None:
     """Implementacion principal del comando test.
 
@@ -486,6 +638,7 @@ def _run_test(
 
     Argumentos:
         module:        Nombre(s) del modulo a testear, o 'all'. CSV soportado.
+                       None solo con --changed.
         log_level:     Nivel de log de Odoo.
         summary:       Si True, imprime resumen estructurado (alias del default).
         failures_only: Si True, imprime solo bloques FAIL/ERROR.
@@ -495,6 +648,10 @@ def _run_test(
         no_validate:   Si True, omite validacion contra addons-path.
         verbose:       Si True, emite el stream crudo en vivo (pre-0.7.0).
                        Incompatible con json_out/summary/failures_only.
+        changed:       Si True, los modulos salen del diff de git.
+        base:          Referencia git para --changed (None: HEAD).
+        with_dependents: Con --changed, suma los dependientes directos
+                       instalados.
     """
     from odev.main import obtener_nombre_proyecto
 
@@ -513,7 +670,46 @@ def _run_test(
             error(mensaje)
         raise typer.Exit(2)
 
+    try:
+        _validar_seleccion(module, changed, base, with_dependents)
+    except ValueError as exc:
+        _rechazar(str(exc), json_out, 2)
+
     contexto = requerir_proyecto(obtener_nombre_proyecto())
+
+    # --changed: la seleccion sale del diff y despues corre exactamente por el
+    # mismo camino que 'odev test m1,m2'. La seleccion se anuncia por stderr:
+    # stdout es el canal de datos.
+    seleccion_changed: Optional[list[str]] = None
+    if changed:
+        referencia = base if base is not None else "HEAD"
+        try:
+            seleccion_changed, advertencias = _seleccionar_modulos_cambiados(
+                contexto, referencia, with_dependents
+            )
+        except ValueError as exc:
+            _rechazar(str(exc), json_out, 2)
+        except (RuntimeError, subprocess.CalledProcessError) as exc:
+            # Sin git, fuera de un repo o DB no disponible: error de entorno.
+            _rechazar(str(exc), json_out, 3)
+
+        for advertencia in advertencias:
+            sys.stderr.write(f"WARN: {advertencia}\n")
+
+        alcance = f"base {referencia}" + (", con dependientes directos" if with_dependents else "")
+        if not seleccion_changed:
+            sys.stderr.write(
+                f"INFO: --changed ({alcance}) no encontro modulos para testear; "
+                "no se ejecuta Odoo.\n"
+            )
+            if json_out:
+                render_json(TestResult(), None, modulos=[])
+            raise typer.Exit(0)
+
+        module = ",".join(seleccion_changed)
+        sys.stderr.write(
+            f"INFO: --changed ({alcance}) selecciono {len(seleccion_changed)} modulo(s): {module}\n"
+        )
 
     try:
         # D8: detectar shorthand 'module:Class.method' antes de parsear CSV.
@@ -638,7 +834,7 @@ def _run_test(
         # D1: --json + --failures son composables.
         # failures[] ya contiene solo fallos/errores (no passing tests)
         # por diseno del parser, por lo que la composicion es natural.
-        render_json(result, codigo_proceso)
+        render_json(result, codigo_proceso, modulos=seleccion_changed)
     elif failures_only:
         render_failures(result)
     elif not verbose:
@@ -650,11 +846,12 @@ def _run_test(
 
 
 def test(
-    module: str = typer.Argument(
-        ...,
+    module: Optional[str] = typer.Argument(
+        None,
         help=(
             "Modulo(s) a testear. CSV soportado: 'm1,m2'. "
-            "'all' solo como token unico para ejecutar todos los tests."
+            "'all' solo como token unico para ejecutar todos los tests. "
+            "Obligatorio salvo con --changed, con el que es excluyente."
         ),
     ),
     log_level: Optional[str] = typer.Option(
@@ -713,12 +910,40 @@ def test(
         "--no-validate",
         help="Omite la validacion previa de modulos contra addons-path.",
     ),
+    changed: bool = typer.Option(
+        False,
+        "--changed",
+        help=(
+            "Testea los modulos tocados por el diff de git: lo que difiere "
+            "entre merge-base(--base, HEAD) y el working tree, mas los "
+            "untracked no ignorados. Excluyente con el argumento de modulo."
+        ),
+    ),
+    base: Optional[str] = typer.Option(
+        None,
+        "--base",
+        help=(
+            "Con --changed: referencia git para el merge-base (ej. main). "
+            "Default: HEAD, es decir solo el trabajo sin commitear."
+        ),
+    ),
+    with_dependents: bool = typer.Option(
+        False,
+        "--with-dependents",
+        help=(
+            "Con --changed: suma los modulos instalados que dependen directamente de la seleccion."
+        ),
+    ),
 ) -> None:
     """Ejecuta los tests de un modulo Odoo.
 
     Ejecuta los tests del modulo especificado usando el framework
     de tests de Odoo. Usa 'all' para ejecutar todos los tests
     disponibles (puede tomar bastante tiempo).
+
+    Con --changed (en vez del modulo) testea los modulos tocados por el
+    diff de git; --with-dependents suma sus dependientes directos
+    instalados. Seleccion vacia: avisa por stderr y sale con 0.
 
     Por default imprime un resumen compacto (conteo + duracion).
     Usa --verbose/-v para ver el log crudo de Odoo en vivo.
@@ -729,9 +954,9 @@ def test(
 
       1  Hubo failures o errores en tests, o el proceso Odoo murio
 
-      2  Error de uso (modulo no existe)
+      2  Error de uso (modulo no existe, ref de --base invalida)
 
-      3  Error de entorno (puerto ocupado, DB no disponible)
+      3  Error de entorno (puerto ocupado, DB no disponible, sin git)
 
     Formato de --tags (Odoo --test-tags):
 
@@ -753,4 +978,7 @@ def test(
         save_log=save_log,
         no_validate=no_validate,
         verbose=verbose,
+        changed=changed,
+        base=base,
+        with_dependents=with_dependents,
     )

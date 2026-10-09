@@ -2181,3 +2181,506 @@ class TestLintDescubrimientoTests:
             _lint_descubrimiento_tests(["mymod"], ctx)
 
         assert capsys.readouterr().err == ""
+
+
+# ---------------------------------------------------------------------------
+# --changed: modulos tocados por el diff de git
+# ---------------------------------------------------------------------------
+
+
+def _aislar_git(tmp_path: Path, monkeypatch) -> None:
+    """Aisla git de la config del usuario y le impide subir de tmp_path."""
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "gitconfig-vacio"))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.setenv("GIT_AUTHOR_NAME", "odev-tests")
+    monkeypatch.setenv("GIT_AUTHOR_EMAIL", "odev-tests@example.com")
+    monkeypatch.setenv("GIT_COMMITTER_NAME", "odev-tests")
+    monkeypatch.setenv("GIT_COMMITTER_EMAIL", "odev-tests@example.com")
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
+
+
+def _proyecto_con_addons(tmp_path: Path, *modulos: str) -> MagicMock:
+    """Contexto con addons/<modulo>/__manifest__.py reales en disco.
+
+    Las funciones de _helpers (listar_modulos_disponibles, resolver_addon_dir,
+    validar_modulos) corren de verdad contra este arbol: los tests de --changed
+    no las mockean, para que la seleccion pase por la misma validacion que
+    'odev test m1,m2'.
+    """
+    for nombre in modulos:
+        (tmp_path / "addons" / nombre).mkdir(parents=True, exist_ok=True)
+        (tmp_path / "addons" / nombre / "__manifest__.py").write_text("{}\n")
+    ctx = _make_contexto(tmp_path)
+    ctx.directorio_trabajo = tmp_path
+    ctx.config.rutas_addons = ["addons"]
+    return ctx
+
+
+def _detectado(tmp_path: Path, nombre: str, padre: str = "addons"):
+    from odev.core.changed_modules import ModuloDetectado
+
+    return ModuloDetectado(nombre, (tmp_path / padre / nombre).resolve())
+
+
+def _call_test_changed(
+    tmp_path: Path,
+    mock_dc: MagicMock,
+    ctx: MagicMock,
+    deteccion=None,
+    sql_filas=None,
+    **overrides,
+):
+    """Invoca el comando Typer 'test' con call_command y --changed.
+
+    `deteccion` reemplaza a detectar_modulos_cambiados (None: corre git de
+    verdad contra ctx.directorio_trabajo). `sql_filas` es la respuesta de
+    _execute_sql para --with-dependents (lista, o una excepcion a lanzar).
+    """
+    import typer as ty
+
+    from odev.commands.test import test
+    from tests._helpers import call_command
+
+    kwargs = {"changed": True, **overrides}
+    parches = [
+        patch("odev.commands.test.requerir_proyecto", return_value=ctx),
+        patch("odev.commands.test.obtener_rutas"),
+        patch("odev.commands.test.obtener_docker", return_value=mock_dc),
+        patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
+        patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+    ]
+    if deteccion is not None:
+        parches.append(
+            patch("odev.commands.test.detectar_modulos_cambiados", return_value=deteccion)
+        )
+    mock_sql = None
+    if sql_filas is not None:
+        if isinstance(sql_filas, Exception):
+            mock_sql = patch("odev.commands.test._execute_sql", side_effect=sql_filas)
+        else:
+            mock_sql = patch("odev.commands.test._execute_sql", return_value=sql_filas)
+        parches.append(mock_sql)
+
+    from contextlib import ExitStack
+
+    with ExitStack() as pila:
+        activos = [pila.enter_context(p) for p in parches]
+        activos[1].return_value.env_file = tmp_path / ".env"
+        try:
+            call_command(test, **kwargs)
+        except (SystemExit, ty.Exit) as e:
+            return e, (activos[-1] if sql_filas is not None else None)
+    return None, (activos[-1] if sql_filas is not None else None)
+
+
+def _exit_code(exc) -> int:
+    if exc is None:
+        return 0
+    return exc.code if isinstance(exc, SystemExit) else exc.exit_code
+
+
+def _comando_odoo(mock_dc: MagicMock) -> list[str]:
+    args, _ = mock_dc.exec_cmd_stream.call_args
+    return args[1]
+
+
+class TestChangedUso:
+    """Combinaciones invalidas de modulo/--changed/--base/--with-dependents: exit 2."""
+
+    def _call(self, **kwargs):
+        import typer as ty
+
+        from odev.commands.test import test
+        from tests._helpers import call_command
+
+        with (
+            patch("odev.commands.test.requerir_proyecto") as mock_requerir,
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+        ):
+            with pytest.raises((SystemExit, ty.Exit)) as exc_info:
+                call_command(test, **kwargs)
+            mock_requerir.assert_not_called()
+        return exc_info.value
+
+    def test_sin_modulo_ni_changed_exit_2(self, capsys) -> None:
+        exc = self._call()
+        assert _exit_code(exc) == 2
+        err = capsys.readouterr().err
+        assert "--changed" in err
+
+    def test_modulo_y_changed_juntos_exit_2(self, capsys) -> None:
+        exc = self._call(module="sale", changed=True)
+        assert _exit_code(exc) == 2
+        assert "--changed" in capsys.readouterr().err
+
+    def test_base_sin_changed_exit_2(self, capsys) -> None:
+        exc = self._call(module="sale", base="main")
+        assert _exit_code(exc) == 2
+        assert "--base" in capsys.readouterr().err
+
+    def test_with_dependents_sin_changed_exit_2(self, capsys) -> None:
+        exc = self._call(module="sale", with_dependents=True)
+        assert _exit_code(exc) == 2
+        assert "--with-dependents" in capsys.readouterr().err
+
+    def test_error_de_uso_con_json_va_como_json_por_stderr(self, capsys) -> None:
+        exc = self._call(json_out=True)
+        assert _exit_code(exc) == 2
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "--changed" in json.loads(captured.err)["error"]
+
+
+class TestChangedSeleccion:
+    """La seleccion de --changed corre por el mismo camino que 'odev test m1,m2'."""
+
+    def test_seleccion_no_vacia_corre_odoo_con_esos_modulos(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        from odev.core.changed_modules import DeteccionCambios
+
+        ctx = _proyecto_con_addons(tmp_path, "mod_a", "mod_b")
+        deteccion = DeteccionCambios(
+            modulos=[_detectado(tmp_path, "mod_b"), _detectado(tmp_path, "mod_a")]
+        )
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = FakePopen(_FIXTURE_ALL_PASS)
+
+        exc, _ = _call_test_changed(tmp_path, mock_dc, ctx, deteccion=deteccion)
+
+        assert _exit_code(exc) == 0
+        comando = _comando_odoo(mock_dc)
+        assert comando[comando.index("-u") + 1] == "mod_a,mod_b"
+        assert comando[comando.index("--test-tags") + 1] == "/mod_a,/mod_b"
+        captured = capsys.readouterr()
+        assert "mod_a,mod_b" in captured.err
+        assert "mod_a" not in captured.out
+        assert "passed" in captured.out
+
+    def test_mismo_comando_que_la_lista_explicita(self, tmp_path: Path) -> None:
+        """Item 9 del contrato: mismo comando Odoo que 'odev test mod_a,mod_b'."""
+        from odev.commands.test import test
+        from odev.core.changed_modules import DeteccionCambios
+        from tests._helpers import call_command
+
+        ctx = _proyecto_con_addons(tmp_path, "mod_a", "mod_b")
+        deteccion = DeteccionCambios(
+            modulos=[_detectado(tmp_path, "mod_a"), _detectado(tmp_path, "mod_b")]
+        )
+        dc_changed = MagicMock()
+        dc_changed.exec_cmd_stream.return_value = FakePopen(_FIXTURE_ALL_PASS)
+        _call_test_changed(tmp_path, dc_changed, ctx, deteccion=deteccion, tags="fast")
+
+        dc_explicito = MagicMock()
+        dc_explicito.exec_cmd_stream.return_value = FakePopen(_FIXTURE_ALL_PASS)
+        with (
+            patch("odev.commands.test.requerir_proyecto", return_value=ctx),
+            patch("odev.commands.test.obtener_rutas") as mock_rutas,
+            patch("odev.commands.test.obtener_docker", return_value=dc_explicito),
+            patch("odev.commands.test.load_env", return_value={"DB_NAME": "test_db"}),
+            patch("odev.main.obtener_nombre_proyecto", return_value="test-project"),
+        ):
+            mock_rutas.return_value.env_file = tmp_path / ".env"
+            with pytest.raises(Exception):
+                call_command(test, "mod_a,mod_b", tags="fast")
+
+        assert _comando_odoo(dc_changed) == _comando_odoo(dc_explicito)
+
+    def test_tags_se_respeta_con_changed(self, tmp_path: Path) -> None:
+        from odev.core.changed_modules import DeteccionCambios
+
+        ctx = _proyecto_con_addons(tmp_path, "mod_a")
+        deteccion = DeteccionCambios(modulos=[_detectado(tmp_path, "mod_a")])
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = FakePopen(_FIXTURE_ALL_PASS)
+
+        _call_test_changed(tmp_path, mock_dc, ctx, deteccion=deteccion, tags=":test_x")
+
+        comando = _comando_odoo(mock_dc)
+        assert comando[comando.index("--test-tags") + 1] == ":test_x"
+
+    def test_base_default_head_y_directorio_de_trabajo(self, tmp_path: Path) -> None:
+        from odev.core.changed_modules import DeteccionCambios
+
+        ctx = _proyecto_con_addons(tmp_path, "mod_a")
+        mock_dc = MagicMock()
+        with patch(
+            "odev.commands.test.detectar_modulos_cambiados",
+            return_value=DeteccionCambios(),
+        ) as mock_detectar:
+            _call_test_changed(tmp_path, mock_dc, ctx)
+            mock_detectar.assert_called_once_with(tmp_path, "HEAD")
+
+        with patch(
+            "odev.commands.test.detectar_modulos_cambiados",
+            return_value=DeteccionCambios(),
+        ) as mock_detectar:
+            _call_test_changed(tmp_path, mock_dc, ctx, base="main")
+            mock_detectar.assert_called_once_with(tmp_path, "main")
+
+    def test_seleccion_vacia_sale_0_sin_lanzar_odoo(self, tmp_path: Path, capsys) -> None:
+        from odev.core.changed_modules import DeteccionCambios
+
+        ctx = _proyecto_con_addons(tmp_path, "mod_a")
+        mock_dc = MagicMock()
+
+        exc, _ = _call_test_changed(tmp_path, mock_dc, ctx, deteccion=DeteccionCambios())
+
+        assert _exit_code(exc) == 0
+        mock_dc.exec_cmd_stream.assert_not_called()
+        mock_dc.exec_cmd.assert_not_called()
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "no se ejecuta Odoo" in captured.err
+
+    def test_seleccion_vacia_con_json_emite_payload_sin_modulos(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        from odev.core.changed_modules import DeteccionCambios
+
+        ctx = _proyecto_con_addons(tmp_path, "mod_a")
+        mock_dc = MagicMock()
+
+        exc, _ = _call_test_changed(
+            tmp_path, mock_dc, ctx, deteccion=DeteccionCambios(), json_out=True
+        )
+
+        assert _exit_code(exc) == 0
+        mock_dc.exec_cmd_stream.assert_not_called()
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["modules"] == []
+        assert payload["total"] == 0
+        assert payload["failed"] == 0
+        assert payload["errors"] == 0
+        assert payload["failures"] == []
+        assert payload["process_exit_code"] is None
+
+    def test_json_con_seleccion_incluye_los_modulos(self, tmp_path: Path, capsys) -> None:
+        from odev.core.changed_modules import DeteccionCambios
+
+        ctx = _proyecto_con_addons(tmp_path, "mod_a")
+        deteccion = DeteccionCambios(modulos=[_detectado(tmp_path, "mod_a")])
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = FakePopen(_FIXTURE_ALL_PASS)
+
+        _call_test_changed(tmp_path, mock_dc, ctx, deteccion=deteccion, json_out=True)
+
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["modules"] == ["mod_a"]
+        assert payload["total"] == 2
+        assert payload["process_exit_code"] == 0
+
+    def test_json_sin_changed_no_agrega_modules(self, tmp_path: Path, capsys) -> None:
+        """El payload de 'odev test m1 --json' no cambia."""
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = FakePopen(_FIXTURE_ALL_PASS)
+
+        _call_run_test(tmp_path, mock_dc, json_out=True)
+
+        assert "modules" not in json.loads(capsys.readouterr().out)
+
+    def test_modulo_fuera_del_addons_path_se_omite_con_warning(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        from odev.core.changed_modules import DeteccionCambios
+
+        ctx = _proyecto_con_addons(tmp_path, "mod_a")
+        (tmp_path / "vendor" / "mod_ajeno").mkdir(parents=True)
+        (tmp_path / "vendor" / "mod_ajeno" / "__manifest__.py").write_text("{}\n")
+        deteccion = DeteccionCambios(
+            modulos=[_detectado(tmp_path, "mod_a"), _detectado(tmp_path, "mod_ajeno", "vendor")]
+        )
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = FakePopen(_FIXTURE_ALL_PASS)
+
+        _call_test_changed(tmp_path, mock_dc, ctx, deteccion=deteccion)
+
+        comando = _comando_odoo(mock_dc)
+        assert comando[comando.index("-u") + 1] == "mod_a"
+        err = capsys.readouterr().err
+        assert "WARN" in err
+        assert "mod_ajeno" in err
+
+    def test_homonimo_fuera_del_addons_path_se_omite(self, tmp_path: Path, capsys) -> None:
+        """Mismo nombre que un modulo del addons-path, pero otro directorio."""
+        from odev.core.changed_modules import DeteccionCambios
+
+        ctx = _proyecto_con_addons(tmp_path, "mod_a")
+        (tmp_path / "vendor" / "mod_a").mkdir(parents=True)
+        (tmp_path / "vendor" / "mod_a" / "__manifest__.py").write_text("{}\n")
+        deteccion = DeteccionCambios(modulos=[_detectado(tmp_path, "mod_a", "vendor")])
+        mock_dc = MagicMock()
+
+        exc, _ = _call_test_changed(tmp_path, mock_dc, ctx, deteccion=deteccion)
+
+        assert _exit_code(exc) == 0
+        mock_dc.exec_cmd_stream.assert_not_called()
+        assert "vendor" in capsys.readouterr().err
+
+    def test_advertencias_de_la_deteccion_van_a_stderr(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        from odev.core.changed_modules import DeteccionCambios
+
+        ctx = _proyecto_con_addons(tmp_path, "mod_a")
+        deteccion = DeteccionCambios(
+            advertencias=["submodulo git 'vendor/oca' cambiado: no se recorre."]
+        )
+        mock_dc = MagicMock()
+
+        _call_test_changed(tmp_path, mock_dc, ctx, deteccion=deteccion, json_out=True)
+
+        captured = capsys.readouterr()
+        assert "WARN: submodulo git 'vendor/oca'" in captured.err
+        assert json.loads(captured.out)["modules"] == []
+
+
+class TestChangedDependientes:
+    """--with-dependents suma los dependientes directos instalados."""
+
+    def test_union_deduplicada_y_ordenada(self, tmp_path: Path, capsys) -> None:
+        from odev.core.changed_modules import DeteccionCambios
+
+        ctx = _proyecto_con_addons(tmp_path, "mod_b", "mod_c", "mod_z")
+        deteccion = DeteccionCambios(modulos=[_detectado(tmp_path, "mod_c")])
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = FakePopen(_FIXTURE_ALL_PASS)
+        filas = [{"name": "mod_z"}, {"name": "mod_b"}, {"name": "mod_c"}]
+
+        exc, mock_sql = _call_test_changed(
+            tmp_path, mock_dc, ctx, deteccion=deteccion, sql_filas=filas, with_dependents=True
+        )
+
+        assert _exit_code(exc) == 0
+        comando = _comando_odoo(mock_dc)
+        assert comando[comando.index("-u") + 1] == "mod_b,mod_c,mod_z"
+        (contexto_sql, consulta), _ = mock_sql.call_args
+        assert contexto_sql is ctx
+        assert "IN ('mod_c')" in consulta
+        assert "mod_b,mod_c,mod_z" in capsys.readouterr().err
+
+    def test_sin_flag_no_consulta_la_base(self, tmp_path: Path) -> None:
+        from odev.core.changed_modules import DeteccionCambios
+
+        ctx = _proyecto_con_addons(tmp_path, "mod_a")
+        deteccion = DeteccionCambios(modulos=[_detectado(tmp_path, "mod_a")])
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = FakePopen(_FIXTURE_ALL_PASS)
+
+        _, mock_sql = _call_test_changed(
+            tmp_path, mock_dc, ctx, deteccion=deteccion, sql_filas=[]
+        )
+
+        mock_sql.assert_not_called()
+
+    def test_dependiente_fuera_del_addons_path_se_omite(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        from odev.core.changed_modules import DeteccionCambios
+
+        ctx = _proyecto_con_addons(tmp_path, "mod_a")
+        deteccion = DeteccionCambios(modulos=[_detectado(tmp_path, "mod_a")])
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = FakePopen(_FIXTURE_ALL_PASS)
+
+        _call_test_changed(
+            tmp_path,
+            mock_dc,
+            ctx,
+            deteccion=deteccion,
+            sql_filas=[{"name": "mod_enterprise"}],
+            with_dependents=True,
+        )
+
+        comando = _comando_odoo(mock_dc)
+        assert comando[comando.index("-u") + 1] == "mod_a"
+        assert "mod_enterprise" in capsys.readouterr().err
+
+    def test_fallo_de_la_consulta_es_error_de_entorno(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        from odev.core.changed_modules import DeteccionCambios
+
+        ctx = _proyecto_con_addons(tmp_path, "mod_a")
+        deteccion = DeteccionCambios(modulos=[_detectado(tmp_path, "mod_a")])
+        mock_dc = MagicMock()
+
+        exc, _ = _call_test_changed(
+            tmp_path,
+            mock_dc,
+            ctx,
+            deteccion=deteccion,
+            sql_filas=RuntimeError('service "db" is not running'),
+            with_dependents=True,
+        )
+
+        assert _exit_code(exc) == 3
+        mock_dc.exec_cmd_stream.assert_not_called()
+        assert 'service "db" is not running' in capsys.readouterr().err
+
+
+class TestChangedGitReal:
+    """Extremo a extremo con un repo git real como directorio de trabajo."""
+
+    def _repo(self, tmp_path: Path, monkeypatch) -> tuple[Path, MagicMock]:
+        import subprocess
+
+        _aislar_git(tmp_path, monkeypatch)
+        ctx = _proyecto_con_addons(tmp_path, "mod_a", "mod_b")
+        for args in (
+            ["init", "-q", "-b", "main"],
+            ["add", "-A"],
+            ["commit", "-q", "-m", "inicial"],
+        ):
+            subprocess.run(["git", "-C", str(tmp_path), *args], check=True, capture_output=True)
+        return tmp_path, ctx
+
+    def test_cambio_sin_commitear_selecciona_su_modulo(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        repo, ctx = self._repo(tmp_path, monkeypatch)
+        (repo / "addons" / "mod_b" / "models.py").write_text("x = 1\n")
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = FakePopen(_FIXTURE_ALL_PASS)
+
+        exc, _ = _call_test_changed(repo, mock_dc, ctx)
+
+        assert _exit_code(exc) == 0
+        comando = _comando_odoo(mock_dc)
+        assert comando[comando.index("-u") + 1] == "mod_b"
+
+    def test_ref_invalida_exit_2(self, tmp_path: Path, monkeypatch, capsys) -> None:
+        repo, ctx = self._repo(tmp_path, monkeypatch)
+        mock_dc = MagicMock()
+
+        exc, _ = _call_test_changed(repo, mock_dc, ctx, base="no-existe")
+
+        assert _exit_code(exc) == 2
+        mock_dc.exec_cmd_stream.assert_not_called()
+        assert "no-existe" in capsys.readouterr().err
+
+    def test_fuera_de_un_repo_git_exit_3(self, tmp_path: Path, monkeypatch, capsys) -> None:
+        _aislar_git(tmp_path, monkeypatch)
+        ctx = _proyecto_con_addons(tmp_path, "mod_a")
+        mock_dc = MagicMock()
+
+        exc, _ = _call_test_changed(tmp_path, mock_dc, ctx)
+
+        assert _exit_code(exc) == 3
+        mock_dc.exec_cmd_stream.assert_not_called()
+        assert "repositorio git" in capsys.readouterr().err
+
+    def test_sin_git_instalado_exit_3(self, tmp_path: Path, monkeypatch, capsys) -> None:
+        ctx = _proyecto_con_addons(tmp_path, "mod_a")
+        mock_dc = MagicMock()
+
+        def _sin_git(*args, **kwargs):
+            raise FileNotFoundError(2, "No such file or directory", "git")
+
+        with patch("odev.core.changed_modules.subprocess.run", side_effect=_sin_git):
+            exc, _ = _call_test_changed(tmp_path, mock_dc, ctx, json_out=True)
+
+        assert _exit_code(exc) == 3
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "git" in json.loads(captured.err)["error"]
