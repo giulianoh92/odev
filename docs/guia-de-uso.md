@@ -431,10 +431,11 @@ odev test --changed --base main --with-dependents
 
 Con `--changed`, cada archivo cambiado (commiteado desde el merge-base,
 stageado, sin stagear o untracked no ignorado) se asigna al modulo mas cercano
-con `__manifest__.py`. La seleccion se muestra por stderr antes de correr, y se
-omiten con un aviso los modulos fuera del addons-path, los eliminados y los que
-viven en submodulos git. Si no queda ningun modulo, `odev test` lo avisa y sale
-con `0` sin lanzar Odoo.
+con `__manifest__.py`. Los submodulos git cambiados se recorren igual. La
+seleccion se muestra por stderr antes de correr, y se omiten con un aviso los
+modulos fuera del addons-path, los eliminados y los submodulos que no se pueden
+recorrer (sin checkout, sin el commit de la base o eliminados). Si no queda
+ningun modulo, `odev test` lo avisa y sale con `0` sin lanzar Odoo.
 
 ### Ciclo de desarrollo tipico
 

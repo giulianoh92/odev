@@ -255,8 +255,8 @@ class TestEliminadosYSubmodulos:
         assert len(deteccion.advertencias) == 1
         assert "mod_a" in deteccion.advertencias[0]
 
-    def test_gitlink_cambiado_advierte_con_su_ruta(self, repo: Path) -> None:
-        """Un submodulo (gitlink) cambiado se avisa; sus modulos no se detectan."""
+    def test_gitlink_agregado_se_recorre_contra_el_arbol_vacio(self, repo: Path) -> None:
+        """Un gitlink nuevo (repo embebido agregado, sin .gitmodules) se recorre entero."""
         interno = repo / "vendor" / "oca"
         interno.mkdir(parents=True)
         _git(interno, "init", "-q", "-b", "main")
@@ -266,10 +266,9 @@ class TestEliminadosYSubmodulos:
 
         deteccion = detectar_modulos_cambiados(repo)
 
-        assert deteccion.modulos == []
-        assert len(deteccion.advertencias) == 1
-        assert "vendor/oca" in deteccion.advertencias[0]
-        assert "submodulo" in deteccion.advertencias[0]
+        assert _nombres(deteccion) == ["mod_oca"]
+        assert deteccion.modulos[0].directorio == (interno / "mod_oca").resolve()
+        assert deteccion.advertencias == []
 
     def test_gitlink_no_tapa_modulos_normales(self, repo: Path) -> None:
         interno = repo / "vendor" / "oca"
@@ -282,8 +281,7 @@ class TestEliminadosYSubmodulos:
 
         deteccion = detectar_modulos_cambiados(repo)
 
-        assert _nombres(deteccion) == ["mod_a"]
-        assert any("vendor/oca" in a for a in deteccion.advertencias)
+        assert _nombres(deteccion) == ["mod_a", "mod_oca"]
 
     def test_repo_anidado_sin_trackear_advierte(self, repo: Path) -> None:
         """Un repo git anidado sin agregar: git no lista su contenido."""
@@ -298,6 +296,199 @@ class TestEliminadosYSubmodulos:
         assert deteccion.modulos == []
         assert len(deteccion.advertencias) == 1
         assert "vendor/suelto" in deteccion.advertencias[0]
+
+
+# ---------------------------------------------------------------------------
+# Submodulos git: se recorren contra el commit registrado en la base
+# ---------------------------------------------------------------------------
+
+
+def _git_sub(repo: Path, *args: str) -> str:
+    """git con el protocolo file habilitado: git >= 2.38 lo bloquea en submodulos."""
+    return _git(repo, "-c", "protocol.file.allow=always", *args)
+
+
+def _repo_fuente(tmp_path: Path, nombre: str, *modulos: str) -> Path:
+    """Repo origen de un submodulo, con los modulos dados ya commiteados."""
+    fuente = tmp_path / nombre
+    fuente.mkdir()
+    _git(fuente, "init", "-q", "-b", "main")
+    for modulo in modulos:
+        _modulo(fuente, modulo)
+    _escribir(fuente, ".gitignore", "*.log\n")
+    _commit(fuente, "inicial fuente")
+    return fuente
+
+
+def _superproyecto(tmp_path: Path, nombre: str = "super") -> Path:
+    raiz = tmp_path / nombre
+    raiz.mkdir()
+    _git(raiz, "init", "-q", "-b", "main")
+    _modulo(raiz, "addons/mod_a")
+    _commit(raiz, "inicial")
+    return raiz
+
+
+@pytest.fixture
+def superproyecto(tmp_path: Path) -> Path:
+    """addons/mod_a y el submodulo subs/ext (mod_s1, mod_s2), todo commiteado."""
+    fuente = _repo_fuente(tmp_path, "fuente_ext", "mod_s1", "mod_s2")
+    raiz = _superproyecto(tmp_path)
+    _git_sub(raiz, "submodule", "add", "-q", str(fuente), "subs/ext")
+    _commit(raiz, "agrega submodulo")
+    return raiz
+
+
+class TestSubmodulos:
+    """Un gitlink cambiado se recorre: sus modulos se detectan como los demas."""
+
+    def test_sin_cambios_no_detecta_nada(self, superproyecto: Path) -> None:
+        deteccion = detectar_modulos_cambiados(superproyecto)
+        assert deteccion.modulos == []
+        assert deteccion.advertencias == []
+
+    def test_puntero_movido_a_un_commit_nuevo(self, superproyecto: Path) -> None:
+        sub = superproyecto / "subs" / "ext"
+        _escribir(sub, "mod_s1/models/nuevo.py")
+        _commit(sub, "cambio en mod_s1")
+        _commit(superproyecto, "mueve el puntero")
+
+        # Base implicita: el puntero nuevo ya esta commiteado, no hay nada.
+        assert detectar_modulos_cambiados(superproyecto).modulos == []
+
+        deteccion = detectar_modulos_cambiados(superproyecto, base="HEAD~1")
+        assert _nombres(deteccion) == ["mod_s1"]
+        assert deteccion.modulos[0].directorio == (sub / "mod_s1").resolve()
+        assert deteccion.advertencias == []
+
+    def test_commit_en_el_submodulo_sin_mover_el_puntero(self, superproyecto: Path) -> None:
+        """El HEAD del submodulo avanzo pero el superproyecto no lo registro."""
+        sub = superproyecto / "subs" / "ext"
+        _escribir(sub, "mod_s2/models/nuevo.py")
+        _commit(sub, "cambio en mod_s2")
+        assert _nombres(detectar_modulos_cambiados(superproyecto)) == ["mod_s2"]
+
+    def test_cambio_sin_commitear_dentro_del_submodulo(self, superproyecto: Path) -> None:
+        _escribir(superproyecto, "subs/ext/mod_s2/models/__init__.py", "# cambio\n")
+        assert _nombres(detectar_modulos_cambiados(superproyecto)) == ["mod_s2"]
+
+    def test_archivo_untracked_dentro_del_submodulo(self, superproyecto: Path) -> None:
+        _escribir(superproyecto, "subs/ext/mod_s1/models/nuevo.py")
+        _escribir(superproyecto, "subs/ext/mod_s2/debug.log", "ignorado por el submodulo\n")
+        assert _nombres(detectar_modulos_cambiados(superproyecto)) == ["mod_s1"]
+
+    def test_ignore_all_en_gitmodules_no_oculta_el_submodulo(self, superproyecto: Path) -> None:
+        """--ignore-submodules=none le gana a la config 'ignore' del submodulo."""
+        _git(superproyecto, "config", "-f", ".gitmodules", "submodule.subs/ext.ignore", "all")
+        _commit(superproyecto, "ignore=all")
+        _escribir(superproyecto, "subs/ext/mod_s2/models/__init__.py", "# cambio\n")
+        assert _nombres(detectar_modulos_cambiados(superproyecto)) == ["mod_s2"]
+
+    def test_modulo_eliminado_dentro_del_submodulo_advierte_con_la_ruta_completa(
+        self, superproyecto: Path
+    ) -> None:
+        _git(superproyecto / "subs" / "ext", "rm", "-q", "-r", "mod_s2")
+        deteccion = detectar_modulos_cambiados(superproyecto)
+
+        assert deteccion.modulos == []
+        assert len(deteccion.advertencias) == 1
+        assert "subs/ext/mod_s2" in deteccion.advertencias[0]
+
+    def test_submodulo_agregado_se_recorre_contra_el_arbol_vacio(self, tmp_path: Path) -> None:
+        fuente = _repo_fuente(tmp_path, "fuente_nueva", "mod_n1", "mod_n2")
+        raiz = _superproyecto(tmp_path)
+        _git_sub(raiz, "submodule", "add", "-q", str(fuente), "subs/nueva")
+
+        deteccion = detectar_modulos_cambiados(raiz)
+
+        assert _nombres(deteccion) == ["mod_n1", "mod_n2"]
+        assert deteccion.advertencias == []
+
+    def test_superproyecto_sin_commits_recorre_el_submodulo(self, tmp_path: Path) -> None:
+        fuente = _repo_fuente(tmp_path, "fuente_nueva", "mod_n1")
+        raiz = tmp_path / "super_vacio"
+        raiz.mkdir()
+        _git(raiz, "init", "-q", "-b", "main")
+        _git_sub(raiz, "submodule", "add", "-q", str(fuente), "subs/nueva")
+
+        assert _nombres(detectar_modulos_cambiados(raiz)) == ["mod_n1"]
+
+    def test_submodulo_sin_checkout_advierte(self, superproyecto: Path) -> None:
+        sub = superproyecto / "subs" / "ext"
+        _escribir(sub, "mod_s1/models/nuevo.py")
+        _commit(sub, "cambio en mod_s1")
+        _commit(superproyecto, "mueve el puntero")
+        _git(superproyecto, "submodule", "deinit", "-q", "-f", "subs/ext")
+
+        deteccion = detectar_modulos_cambiados(superproyecto, base="HEAD~1")
+
+        assert deteccion.modulos == []
+        assert len(deteccion.advertencias) == 1
+        assert "subs/ext" in deteccion.advertencias[0]
+        assert "git submodule update --init" in deteccion.advertencias[0]
+
+    def test_commit_viejo_ausente_advierte_y_sugiere_fetch(self, superproyecto: Path) -> None:
+        falso = "1234567890abcdef1234567890abcdef12345678"
+        actual = _git(superproyecto, "rev-parse", "HEAD:subs/ext")
+        _git(superproyecto, "update-index", "--cacheinfo", f"160000,{falso},subs/ext")
+        _git(superproyecto, "commit", "-q", "-m", "puntero a un commit que no esta")
+        _git(superproyecto, "update-index", "--cacheinfo", f"160000,{actual},subs/ext")
+        _git(superproyecto, "commit", "-q", "-m", "puntero real")
+        _escribir(superproyecto, "addons/mod_a/models/z.py")
+
+        deteccion = detectar_modulos_cambiados(superproyecto, base="HEAD~1")
+
+        assert _nombres(deteccion) == ["mod_a"]
+        assert len(deteccion.advertencias) == 1
+        assert "subs/ext" in deteccion.advertencias[0]
+        assert falso[:12] in deteccion.advertencias[0]
+        assert "git -C subs/ext fetch" in deteccion.advertencias[0]
+
+    def test_submodulo_eliminado_advierte(self, superproyecto: Path) -> None:
+        _git(superproyecto, "rm", "-q", "subs/ext")
+
+        deteccion = detectar_modulos_cambiados(superproyecto)
+
+        assert deteccion.modulos == []
+        assert len(deteccion.advertencias) == 1
+        assert "subs/ext" in deteccion.advertencias[0]
+        assert "eliminado" in deteccion.advertencias[0]
+
+    def test_submodulo_anidado(self, tmp_path: Path) -> None:
+        interno = _repo_fuente(tmp_path, "fuente_c", "mod_c")
+        medio = _repo_fuente(tmp_path, "fuente_b", "mod_b")
+        _git_sub(medio, "submodule", "add", "-q", str(interno), "vendor/c")
+        _commit(medio, "agrega vendor/c")
+        raiz = _superproyecto(tmp_path)
+        _git_sub(raiz, "submodule", "add", "-q", str(medio), "subs/b")
+        _git_sub(raiz, "submodule", "update", "-q", "--init", "--recursive")
+        _commit(raiz, "agrega subs/b")
+        _escribir(raiz, "subs/b/vendor/c/mod_c/models/__init__.py", "# cambio\n")
+
+        deteccion = detectar_modulos_cambiados(raiz)
+
+        assert _nombres(deteccion) == ["mod_c"]
+        assert (
+            deteccion.modulos[0].directorio
+            == (raiz / "subs" / "b" / "vendor" / "c" / "mod_c").resolve()
+        )
+        assert deteccion.advertencias == []
+
+    def test_raiz_del_submodulo_como_modulo_unico(self, tmp_path: Path) -> None:
+        fuente = tmp_path / "fuente_unico"
+        fuente.mkdir()
+        _git(fuente, "init", "-q", "-b", "main")
+        _modulo(fuente, ".")
+        _commit(fuente, "modulo unico")
+        raiz = _superproyecto(tmp_path)
+        _git_sub(raiz, "submodule", "add", "-q", str(fuente), "addons/mod_unico")
+        _commit(raiz, "agrega addons/mod_unico")
+        _escribir(raiz, "addons/mod_unico/models/__init__.py", "# cambio\n")
+
+        deteccion = detectar_modulos_cambiados(raiz)
+
+        assert _nombres(deteccion) == ["mod_unico"]
+        assert deteccion.modulos[0].directorio == (raiz / "addons" / "mod_unico").resolve()
 
 
 # ---------------------------------------------------------------------------

@@ -2526,7 +2526,7 @@ class TestChangedSeleccion:
 
         ctx = _proyecto_con_addons(tmp_path, "mod_a")
         deteccion = DeteccionCambios(
-            advertencias=["submodulo git 'vendor/oca' cambiado: no se recorre."]
+            advertencias=["submodulo git 'vendor/oca' cambiado pero sin checkout."]
         )
         mock_dc = MagicMock()
 
@@ -2655,6 +2655,67 @@ class TestChangedDependientes:
 
 class TestChangedGitReal:
     """Extremo a extremo con un repo git real como directorio de trabajo."""
+
+    def _repo_con_submodulo(
+        self, tmp_path: Path, monkeypatch, rutas_addons: list[str]
+    ) -> tuple[Path, MagicMock]:
+        """Proyecto con addons/mod_a y el submodulo subs/ext (mod_s1) commiteados."""
+        import subprocess
+
+        def _git(repo: Path, *args: str) -> None:
+            subprocess.run(
+                ["git", "-C", str(repo), "-c", "protocol.file.allow=always", *args],
+                check=True,
+                capture_output=True,
+            )
+
+        _aislar_git(tmp_path, monkeypatch)
+        fuente = tmp_path / "fuente_ext"
+        (fuente / "mod_s1").mkdir(parents=True)
+        (fuente / "mod_s1" / "__manifest__.py").write_text("{}\n")
+        _git(fuente, "init", "-q", "-b", "main")
+        _git(fuente, "add", "-A")
+        _git(fuente, "commit", "-q", "-m", "inicial fuente")
+
+        proyecto = tmp_path / "proyecto"
+        ctx = _proyecto_con_addons(proyecto, "mod_a")
+        ctx.config.rutas_addons = rutas_addons
+        _git(proyecto, "init", "-q", "-b", "main")
+        _git(proyecto, "add", "-A")
+        _git(proyecto, "commit", "-q", "-m", "inicial")
+        _git(proyecto, "submodule", "add", "-q", str(fuente), "subs/ext")
+        _git(proyecto, "commit", "-q", "-m", "agrega submodulo")
+        return proyecto, ctx
+
+    def test_modulo_dentro_de_un_submodulo_se_selecciona(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        proyecto, ctx = self._repo_con_submodulo(tmp_path, monkeypatch, ["addons", "subs/ext"])
+        (proyecto / "subs" / "ext" / "mod_s1" / "models.py").write_text("x = 1\n")
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = FakePopen(_FIXTURE_ALL_PASS)
+
+        exc, _ = _call_test_changed(proyecto, mock_dc, ctx)
+
+        assert _exit_code(exc) == 0
+        comando = _comando_odoo(mock_dc)
+        assert comando[comando.index("-u") + 1] == "mod_s1"
+
+    def test_modulo_de_submodulo_fuera_del_addons_path_se_omite(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """El filtro de addons-path tambien aplica a lo detectado en submodulos."""
+        proyecto, ctx = self._repo_con_submodulo(tmp_path, monkeypatch, ["addons"])
+        (proyecto / "subs" / "ext" / "mod_s1" / "models.py").write_text("x = 1\n")
+        mock_dc = MagicMock()
+
+        exc, _ = _call_test_changed(proyecto, mock_dc, ctx)
+
+        assert _exit_code(exc) == 0
+        mock_dc.exec_cmd_stream.assert_not_called()
+        err = capsys.readouterr().err
+        assert "WARN: modulo 'mod_s1'" in err
+        assert "addons-path" in err
 
     def _repo_sin_commits(self, tmp_path: Path, monkeypatch) -> tuple[Path, MagicMock]:
         import subprocess

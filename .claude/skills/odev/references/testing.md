@@ -56,12 +56,16 @@ same `--tags`, same zero-test warning and discovery lint.
   HEAD)` and the working tree (committed, staged, unstaged), plus untracked
   files git does not ignore. `--base` defaults to `HEAD`: only uncommitted
   work. Each file maps to its nearest ancestor with `__manifest__.py`.
+  Changed git submodules are traversed the same way, against the commit the
+  superproject recorded at the base, recursively.
 - **`--with-dependents`** adds installed modules that depend *directly* on
   the selection (not transitive ones). It queries the DB, so the stack must
   be up.
 - **Skipped with a `WARN` on stderr** (in `warnings` for MCP): modules
-  outside the project's addons path, deleted modules, changed git
-  submodules. Read these: a skipped module was not tested.
+  outside the project's addons path, deleted modules, and submodules that
+  cannot be traversed (no checkout, base commit missing — run the suggested
+  `git -C <path> fetch` — or removed). Read these: a skipped module was not
+  tested.
 - **The selection is announced on stderr**; under `--json` the payload adds
   `modules`. Report it with the counts.
 - **Empty selection exits 0 without running Odoo.** The JSON has zero

@@ -463,9 +463,13 @@ odev test --changed --tags :test_create
   del proyecto y las rutas se resuelven contra la raiz del repositorio.
 - **Archivo -> modulo:** el ancestro mas cercano con `__manifest__.py`, sin subir
   mas alla de la raiz del repo. Los archivos fuera de un modulo se ignoran.
+- **Submodulos git:** un submodulo cambiado (puntero movido, cambios sin
+  commitear o untracked adentro) se recorre igual, contra el commit que el
+  superproyecto registraba en la base, y recursivamente para los anidados.
 - **Se omiten con un `WARN` por stderr:** modulos que no estan en el
   `addons-path` del proyecto, modulos eliminados (su `__manifest__.py` ya no
-  existe) y submodulos git cambiados (sus modulos no se detectan).
+  existe), y submodulos sin checkout, sin el commit de la base (sugiere
+  `git -C <ruta> fetch`) o eliminados.
 - **`--with-dependents`:** suma los modulos con `state = 'installed'` que
   dependen directamente de la seleccion (no los transitivos). Necesita el stack
   levantado: consulta la DB igual que `odev sql`.
