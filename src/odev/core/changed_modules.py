@@ -74,6 +74,7 @@ def _git(directorio: Path, *args: str) -> subprocess.CompletedProcess:
         return subprocess.run(
             ["git", "-C", str(directorio), *args],
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             check=False,
         )
     except FileNotFoundError as exc:
@@ -113,13 +114,37 @@ def raiz_repositorio(directorio: Path) -> Path:
     return Path(os.fsdecode(resultado.stdout).strip()).resolve()
 
 
-def _resolver_merge_base(raiz: Path, base: str) -> str:
-    """Resuelve merge-base(<base>, HEAD) a un sha de commit.
+def _arbol_vacio(raiz: Path) -> str:
+    """Hash del arbol vacio en el formato de objetos del repo.
+
+    Se calcula en vez de fijarlo: un repo sha256 no usa el mismo hash que uno
+    sha1. git conoce el arbol vacio aunque no este escrito en el repo.
+    """
+    resultado = _git(raiz, "hash-object", "-t", "tree", "--stdin")
+    if resultado.returncode != 0:
+        raise RuntimeError(f"git hash-object fallo: {_stderr(resultado)}")
+    return os.fsdecode(resultado.stdout).strip()
+
+
+def _resolver_merge_base(raiz: Path, base: str | None) -> str:
+    """Resuelve el punto de comparacion: merge-base(<base>, HEAD).
+
+    `base` None es la base implicita, HEAD. Si HEAD todavia no tiene commits
+    (repo recien inicializado) no hay merge-base posible, y se compara contra
+    el arbol vacio: todo lo stageado y lo untracked cuenta como cambiado. Una
+    base explicita, incluso 'HEAD', no tiene ese fallback: si no resuelve, es
+    un error de uso.
 
     Raises:
-        ValueError: si la referencia es vacia, parece una opcion de git, no
-            existe, o no tiene ancestro comun con HEAD.
+        ValueError: si la referencia explicita es vacia, parece una opcion de
+            git, no existe, o no tiene ancestro comun con HEAD.
     """
+    if base is None:
+        head = _git(raiz, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+        if head.returncode != 0:
+            return _arbol_vacio(raiz)
+        base = "HEAD"
+
     if not base.strip():
         raise ValueError("--base necesita una referencia git (rama, tag o commit).")
     if base.startswith("-"):
@@ -145,6 +170,8 @@ def _resolver_merge_base(raiz: Path, base: str) -> str:
 
 def _listar_cambios(raiz: Path, merge_base: str) -> _CambiosGit:
     """Lista lo que cambio entre `merge_base` y el working tree.
+
+    `merge_base` es un commit, o el arbol vacio en un repo sin commits.
 
     `git diff --raw <commit>` compara el commit contra el working tree, asi
     que cubre lo commiteado despues del merge-base, lo stageado y lo sin
@@ -245,19 +272,21 @@ def mapear_a_modulos(
     return modulos, advertencias
 
 
-def detectar_modulos_cambiados(directorio: Path, base: str = "HEAD") -> DeteccionCambios:
+def detectar_modulos_cambiados(directorio: Path, base: str | None = None) -> DeteccionCambios:
     """Detecta los modulos Odoo tocados respecto de merge-base(<base>, HEAD).
 
     Argumentos:
         directorio: Directorio del proyecto; git corre contra el repositorio
                     que lo contiene y las rutas se mapean contra su raiz.
-        base:       Referencia git. Default 'HEAD': solo trabajo sin commitear.
+        base:       Referencia git explicita, o None (default) para la base
+                    implicita HEAD: solo trabajo sin commitear. En un repo sin
+                    commits la base implicita es el arbol vacio.
 
     Retorna:
         DeteccionCambios con los modulos y las advertencias.
 
     Raises:
-        ValueError: si `base` no es una referencia valida.
+        ValueError: si una `base` explicita no es una referencia valida.
         RuntimeError: si git no esta disponible o `directorio` no esta dentro
             de un repositorio git.
     """
@@ -317,9 +346,10 @@ def dependientes_directos_instalados(
     """Devuelve los modulos instalados que dependen directamente de `modulos`.
 
     El ejecutor se inyecta para que core/ no dependa de commands/: el
-    frontend pasa su camino SQL de siempre (`_execute_sql`), y sus errores
-    (RuntimeError de psql, CalledProcessError de docker) se propagan tal
-    cual.
+    frontend pasa su camino SQL de siempre (`_execute_sql`). Esta funcion
+    no traduce sus errores (RuntimeError de psql, CalledProcessError de
+    docker): los propaga tal cual, y el frontend los envuelve en un
+    RuntimeError con el contexto de --with-dependents.
 
     Argumentos:
         modulos:      Nombres tecnicos de la seleccion.

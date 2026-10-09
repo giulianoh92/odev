@@ -179,7 +179,7 @@ class TestExecuteTestChanged:
         p_docker, p_rutas, p_env, p_validar, p_sel = self._patches(tmp_path, mock_dc)
         with p_docker, p_rutas, p_env, p_validar, p_sel as mock_sel:
             _execute_test(ctx, changed=True)
-            mock_sel.assert_called_once_with(ctx, "HEAD", False)
+            mock_sel.assert_called_once_with(ctx, None, False)
 
     def test_seleccion_vacia_no_lanza_odoo(self, tmp_path, capsys) -> None:
         from odev.commands.test import _execute_test
@@ -225,3 +225,29 @@ class TestExecuteTestChanged:
             _execute_test(ctx, "my_module", changed=True)
         with pytest.raises(ValueError, match="--base"):
             _execute_test(ctx, "my_module", base="main")
+
+    def test_fallo_de_docker_en_dependientes_es_runtime_error(self, tmp_path) -> None:
+        """Contrato documentado: una consulta de dependientes fallida es RuntimeError.
+
+        Un CalledProcessError de docker no escapa crudo: se envuelve con el
+        mismo contexto que el RuntimeError de psql, encadenado con 'from'.
+        """
+        import subprocess
+
+        import pytest
+
+        from odev.commands.test import _execute_test
+        from odev.core.changed_modules import DeteccionCambios, ModuloDetectado
+
+        ctx = _make_contexto(tmp_path)
+        deteccion = DeteccionCambios(modulos=[ModuloDetectado("mod_a", tmp_path / "mod_a")])
+        fallo = subprocess.CalledProcessError(1, ["docker", "compose", "exec"])
+        with (
+            patch("odev.commands.test.detectar_modulos_cambiados", return_value=deteccion),
+            patch("odev.commands.test.listar_modulos_disponibles", return_value=set()),
+            patch("odev.commands.test._execute_sql", side_effect=fallo),
+        ):
+            with pytest.raises(RuntimeError, match="--with-dependents no pudo consultar") as exc:
+                _execute_test(ctx, changed=True, with_dependents=True)
+
+        assert exc.value.__cause__ is fallo

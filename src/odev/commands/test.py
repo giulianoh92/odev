@@ -213,7 +213,7 @@ def _en_addons_path(modulo: ModuloDetectado, disponibles: set[str], contexto) ->
 
 
 def _seleccionar_modulos_cambiados(
-    contexto, base: str, with_dependents: bool
+    contexto, base: Optional[str], with_dependents: bool
 ) -> tuple[list[str], list[str]]:
     """Resuelve la seleccion de --changed: modulos a testear y advertencias.
 
@@ -230,16 +230,21 @@ def _seleccionar_modulos_cambiados(
 
     Argumentos:
         contexto:        Contexto del proyecto resuelto.
-        base:            Referencia git para el merge-base.
+        base:            Referencia git para el merge-base, o None si no se
+                         paso: el core la resuelve a HEAD, o al arbol vacio
+                         en un repo sin commits.
         with_dependents: Si se suman los dependientes directos instalados.
 
     Retorna:
         Tupla (modulos sin duplicados y ordenados, advertencias).
 
     Raises:
-        ValueError: si `base` no es una referencia valida.
+        ValueError: si una `base` explicita no es una referencia valida.
         RuntimeError: sin git, fuera de un repo, o si la consulta de
-            dependientes falla (DB no disponible).
+            dependientes falla. Una consulta fallida siempre llega como
+            RuntimeError con el contexto de --with-dependents, tambien
+            cuando la causa es un CalledProcessError de docker (encadenado
+            con 'from').
     """
     deteccion = detectar_modulos_cambiados(contexto.directorio_trabajo, base)
     advertencias = list(deteccion.advertencias)
@@ -260,9 +265,17 @@ def _seleccionar_modulos_cambiados(
             dependientes = dependientes_directos_instalados(
                 seleccion, lambda consulta: _execute_sql(contexto, consulta)
             )
-        except RuntimeError as exc:
+        except (RuntimeError, subprocess.CalledProcessError) as exc:
+            # El str() crudo de un CalledProcessError es una linea de comando
+            # y un codigo: no dice nada. La causa usual es el stack caido.
+            detalle = (
+                "el stack no esta levantado o la DB no esta disponible "
+                f"(docker salio con {exc.returncode})"
+                if isinstance(exc, subprocess.CalledProcessError)
+                else str(exc)
+            )
             raise RuntimeError(
-                f"--with-dependents no pudo consultar los modulos instalados: {exc}"
+                f"--with-dependents no pudo consultar los modulos instalados: {detalle}"
             ) from exc
         for nombre in dependientes:
             # Mismo criterio de aceptacion que validar_modulos.
@@ -490,7 +503,9 @@ def _execute_test(
         changed: If True, test the modules touched by the git diff
             (merge-base(base, HEAD) vs the working tree, plus untracked
             files) through the same path as an explicit module list.
-        base: Git ref for the merge-base with changed=True (None: HEAD).
+        base: Git ref for the merge-base with changed=True. None means the
+            implicit HEAD, which falls back to the empty tree in a repo with
+            no commits; an explicit ref never does.
         with_dependents: With changed=True, also test the installed modules
             that depend directly on the selection.
 
@@ -506,14 +521,13 @@ def _execute_test(
         ValueError: If module is empty, the combination is invalid, or the
             base ref does not resolve.
         RuntimeError: With changed=True, if git is missing, the project is
-            not inside a git repository, or the dependents query fails.
+            not inside a git repository, or the dependents query fails
+            (a docker CalledProcessError there is wrapped, never raised raw).
     """
     _validar_seleccion(module, changed, base, with_dependents)
 
     if changed:
-        modulos_sel, advertencias = _seleccionar_modulos_cambiados(
-            contexto, base if base is not None else "HEAD", with_dependents
-        )
+        modulos_sel, advertencias = _seleccionar_modulos_cambiados(contexto, base, with_dependents)
         if modulos_sel:
             resultado = _execute_test(
                 contexto, ",".join(modulos_sel), tags=tags, no_validate=no_validate
@@ -718,10 +732,13 @@ def _run_test(
     # stdout es el canal de datos.
     seleccion_changed: Optional[list[str]] = None
     if changed:
+        # None (sin --base) llega asi al core: distingue la base implicita de
+        # un '--base HEAD' explicito en un repo sin commits. 'referencia' es
+        # solo para los mensajes.
         referencia = base if base is not None else "HEAD"
         try:
             seleccion_changed, advertencias = _seleccionar_modulos_cambiados(
-                contexto, referencia, with_dependents
+                contexto, base, with_dependents
             )
         except ValueError as exc:
             _rechazar(str(exc), json_out, 2)
