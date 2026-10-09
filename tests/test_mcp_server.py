@@ -978,3 +978,29 @@ class TestMcpTestChanged:
                 self._call_tool(server, "odev_test", {"changed": True, "with_dependents": True})
 
         assert "--with-dependents no pudo consultar los modulos instalados" in str(exc.value)
+        assert "el stack no esta levantado o la DB no esta disponible" in str(exc.value)
+
+    def test_fallo_de_docker_con_stderr_llega_el_stderr_real(self):
+        """El stderr de docker llega al cliente en vez de la conjetura fija."""
+        from mcp.server.mcpserver.exceptions import ToolError
+
+        import odev.commands.mcp as mcp_module
+        from odev.core.changed_modules import DeteccionCambios, ModuloDetectado
+
+        deteccion = DeteccionCambios(modulos=[ModuloDetectado("mod_a", MagicMock())])
+        fallo = subprocess.CalledProcessError(
+            1, ["docker", "compose", "exec"], stderr=b"permission denied on docker.sock\n"
+        )
+        with (
+            patch("odev.commands.test.detectar_modulos_cambiados", return_value=deteccion),
+            patch("odev.commands.test.listar_modulos_disponibles", return_value=set()),
+            patch("odev.commands.test._execute_sql", side_effect=fallo),
+            patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()),
+        ):
+            server = self._build_server()
+            with pytest.raises(ToolError) as exc:
+                self._call_tool(server, "odev_test", {"changed": True, "with_dependents": True})
+
+        assert "--with-dependents no pudo consultar los modulos instalados" in str(exc.value)
+        assert "permission denied on docker.sock" in str(exc.value)
+        assert "el stack no esta levantado" not in str(exc.value)

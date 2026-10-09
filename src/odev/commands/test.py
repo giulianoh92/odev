@@ -212,6 +212,35 @@ def _en_addons_path(modulo: ModuloDetectado, disponibles: set[str], contexto) ->
     return addon_dir is not None and addon_dir.resolve() == modulo.directorio
 
 
+# Tope del detalle de un CalledProcessError en el mensaje: suficiente para la
+# causa, sin volcar un log entero en stderr o en el ToolError.
+_MAX_DETALLE_ERROR = 500
+
+
+def _detalle_called_process_error(exc: subprocess.CalledProcessError) -> str:
+    """Detalle legible de un CalledProcessError para un mensaje de error.
+
+    El str() crudo es una linea de comando y un codigo: no dice nada. Lo util
+    es lo que el proceso escribio, stderr primero y stdout despues, truncado
+    si es muy largo. Solo cuando los dos estan vacios queda la conjetura
+    usual (stack caido): inventarla teniendo la causa real a mano disfrazaria
+    un permiso denegado de stack caido.
+    """
+    for salida in (exc.stderr, exc.output):
+        if not salida:
+            continue
+        texto = (
+            salida.decode("utf-8", errors="replace") if isinstance(salida, bytes) else str(salida)
+        ).strip()
+        if texto:
+            if len(texto) > _MAX_DETALLE_ERROR:
+                texto = texto[:_MAX_DETALLE_ERROR].rstrip() + "..."
+            return f"{texto} (docker salio con {exc.returncode})"
+    return (
+        f"el stack no esta levantado o la DB no esta disponible (docker salio con {exc.returncode})"
+    )
+
+
 def _seleccionar_modulos_cambiados(
     contexto, base: Optional[str], with_dependents: bool
 ) -> tuple[list[str], list[str]]:
@@ -266,11 +295,8 @@ def _seleccionar_modulos_cambiados(
                 seleccion, lambda consulta: _execute_sql(contexto, consulta)
             )
         except (RuntimeError, subprocess.CalledProcessError) as exc:
-            # El str() crudo de un CalledProcessError es una linea de comando
-            # y un codigo: no dice nada. La causa usual es el stack caido.
             detalle = (
-                "el stack no esta levantado o la DB no esta disponible "
-                f"(docker salio con {exc.returncode})"
+                _detalle_called_process_error(exc)
                 if isinstance(exc, subprocess.CalledProcessError)
                 else str(exc)
             )
