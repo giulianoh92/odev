@@ -6,6 +6,26 @@ El formato esta basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 y este proyecto adhiere a [Versionado Semantico](https://semver.org/spec/v2.0.0.html).
 Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
 
+## [Unreleased]
+
+### Agregado
+
+- **`odev test --changed [--base <ref>] [--with-dependents]`.** Testea los
+  modulos tocados por el diff de git sin armar la lista a mano: los archivos que
+  difieren entre `merge-base(<base>, HEAD)` y el working tree (commiteados,
+  stageados y sin stagear), mas los untracked no ignorados, mapeados al ancestro
+  mas cercano con `__manifest__.py`. `--base` default es `HEAD` (solo trabajo sin
+  commitear). `--with-dependents` suma los modulos instalados que dependen
+  directamente de la seleccion. La seleccion corre por el mismo camino que
+  `odev test m1,m2` y se anuncia por stderr; con `--json` el payload suma la
+  clave `modules`. Los modulos fuera del `addons-path`, los eliminados y los
+  submodulos git cambiados se omiten con un `WARN`. Seleccion vacia: exit 0 sin
+  lanzar Odoo (con `--json`, contadores en cero, `modules: []` y
+  `process_exit_code: null`). El argumento de modulo pasa a ser opcional: falta
+  de modulo y de `--changed`, los dos juntos, `--base`/`--with-dependents` sin
+  `--changed` o una `--base` invalida salen con 2; sin git, fuera de un repo o
+  con la DB caida para `--with-dependents`, con 3.
+
 ## [0.13.0] - 2026-09-19
 
 ### Cambiado

@@ -206,6 +206,7 @@ odev --project mi-proyecto --debug status
 | `odev addon-install <modulo(s)>` | Instalar modulo(s) — CSV soportado: `m1,m2` |
 | `odev update <modulo(s)>` | Actualizar modulo(s) — CSV soportado: `m1,m2` |
 | `odev test <modulo(s)>` | Ejecutar tests — CSV soportado: `m1,m2` |
+| `odev test --changed` | Ejecutar tests de los modulos tocados por el diff de git |
 | `odev db snapshot <nombre>` | Crear snapshot de la base de datos |
 | `odev db restore <nombre>` | Restaurar un snapshot |
 | `odev db list` | Listar snapshots disponibles |
@@ -240,6 +241,7 @@ odev --project mi-proyecto --debug status
 | `odev sql <query>` | Ejecutar SQL en el contenedor db via psql (`--csv` para salida sin bordes) |
 | `odev py <expresion>` | Evaluar expresion Python en odoo shell via stdin |
 | `odev test <modulo(s)>` | Ejecutar tests de modulo(s) (CSV: `m1,m2`; `all`; `--log-level`; `--no-validate`) |
+| `odev test --changed` | Ejecutar tests de los modulos tocados por el diff de git (`--base <ref>`; `--with-dependents`) |
 | `odev scaffold <nombre>` | Crear un nuevo modulo Odoo desde el template incluido |
 | `odev addon-install <modulo(s)>` | Instalar modulo(s) — CSV: `m1,m2`; `--no-validate` |
 | `odev update <modulo(s)>` | Actualizar modulo(s) — CSV: `m1,m2`; `--no-validate` |
@@ -435,6 +437,49 @@ odev test sale,crm --no-validate
 odev test all
 ```
 
+#### `odev test --changed [--base <ref>] [--with-dependents]`
+
+En vez de armar la lista de modulos a mano, `--changed` la toma del diff de git
+y la corre exactamente como `odev test m1,m2` (mismo comando Odoo, mismo
+`--tags`, mismos avisos).
+
+```bash
+# Solo el trabajo sin commitear (--base default: HEAD)
+odev test --changed
+
+# Todo lo de la rama: commits desde el merge-base con main + working tree
+odev test --changed --base main
+
+# Antes de un PR: sumar los modulos instalados que dependen directamente
+odev test --changed --base main --with-dependents
+
+# --tags sigue funcionando
+odev test --changed --tags :test_create
+```
+
+- **Que cuenta como cambiado:** los archivos que difieren entre
+  `merge-base(<base>, HEAD)` y el working tree (commiteados, stageados y sin
+  stagear), mas los untracked que git no ignora. git corre contra el directorio
+  del proyecto y las rutas se resuelven contra la raiz del repositorio.
+- **Archivo -> modulo:** el ancestro mas cercano con `__manifest__.py`, sin subir
+  mas alla de la raiz del repo. Los archivos fuera de un modulo se ignoran.
+- **Se omiten con un `WARN` por stderr:** modulos que no estan en el
+  `addons-path` del proyecto, modulos eliminados (su `__manifest__.py` ya no
+  existe) y submodulos git cambiados (sus modulos no se detectan).
+- **`--with-dependents`:** suma los modulos con `state = 'installed'` que
+  dependen directamente de la seleccion (no los transitivos). Necesita el stack
+  levantado: consulta la DB igual que `odev sql`.
+- **Salida:** la seleccion se anuncia por stderr antes de correr; stdout sigue
+  siendo el canal de datos. Con `--json` el payload suma la clave `modules` con
+  la seleccion efectiva.
+- **Seleccion vacia:** avisa por stderr, sale con `0` y no lanza Odoo. Con
+  `--json` emite el payload con los contadores en cero, `modules: []` y
+  `process_exit_code: null` (no corrio ningun proceso).
+- **Errores:** sin modulo ni `--changed`, los dos juntos, o `--base` /
+  `--with-dependents` sin `--changed` salen con `2`, igual que una `--base`
+  que no resuelve a un commit. Sin git, fuera de un repositorio git o con la DB
+  caida para `--with-dependents` salen con `3`.
+
 #### Flag `--no-validate`
 
 Por defecto `update`, `addon-install` y `test` verifican que cada modulo
@@ -461,8 +506,8 @@ odev update sale,all  # ERROR: exit 2 — 'all' no puede combinarse
 | Codigo | Condicion |
 |--------|-----------|
 | `0` | Exito |
-| `2` | Error de uso: modulo(s) no encontrado(s), `all` mezclado, o lista vacia |
-| `3` | Error de entorno: puerto ocupado (solo `test`) |
+| `2` | Error de uso: modulo(s) no encontrado(s), `all` mezclado, lista vacia, o `--changed` mal combinado / `--base` invalida (solo `test`) |
+| `3` | Error de entorno: puerto ocupado, sin git o fuera de un repo con `--changed`, DB caida con `--with-dependents` (solo `test`) |
 
 ---
 
