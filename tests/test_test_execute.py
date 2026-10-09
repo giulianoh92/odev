@@ -179,7 +179,7 @@ class TestExecuteTestChanged:
         p_docker, p_rutas, p_env, p_validar, p_sel = self._patches(tmp_path, mock_dc)
         with p_docker, p_rutas, p_env, p_validar, p_sel as mock_sel:
             _execute_test(ctx, changed=True)
-            mock_sel.assert_called_once_with(ctx, "HEAD", False)
+            mock_sel.assert_called_once_with(ctx, None, False)
 
     def test_seleccion_vacia_no_lanza_odoo(self, tmp_path, capsys) -> None:
         from odev.commands.test import _execute_test

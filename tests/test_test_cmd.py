@@ -2409,7 +2409,9 @@ class TestChangedSeleccion:
             return_value=DeteccionCambios(),
         ) as mock_detectar:
             _call_test_changed(tmp_path, mock_dc, ctx)
-            mock_detectar.assert_called_once_with(tmp_path, "HEAD")
+            # Sin --base viaja None: el core distingue la base implicita de
+            # un '--base HEAD' explicito (repo sin commits).
+            mock_detectar.assert_called_once_with(tmp_path, None)
 
         with patch(
             "odev.commands.test.detectar_modulos_cambiados",
@@ -2653,6 +2655,44 @@ class TestChangedDependientes:
 
 class TestChangedGitReal:
     """Extremo a extremo con un repo git real como directorio de trabajo."""
+
+    def _repo_sin_commits(self, tmp_path: Path, monkeypatch) -> tuple[Path, MagicMock]:
+        import subprocess
+
+        _aislar_git(tmp_path, monkeypatch)
+        ctx = _proyecto_con_addons(tmp_path, "mod_a")
+        subprocess.run(
+            ["git", "-C", str(tmp_path), "init", "-q", "-b", "main"],
+            check=True,
+            capture_output=True,
+        )
+        return tmp_path, ctx
+
+    def test_repo_sin_commits_selecciona_el_modulo_untracked(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """Sin --base y sin commits: compara contra el arbol vacio, no exit 2."""
+        repo, ctx = self._repo_sin_commits(tmp_path, monkeypatch)
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = FakePopen(_FIXTURE_ALL_PASS)
+
+        exc, _ = _call_test_changed(repo, mock_dc, ctx)
+
+        assert _exit_code(exc) == 0
+        comando = _comando_odoo(mock_dc)
+        assert comando[comando.index("-u") + 1] == "mod_a"
+
+    def test_repo_sin_commits_con_base_explicita_invalida_exit_2(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        repo, ctx = self._repo_sin_commits(tmp_path, monkeypatch)
+        mock_dc = MagicMock()
+
+        exc, _ = _call_test_changed(repo, mock_dc, ctx, base="no-existe")
+
+        assert _exit_code(exc) == 2
+        mock_dc.exec_cmd_stream.assert_not_called()
+        assert "Referencia git invalida para --base: 'no-existe'" in capsys.readouterr().err
 
     def _repo(self, tmp_path: Path, monkeypatch) -> tuple[Path, MagicMock]:
         import subprocess

@@ -301,6 +301,50 @@ class TestEliminadosYSubmodulos:
 
 
 # ---------------------------------------------------------------------------
+# Repo sin commits (HEAD sin nacer)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def repo_sin_commits(tmp_path: Path) -> Path:
+    """Repo recien inicializado: HEAD apunta a una rama sin commits."""
+    raiz = tmp_path / "nuevo"
+    raiz.mkdir()
+    _git(raiz, "init", "-q", "-b", "main")
+    _escribir(raiz, ".gitignore", "*.log\n")
+    return raiz
+
+
+class TestRepoSinCommits:
+    """Con la base implicita, un HEAD sin nacer compara contra el arbol vacio."""
+
+    def test_modulo_untracked_se_detecta(self, repo_sin_commits: Path) -> None:
+        _modulo(repo_sin_commits, "addons/mod_x")
+        _escribir(repo_sin_commits, "addons/mod_ignorado/debug.log", "ruido\n")
+        deteccion = detectar_modulos_cambiados(repo_sin_commits)
+        assert _nombres(deteccion) == ["mod_x"]
+        assert deteccion.advertencias == []
+
+    def test_modulo_stageado_se_detecta(self, repo_sin_commits: Path) -> None:
+        _modulo(repo_sin_commits, "addons/mod_y")
+        _git(repo_sin_commits, "add", "addons/mod_y")
+        assert _nombres(detectar_modulos_cambiados(repo_sin_commits)) == ["mod_y"]
+
+    def test_sin_cambios_no_detecta_nada(self, repo_sin_commits: Path) -> None:
+        assert detectar_modulos_cambiados(repo_sin_commits).modulos == []
+
+    def test_head_explicito_sigue_siendo_ref_invalida(self, repo_sin_commits: Path) -> None:
+        """Solo la base implicita cae al arbol vacio; un --base HEAD pedido no."""
+        _modulo(repo_sin_commits, "addons/mod_x")
+        with pytest.raises(ValueError, match="'HEAD'"):
+            detectar_modulos_cambiados(repo_sin_commits, base="HEAD")
+
+    def test_base_explicita_invalida_sigue_siendo_value_error(self, repo_sin_commits: Path) -> None:
+        with pytest.raises(ValueError, match="no-existe"):
+            detectar_modulos_cambiados(repo_sin_commits, base="no-existe")
+
+
+# ---------------------------------------------------------------------------
 # Errores: ref invalida (uso) y entorno sin git (entorno)
 # ---------------------------------------------------------------------------
 
