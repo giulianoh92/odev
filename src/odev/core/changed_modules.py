@@ -3,7 +3,8 @@
 Soporte de 'odev test --changed': a partir de los archivos que difieren
 entre merge-base(<base>, HEAD) y el working tree (commiteado, stageado y sin
 stagear), mas los untracked que git no ignora, resuelve que modulos Odoo
-quedaron tocados.
+quedaron tocados. Para --with-dependents arma ademas la consulta de los
+modulos instalados que dependen directamente de esa seleccion.
 
 Sin dependencias de la CLI: senaliza con excepciones de dominio y devuelve
 las advertencias como datos, para que cada frontend decida como
@@ -18,7 +19,7 @@ import os
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Iterable
+from typing import Callable, Iterable
 
 _MANIFEST = "__manifest__.py"
 
@@ -276,3 +277,60 @@ def detectar_modulos_cambiados(directorio: Path, base: str = "HEAD") -> Deteccio
         for ruta in sorted(cambios.repos_anidados)
     )
     return DeteccionCambios(modulos=modulos, advertencias=advertencias)
+
+
+def _literal_sql(valor: str) -> str:
+    """Literal de texto SQL: comillas simples, con las internas duplicadas.
+
+    Con standard_conforming_strings (default desde PostgreSQL 9.1) la barra
+    invertida es literal, asi que duplicar la comilla alcanza.
+    """
+    return "'" + valor.replace("'", "''") + "'"
+
+
+def consulta_dependientes_directos(modulos: Iterable[str]) -> str:
+    """Arma la consulta de los modulos instalados que dependen de `modulos`.
+
+    Solo dependencias directas: ir_module_module_dependency.name es el
+    modulo requerido y module_id el que lo requiere. Los dependientes
+    transitivos quedan fuera a proposito.
+
+    Argumentos:
+        modulos: Nombres tecnicos de la seleccion (no vacia).
+
+    Retorna:
+        Sentencia SQL con una columna 'name'.
+    """
+    lista = ", ".join(_literal_sql(m) for m in sorted(set(modulos)))
+    return (
+        "SELECT DISTINCT m.name FROM ir_module_module_dependency d "
+        "JOIN ir_module_module m ON m.id = d.module_id "
+        f"WHERE d.name IN ({lista}) AND m.state = 'installed' "
+        "ORDER BY m.name"
+    )
+
+
+def dependientes_directos_instalados(
+    modulos: Iterable[str],
+    ejecutar_sql: Callable[[str], list[dict]],
+) -> list[str]:
+    """Devuelve los modulos instalados que dependen directamente de `modulos`.
+
+    El ejecutor se inyecta para que core/ no dependa de commands/: el
+    frontend pasa su camino SQL de siempre (`_execute_sql`), y sus errores
+    (RuntimeError de psql, CalledProcessError de docker) se propagan tal
+    cual.
+
+    Argumentos:
+        modulos:      Nombres tecnicos de la seleccion.
+        ejecutar_sql: Ejecuta una consulta y devuelve filas como dicts.
+
+    Retorna:
+        Nombres sin duplicados y ordenados. Lista vacia sin consultar si la
+        seleccion esta vacia.
+    """
+    seleccion = sorted(set(modulos))
+    if not seleccion:
+        return []
+    filas = ejecutar_sql(consulta_dependientes_directos(seleccion))
+    return sorted({fila["name"] for fila in filas if fila.get("name")})

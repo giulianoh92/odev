@@ -14,6 +14,8 @@ import pytest
 
 from odev.core.changed_modules import (
     DeteccionCambios,
+    consulta_dependientes_directos,
+    dependientes_directos_instalados,
     detectar_modulos_cambiados,
     mapear_a_modulos,
 )
@@ -334,3 +336,57 @@ class TestErrores:
         monkeypatch.setattr("odev.core.changed_modules.subprocess.run", _sin_git)
         with pytest.raises(RuntimeError, match="git"):
             detectar_modulos_cambiados(repo)
+
+
+# ---------------------------------------------------------------------------
+# Dependientes directos instalados (--with-dependents)
+# ---------------------------------------------------------------------------
+
+
+class TestDependientesDirectos:
+    """La consulta corre por el ejecutor SQL inyectado; aca va mockeado."""
+
+    def test_seleccion_vacia_no_consulta(self) -> None:
+        llamadas: list[str] = []
+
+        def _ejecutar(consulta: str) -> list[dict]:
+            llamadas.append(consulta)
+            return []
+
+        assert dependientes_directos_instalados([], _ejecutar) == []
+        assert llamadas == []
+
+    def test_consulta_filtra_dependencias_directas_instaladas(self) -> None:
+        consulta = consulta_dependientes_directos(["mod_b", "mod_a"])
+        assert "ir_module_module_dependency" in consulta
+        assert "ir_module_module" in consulta
+        assert "state = 'installed'" in consulta
+        assert "IN ('mod_a', 'mod_b')" in consulta
+
+    def test_nombres_con_comilla_se_escapan(self) -> None:
+        consulta = consulta_dependientes_directos(["o'reilly"])
+        assert "IN ('o''reilly')" in consulta
+        assert "'o'reilly'" not in consulta
+
+    def test_devuelve_nombres_deduplicados_y_ordenados(self) -> None:
+        def _ejecutar(consulta: str) -> list[dict]:
+            return [{"name": "mod_z"}, {"name": "mod_c"}, {"name": "mod_z"}, {"name": ""}]
+
+        assert dependientes_directos_instalados(["mod_a"], _ejecutar) == ["mod_c", "mod_z"]
+
+    def test_pasa_la_consulta_al_ejecutor(self) -> None:
+        recibidas: list[str] = []
+
+        def _ejecutar(consulta: str) -> list[dict]:
+            recibidas.append(consulta)
+            return []
+
+        dependientes_directos_instalados(["mod_a"], _ejecutar)
+        assert recibidas == [consulta_dependientes_directos(["mod_a"])]
+
+    def test_error_del_ejecutor_se_propaga(self) -> None:
+        def _ejecutar(consulta: str) -> list[dict]:
+            raise RuntimeError("could not connect to server")
+
+        with pytest.raises(RuntimeError, match="could not connect"):
+            dependientes_directos_instalados(["mod_a"], _ejecutar)
