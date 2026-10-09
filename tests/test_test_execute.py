@@ -277,14 +277,20 @@ class TestExecuteTestChanged:
         assert "no such service: db" in mensaje
         assert "el stack no esta levantado" not in mensaje
 
-    def test_detalle_largo_se_trunca(self, tmp_path) -> None:
+    def test_detalle_largo_conserva_el_final(self, tmp_path) -> None:
+        """docker compose antepone WARNs: la causa real esta al final del stderr."""
         import subprocess
 
-        fallo = subprocess.CalledProcessError(1, ["docker"], stderr=b"x" * 5000)
+        ruido = b'WARN[0000] The "SECRETO" variable is not set. Defaulting to a blank string.\n'
+        stderr = ruido * 60 + b"Error: permission denied on /var/run/docker.sock\n"
+        fallo = subprocess.CalledProcessError(1, ["docker"], stderr=stderr)
+
         mensaje = self._fallo_dependientes(tmp_path, fallo)
+
         assert len(mensaje) < 700
-        assert "x" * 100 in mensaje
-        assert "..." in mensaje
+        assert "Error: permission denied on /var/run/docker.sock" in mensaje
+        detalle = mensaje.split("instalados: ", 1)[1]
+        assert detalle.startswith("...")
 
     def test_stderr_en_blanco_usa_la_conjetura(self, tmp_path) -> None:
         import subprocess

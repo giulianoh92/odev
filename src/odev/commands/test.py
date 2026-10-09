@@ -221,8 +221,10 @@ def _detalle_called_process_error(exc: subprocess.CalledProcessError) -> str:
     """Detalle legible de un CalledProcessError para un mensaje de error.
 
     El str() crudo es una linea de comando y un codigo: no dice nada. Lo util
-    es lo que el proceso escribio, stderr primero y stdout despues, truncado
-    si es muy largo. Solo cuando los dos estan vacios queda la conjetura
+    es lo que el proceso escribio, stderr primero y stdout despues. Si es muy
+    largo se conserva el final, no el principio: docker compose suele
+    anteponer WARNs (variables sin definir) y la causa real queda al final.
+    Solo cuando los dos estan vacios queda la conjetura
     usual (stack caido): inventarla teniendo la causa real a mano disfrazaria
     un permiso denegado de stack caido.
     """
@@ -234,7 +236,7 @@ def _detalle_called_process_error(exc: subprocess.CalledProcessError) -> str:
         ).strip()
         if texto:
             if len(texto) > _MAX_DETALLE_ERROR:
-                texto = texto[:_MAX_DETALLE_ERROR].rstrip() + "..."
+                texto = "..." + texto[-_MAX_DETALLE_ERROR:].lstrip()
             return f"{texto} (docker salio con {exc.returncode})"
     return (
         f"el stack no esta levantado o la DB no esta disponible (docker salio con {exc.returncode})"
