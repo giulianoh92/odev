@@ -444,6 +444,62 @@ class TestSubmodulos:
         assert falso[:12] in deteccion.advertencias[0]
         assert "git -C subs/ext fetch" in deteccion.advertencias[0]
 
+    def test_git_que_falla_dentro_del_submodulo_advierte_y_sigue(self, superproyecto: Path) -> None:
+        """Un submodulo ilegible queda como advertencia; el resto se detecta igual."""
+        sub = superproyecto / "subs" / "ext"
+        # c1 se crea en el checkout (objetos sueltos) y queda registrado arriba.
+        _escribir(sub, "mod_s1/models/a.py")
+        _commit(sub, "c1")
+        _commit(superproyecto, "registra c1")
+        arbol_c1 = _git(sub, "rev-parse", "HEAD^{tree}")
+        # c2: el submodulo avanza sin mover el puntero del superproyecto.
+        _escribir(sub, "mod_s1/models/b.py")
+        _commit(sub, "c2")
+        # Sin el arbol de c1, 'git diff <c1>' dentro del submodulo falla de verdad.
+        objeto = Path(
+            _git(sub, "rev-parse", "--git-path", f"objects/{arbol_c1[:2]}/{arbol_c1[2:]}")
+        )
+        (objeto if objeto.is_absolute() else sub / objeto).unlink()
+        _escribir(superproyecto, "addons/mod_a/models/z.py")
+
+        deteccion = detectar_modulos_cambiados(superproyecto)
+
+        assert _nombres(deteccion) == ["mod_a"]
+        assert len(deteccion.advertencias) == 1
+        assert "'subs/ext'" in deteccion.advertencias[0]
+        assert "git diff fallo" in deteccion.advertencias[0]
+
+    def test_archivo_reemplazado_por_un_submodulo(self, tmp_path: Path) -> None:
+        """Archivo -> gitlink: la ruta cuenta como tocada y el submodulo se recorre entero."""
+        fuente = _repo_fuente(tmp_path, "fuente_lib", "mod_lib")
+        raiz = _superproyecto(tmp_path)
+        _escribir(raiz, "addons/mod_a/lib", "archivo comun\n")
+        _commit(raiz, "lib como archivo")
+        _git(raiz, "rm", "-q", "addons/mod_a/lib")
+        _git_sub(raiz, "submodule", "add", "-q", str(fuente), "addons/mod_a/lib")
+
+        deteccion = detectar_modulos_cambiados(raiz)
+
+        assert _nombres(deteccion) == ["mod_a", "mod_lib"]
+        assert deteccion.advertencias == []
+
+    def test_submodulo_reemplazado_por_un_archivo(self, tmp_path: Path) -> None:
+        """Gitlink -> archivo: el submodulo se avisa eliminado y la ruta se mapea."""
+        fuente = _repo_fuente(tmp_path, "fuente_lib", "mod_lib")
+        raiz = _superproyecto(tmp_path)
+        _git_sub(raiz, "submodule", "add", "-q", str(fuente), "addons/mod_a/lib")
+        _commit(raiz, "lib como submodulo")
+        _git(raiz, "rm", "-q", "addons/mod_a/lib")
+        _escribir(raiz, "addons/mod_a/lib", "archivo comun\n")
+        _git(raiz, "add", "addons/mod_a/lib")
+
+        deteccion = detectar_modulos_cambiados(raiz)
+
+        assert _nombres(deteccion) == ["mod_a"]
+        assert len(deteccion.advertencias) == 1
+        assert "'addons/mod_a/lib'" in deteccion.advertencias[0]
+        assert "eliminado" in deteccion.advertencias[0]
+
     def test_submodulo_eliminado_advierte(self, superproyecto: Path) -> None:
         _git(superproyecto, "rm", "-q", "subs/ext")
 
@@ -555,6 +611,27 @@ class TestErrores:
     def test_ref_vacia_levanta_value_error(self, repo: Path) -> None:
         with pytest.raises(ValueError):
             detectar_modulos_cambiados(repo, base="  ")
+
+    def _romper_ref(self, repo: Path, ref: str) -> None:
+        """Deja la ref apuntando a un objeto que no existe."""
+        ruta = Path(_git(repo, "rev-parse", "--git-path", ref))
+        (ruta if ruta.is_absolute() else repo / ruta).write_text("deadbeef" * 5 + "\n")
+
+    def test_head_roto_con_la_base_implicita_es_runtime_error(self, repo: Path) -> None:
+        """La ref de HEAD existe pero su objeto no: no es un repo sin commits."""
+        self._romper_ref(repo, "refs/heads/main")
+        with pytest.raises(RuntimeError, match="git fsck"):
+            detectar_modulos_cambiados(repo)
+
+    def test_head_separado_roto_es_runtime_error(self, repo: Path) -> None:
+        self._romper_ref(repo, "HEAD")
+        with pytest.raises(RuntimeError, match="git fsck"):
+            detectar_modulos_cambiados(repo)
+
+    def test_head_roto_con_base_explicita_sigue_siendo_value_error(self, repo: Path) -> None:
+        self._romper_ref(repo, "refs/heads/main")
+        with pytest.raises(ValueError, match="'main'"):
+            detectar_modulos_cambiados(repo, base="main")
 
     def test_directorio_fuera_de_un_repo_levanta_runtime_error(self, tmp_path: Path) -> None:
         sin_git = tmp_path / "sin_git"

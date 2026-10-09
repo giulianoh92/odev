@@ -251,3 +251,50 @@ class TestExecuteTestChanged:
                 _execute_test(ctx, changed=True, with_dependents=True)
 
         assert exc.value.__cause__ is fallo
+
+    def _fallo_dependientes(self, tmp_path, fallo):
+        import pytest
+
+        from odev.commands.test import _execute_test
+        from odev.core.changed_modules import DeteccionCambios, ModuloDetectado
+
+        ctx = _make_contexto(tmp_path)
+        deteccion = DeteccionCambios(modulos=[ModuloDetectado("mod_a", tmp_path / "mod_a")])
+        with (
+            patch("odev.commands.test.detectar_modulos_cambiados", return_value=deteccion),
+            patch("odev.commands.test.listar_modulos_disponibles", return_value=set()),
+            patch("odev.commands.test._execute_sql", side_effect=fallo),
+        ):
+            with pytest.raises(RuntimeError) as exc:
+                _execute_test(ctx, changed=True, with_dependents=True)
+        return str(exc.value)
+
+    def test_detalle_usa_output_si_stderr_esta_vacio(self, tmp_path) -> None:
+        import subprocess
+
+        fallo = subprocess.CalledProcessError(1, ["docker"], output="no such service: db\n")
+        mensaje = self._fallo_dependientes(tmp_path, fallo)
+        assert "no such service: db" in mensaje
+        assert "el stack no esta levantado" not in mensaje
+
+    def test_detalle_largo_conserva_el_final(self, tmp_path) -> None:
+        """docker compose antepone WARNs: la causa real esta al final del stderr."""
+        import subprocess
+
+        ruido = b'WARN[0000] The "SECRETO" variable is not set. Defaulting to a blank string.\n'
+        stderr = ruido * 60 + b"Error: permission denied on /var/run/docker.sock\n"
+        fallo = subprocess.CalledProcessError(1, ["docker"], stderr=stderr)
+
+        mensaje = self._fallo_dependientes(tmp_path, fallo)
+
+        assert len(mensaje) < 700
+        assert "Error: permission denied on /var/run/docker.sock" in mensaje
+        detalle = mensaje.split("instalados: ", 1)[1]
+        assert detalle.startswith("...")
+
+    def test_stderr_en_blanco_usa_la_conjetura(self, tmp_path) -> None:
+        import subprocess
+
+        fallo = subprocess.CalledProcessError(1, ["docker"], stderr=b"  \n", output=b"")
+        mensaje = self._fallo_dependientes(tmp_path, fallo)
+        assert "el stack no esta levantado o la DB no esta disponible" in mensaje

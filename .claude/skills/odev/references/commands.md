@@ -31,7 +31,7 @@ exclusive.
 | 0 | Success |
 | 1 | Project or runtime error — no project found, model absent from the ORM, module already exists, enterprise version not imported |
 | 2 | Usage error — bad argument, unknown module, `all` mixed with names, conflicting flags, a `test --base` ref that does not resolve |
-| 3 | Environment error — port busy, DB unavailable, Docker unavailable, stack down, `mcp` extra missing or incompatible, git missing or not a git repo for `test --changed` |
+| 3 | Environment error — port busy, DB unavailable, Docker unavailable, stack down, `mcp` extra missing or incompatible, git missing, not a git repo, or a broken HEAD for `test --changed` |
 
 `shell -c`, `sql` and `py` are transparent pass-throughs by design (same idea
 as `docker exec`, documented in the README): whatever the underlying process

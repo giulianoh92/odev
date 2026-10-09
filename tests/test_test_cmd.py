@@ -2650,7 +2650,41 @@ class TestChangedDependientes:
         assert captured.out == ""
         mensaje = json.loads(captured.err)["error"]
         assert "--with-dependents no pudo consultar los modulos instalados" in mensaje
-        assert "DB" in mensaje
+        # Sin stderr ni output: la conjetura fija es el unico detalle posible.
+        assert "el stack no esta levantado o la DB no esta disponible" in mensaje
+
+    def test_fallo_de_docker_con_stderr_reporta_el_stderr_real(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """Un permiso denegado no se disfraza de stack caido."""
+        import subprocess
+
+        from odev.core.changed_modules import DeteccionCambios
+
+        ctx = _proyecto_con_addons(tmp_path, "mod_a")
+        deteccion = DeteccionCambios(modulos=[_detectado(tmp_path, "mod_a")])
+        mock_dc = MagicMock()
+        fallo = subprocess.CalledProcessError(
+            1,
+            ["docker", "compose", "exec"],
+            stderr=b"permission denied while trying to connect to the Docker daemon socket\n",
+        )
+
+        exc, _ = _call_test_changed(
+            tmp_path,
+            mock_dc,
+            ctx,
+            deteccion=deteccion,
+            sql_filas=fallo,
+            with_dependents=True,
+            json_out=True,
+        )
+
+        assert _exit_code(exc) == 3
+        mensaje = json.loads(capsys.readouterr().err)["error"]
+        assert mensaje.startswith("--with-dependents no pudo consultar los modulos instalados:")
+        assert "permission denied while trying to connect to the Docker daemon socket" in mensaje
+        assert "el stack no esta levantado" not in mensaje
 
 
 class TestChangedGitReal:
@@ -2791,6 +2825,28 @@ class TestChangedGitReal:
         assert _exit_code(exc) == 2
         mock_dc.exec_cmd_stream.assert_not_called()
         assert "no-existe" in capsys.readouterr().err
+
+    def test_head_roto_exit_3(self, tmp_path: Path, monkeypatch, capsys) -> None:
+        """Ref de HEAD presente pero objeto faltante: error de entorno, no de --base."""
+        import subprocess
+
+        repo, ctx = self._repo(tmp_path, monkeypatch)
+        ref = subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "--git-path", "refs/heads/main"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        (repo / ref).write_text("deadbeef" * 5 + "\n")
+        mock_dc = MagicMock()
+
+        exc, _ = _call_test_changed(repo, mock_dc, ctx)
+
+        assert _exit_code(exc) == 3
+        mock_dc.exec_cmd_stream.assert_not_called()
+        err = capsys.readouterr().err
+        assert "git fsck" in err
+        assert "Referencia git invalida" not in err
 
     def test_fuera_de_un_repo_git_exit_3(self, tmp_path: Path, monkeypatch, capsys) -> None:
         _aislar_git(tmp_path, monkeypatch)

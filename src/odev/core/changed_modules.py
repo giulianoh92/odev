@@ -145,23 +145,52 @@ def _arbol_vacio(raiz: Path) -> str:
     return os.fsdecode(resultado.stdout).strip()
 
 
+def _head_sin_nacer(raiz: Path) -> bool:
+    """True si HEAD apunta a una rama que todavia no existe (repo sin commits).
+
+    Es el unico caso en que la base implicita cae al arbol vacio. Un HEAD que
+    no resuelve por otra causa (la ref existe pero su objeto falta, o un HEAD
+    separado roto) no es un repo nuevo sino uno danado: tomarlo como vacio
+    reportaria cada archivo trackeado como cambiado.
+    """
+    simbolica = _git(raiz, "symbolic-ref", "-q", "HEAD")
+    if simbolica.returncode != 0:
+        return False  # HEAD separado: no hay rama por nacer.
+    rama = os.fsdecode(simbolica.stdout).strip()
+    if not rama.startswith("refs/heads/"):
+        return False
+    # rev-parse --verify sobre la ref sola no mira el objeto: falla solo si la
+    # ref no existe.
+    return _git(raiz, "rev-parse", "--verify", "--quiet", rama).returncode != 0
+
+
 def _resolver_merge_base(raiz: Path, base: str | None) -> str:
     """Resuelve el punto de comparacion: merge-base(<base>, HEAD).
 
-    `base` None es la base implicita, HEAD. Si HEAD todavia no tiene commits
-    (repo recien inicializado) no hay merge-base posible, y se compara contra
-    el arbol vacio: todo lo stageado y lo untracked cuenta como cambiado. Una
-    base explicita, incluso 'HEAD', no tiene ese fallback: si no resuelve, es
-    un error de uso.
+    `base` None es la base implicita, HEAD. Si HEAD apunta a una rama sin
+    commits (repo recien inicializado) no hay merge-base posible, y se compara
+    contra el arbol vacio: todo lo stageado y lo untracked cuenta como
+    cambiado. Una base explicita, incluso 'HEAD', no tiene ese fallback: si no
+    resuelve, es un error de uso.
 
     Raises:
         ValueError: si la referencia explicita es vacia, parece una opcion de
             git, no existe, o no tiene ancestro comun con HEAD.
+        RuntimeError: si con la base implicita HEAD no resuelve a un commit y
+            no es una rama sin commits: la ref de la rama existe pero no
+            resuelve, o HEAD esta separado y su commit falta. Una ref de rama
+            que todavia no existe es el caso sin commits, no este.
     """
     if base is None:
         head = _git(raiz, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
         if head.returncode != 0:
-            return _arbol_vacio(raiz)
+            if _head_sin_nacer(raiz):
+                return _arbol_vacio(raiz)
+            raise RuntimeError(
+                f"HEAD de '{raiz}' no resuelve a un commit y no es una rama sin "
+                "commits: la ref existe pero apunta a un commit que falta o esta "
+                "danado. Revisa el repositorio con 'git fsck'."
+            )
         base = "HEAD"
 
     if not base.strip():
@@ -360,8 +389,10 @@ def _detectar_en_repo(
     cambiado: dentro del submodulo, el punto de comparacion es el commit que
     el repo de arriba registraba en el suyo (el arbol vacio si ahi no
     existia), y el mapeo a modulos no sube mas alla de la raiz del
-    submodulo. Los submodulos que no se pueden recorrer quedan como
-    advertencia; nunca cortan la deteccion.
+    submodulo. Los submodulos que no se pueden recorrer (sin checkout, sin
+    el commit de la base, o con git fallando adentro) quedan como
+    advertencia; nunca cortan la deteccion. Un fallo de git en el repo de
+    mas arriba si se propaga: ese es el que eligio el usuario.
 
     Argumentos:
         raiz:         Raiz del repo (superproyecto o checkout del submodulo).
@@ -393,18 +424,25 @@ def _detectar_en_repo(
                 f"no se detectan. Inicializalo con 'git submodule update --init {visible}'."
             )
             continue
-        if gitlink.commit_viejo is None:
-            punto_sub = _arbol_vacio(raiz_sub)
-        elif _existe_commit(raiz_sub, gitlink.commit_viejo):
-            punto_sub = gitlink.commit_viejo
-        else:
+        if gitlink.commit_viejo is not None and not _existe_commit(raiz_sub, gitlink.commit_viejo):
             advertencias.append(
                 f"submodulo git '{visible}': el commit {gitlink.commit_viejo[:12]} "
                 "registrado en la base no esta en su object store, sus modulos no se "
                 f"detectan. Traelo con 'git -C {visible} fetch'."
             )
             continue
-        _detectar_en_repo(raiz_sub, punto_sub, f"{visible}/", encontrados, advertencias)
+        try:
+            punto_sub = (
+                gitlink.commit_viejo if gitlink.commit_viejo is not None else _arbol_vacio(raiz_sub)
+            )
+            _detectar_en_repo(raiz_sub, punto_sub, f"{visible}/", encontrados, advertencias)
+        except RuntimeError as exc:
+            # Un submodulo ilegible (repo corrupto, permisos) no corta la
+            # deteccion: _listar_cambios falla antes de acumular nada de ese
+            # submodulo, y los anidados se protegen en su propio nivel.
+            advertencias.append(
+                f"submodulo git '{visible}' no se pudo leer ({exc}): sus modulos no se detectan."
+            )
 
     advertencias.extend(
         f"repositorio git anidado '{prefijo}{ruta}' sin trackear: --changed no "
@@ -431,8 +469,8 @@ def detectar_modulos_cambiados(directorio: Path, base: str | None = None) -> Det
 
     Raises:
         ValueError: si una `base` explicita no es una referencia valida.
-        RuntimeError: si git no esta disponible o `directorio` no esta dentro
-            de un repositorio git.
+        RuntimeError: si git no esta disponible, `directorio` no esta dentro
+            de un repositorio git, o (con la base implicita) HEAD esta roto.
     """
     raiz = raiz_repositorio(directorio)
     merge_base = _resolver_merge_base(raiz, base)

@@ -321,8 +321,8 @@ def _register_tools(server) -> None:
         that depend directly on that selection. The result then also carries
         `modules` (the effective selection; empty means Odoo did not run)
         and `warnings` (modules skipped: outside the addons path, deleted,
-        or inside a changed git submodule without a checkout or without the
-        base commit). Changed submodules are traversed like the main repo.
+        or inside a changed git submodule without a checkout, without the
+        base commit, or that git cannot read). Changed submodules are traversed like the main repo.
         """
         return _execute_test(
             _resolve_contexto(),

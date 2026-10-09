@@ -469,7 +469,7 @@ odev test --changed --tags :test_create
 - **Se omiten con un `WARN` por stderr:** modulos que no estan en el
   `addons-path` del proyecto, modulos eliminados (su `__manifest__.py` ya no
   existe), y submodulos sin checkout, sin el commit de la base (sugiere
-  `git -C <ruta> fetch`) o eliminados.
+  `git -C <ruta> fetch`), eliminados o ilegibles (git falla adentro).
 - **`--with-dependents`:** suma los modulos con `state = 'installed'` que
   dependen directamente de la seleccion (no los transitivos). Necesita el stack
   levantado: consulta la DB igual que `odev sql`.
@@ -481,8 +481,10 @@ odev test --changed --tags :test_create
   `process_exit_code: null` (no corrio ningun proceso).
 - **Errores:** sin modulo ni `--changed`, los dos juntos, o `--base` /
   `--with-dependents` sin `--changed` salen con `2`, igual que una `--base`
-  que no resuelve a un commit. Sin git, fuera de un repositorio git o con la DB
-  caida para `--with-dependents` salen con `3`.
+  que no resuelve a un commit. Sin git, fuera de un repositorio git, con un HEAD
+  roto (la ref existe pero no resuelve a un commit, o HEAD separado sin su
+  commit) o con la DB caida para `--with-dependents` salen con `3`. Una rama
+  sin commits todavia no es un HEAD roto: compara contra el arbol vacio.
 
 #### Flag `--no-validate`
 
@@ -511,7 +513,7 @@ odev update sale,all  # ERROR: exit 2 — 'all' no puede combinarse
 |--------|-----------|
 | `0` | Exito |
 | `2` | Error de uso: modulo(s) no encontrado(s), `all` mezclado, lista vacia, o `--changed` mal combinado / `--base` invalida (solo `test`) |
-| `3` | Error de entorno: puerto ocupado, sin git o fuera de un repo con `--changed`, DB caida con `--with-dependents` (solo `test`) |
+| `3` | Error de entorno: puerto ocupado, sin git, fuera de un repo o con HEAD roto con `--changed`, DB caida con `--with-dependents` (solo `test`) |
 
 ---
 

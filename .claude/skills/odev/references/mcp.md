@@ -38,7 +38,7 @@ text as the CLI would print to stderr.
 exactly one of `module` or `changed=True`, and `base`/`with_dependents` only
 with `changed=True`; any other combination, or a `base` that does not
 resolve, is a `ValueError`. git missing, a project outside a git repository,
-or a failed dependents query is a `RuntimeError`. The result adds `modules`
+a broken HEAD, or a failed dependents query is a `RuntimeError`. The result adds `modules`
 (the effective selection) and `warnings` (skipped modules), since an MCP
 client never sees stderr. `modules: []` means Odoo did not run: zero
 counters there are "nothing to test", not a passing run.

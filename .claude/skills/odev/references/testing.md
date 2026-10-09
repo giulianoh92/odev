@@ -64,7 +64,7 @@ same `--tags`, same zero-test warning and discovery lint.
 - **Skipped with a `WARN` on stderr** (in `warnings` for MCP): modules
   outside the project's addons path, deleted modules, and submodules that
   cannot be traversed (no checkout, base commit missing — run the suggested
-  `git -C <path> fetch` — or removed). Read these: a skipped module was not
+  `git -C <path> fetch` —, removed, or git failing inside it). Read these: a skipped module was not
   tested.
 - **The selection is announced on stderr**; under `--json` the payload adds
   `modules`. Report it with the counts.
@@ -73,7 +73,9 @@ same `--tags`, same zero-test warning and discovery lint.
   to test", not a passing run.
 - **Errors:** module and `--changed` together, neither, `--base`/
   `--with-dependents` without `--changed`, or a `--base` that does not
-  resolve: exit 2. git missing, not a git repo, or the DB down for
+  resolve: exit 2. git missing, not a git repo, a broken HEAD (the ref exists
+  but does not resolve to a commit, or a detached HEAD whose commit is missing
+  — an unborn branch compares against the empty tree), or the DB down for
   `--with-dependents`: exit 3.
 
 ## Why this is safe — the facts, not just the shortcut
