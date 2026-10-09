@@ -132,3 +132,96 @@ class TestExecuteTest:
             result = _execute_test(ctx, "my_module", tags="/my_module:MyClass")
 
         assert isinstance(result, dict)
+
+
+class TestExecuteTestChanged:
+    """changed=True: la seleccion sale del diff; sin I/O ni typer.Exit."""
+
+    def _patches(self, tmp_path, mock_dc, seleccion=None):
+        return (
+            patch("odev.commands.test.obtener_docker", return_value=mock_dc),
+            patch(
+                "odev.commands.test.obtener_rutas", **{"return_value.env_file": tmp_path / ".env"}
+            ),
+            patch("odev.commands.test.load_env", return_value=_DEFAULT_ENV),
+            patch("odev.commands.test.validar_modulos"),
+            patch(
+                "odev.commands.test._seleccionar_modulos_cambiados",
+                return_value=seleccion if seleccion is not None else ([], []),
+            ),
+        )
+
+    def test_seleccion_no_vacia_corre_esos_modulos(self, tmp_path) -> None:
+        from odev.commands.test import _execute_test
+
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = _make_popen_mock(_TEST_OUTPUT_OK)
+        ctx = _make_contexto(tmp_path)
+        p_docker, p_rutas, p_env, p_validar, p_sel = self._patches(
+            tmp_path, mock_dc, (["mod_a", "mod_b"], ["WARN de prueba"])
+        )
+        with p_docker, p_rutas, p_env, p_validar, p_sel as mock_sel:
+            result = _execute_test(ctx, changed=True, base="main", with_dependents=True)
+            mock_sel.assert_called_once_with(ctx, "main", True)
+
+        comando = mock_dc.exec_cmd_stream.call_args[0][1]
+        assert comando[comando.index("-u") + 1] == "mod_a,mod_b"
+        assert comando[comando.index("--test-tags") + 1] == "/mod_a,/mod_b"
+        assert result["modules"] == ["mod_a", "mod_b"]
+        assert result["warnings"] == ["WARN de prueba"]
+        assert result["total"] == 1
+
+    def test_base_default_head(self, tmp_path) -> None:
+        from odev.commands.test import _execute_test
+
+        mock_dc = MagicMock()
+        ctx = _make_contexto(tmp_path)
+        p_docker, p_rutas, p_env, p_validar, p_sel = self._patches(tmp_path, mock_dc)
+        with p_docker, p_rutas, p_env, p_validar, p_sel as mock_sel:
+            _execute_test(ctx, changed=True)
+            mock_sel.assert_called_once_with(ctx, "HEAD", False)
+
+    def test_seleccion_vacia_no_lanza_odoo(self, tmp_path, capsys) -> None:
+        from odev.commands.test import _execute_test
+
+        mock_dc = MagicMock()
+        ctx = _make_contexto(tmp_path)
+        p_docker, p_rutas, p_env, p_validar, p_sel = self._patches(
+            tmp_path, mock_dc, ([], ["submodulo git 'vendor/oca' cambiado"])
+        )
+        with p_docker, p_rutas, p_env, p_validar, p_sel:
+            result = _execute_test(ctx, changed=True)
+
+        mock_dc.exec_cmd_stream.assert_not_called()
+        assert result["modules"] == []
+        assert result["warnings"] == ["submodulo git 'vendor/oca' cambiado"]
+        assert result["total"] == 0
+        assert result["failures"] == []
+        assert capsys.readouterr().out == ""
+
+    def test_sin_changed_no_agrega_claves_nuevas(self, tmp_path) -> None:
+        from odev.commands.test import _execute_test
+
+        mock_dc = MagicMock()
+        mock_dc.exec_cmd_stream.return_value = _make_popen_mock(_TEST_OUTPUT_OK)
+        ctx = _make_contexto(tmp_path)
+        p_docker, p_rutas, p_env, p_validar, p_sel = self._patches(tmp_path, mock_dc)
+        with p_docker, p_rutas, p_env, p_validar, p_sel as mock_sel:
+            result = _execute_test(ctx, "my_module")
+            mock_sel.assert_not_called()
+
+        assert "modules" not in result
+        assert "warnings" not in result
+
+    def test_combinaciones_invalidas_levantan_value_error(self, tmp_path) -> None:
+        import pytest
+
+        from odev.commands.test import _execute_test
+
+        ctx = _make_contexto(tmp_path)
+        with pytest.raises(ValueError, match="--changed"):
+            _execute_test(ctx)
+        with pytest.raises(ValueError, match="excluyentes"):
+            _execute_test(ctx, "my_module", changed=True)
+        with pytest.raises(ValueError, match="--base"):
+            _execute_test(ctx, "my_module", base="main")

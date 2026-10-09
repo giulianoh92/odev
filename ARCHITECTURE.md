@@ -26,7 +26,7 @@ de operaciones, y eso define casi toda la estructura del repo.
 
 | Paquete | Contiene | Puede |
 |---|---|---|
-| `odev/core/` | Logica de dominio: resolucion de proyecto, registro global, config del proyecto, wrapper de docker compose, pre-flight de puertos, neutralizacion, regeneracion de archivos, parseo de salida de tests | Lanzar excepciones de dominio, loguear, leer y escribir archivos del proyecto |
+| `odev/core/` | Logica de dominio: resolucion de proyecto, registro global, config del proyecto, wrapper de docker compose, pre-flight de puertos, neutralizacion, regeneracion de archivos, parseo de salida de tests, deteccion de los modulos tocados por el diff de git (`changed_modules.py`, base de `odev test --changed`) | Lanzar excepciones de dominio, loguear, leer y escribir archivos del proyecto |
 | `odev/commands/` | Un modulo por comando: declaracion de argumentos Typer, presentacion, eleccion del codigo de salida | Todo lo anterior, mas decidir stream, formato y exit code |
 | `odev/templates/project/` | Plantillas Jinja de los archivos generados del proyecto | — |
 
@@ -37,7 +37,11 @@ codigo se sale; un `import typer` ahi abajo es la senal de que una decision de
 presentacion se filtro. En la direccion inversa la regla es de reuso: un modulo
 de `commands/` no reimplementa lo que `core/` ya resuelve. La clasificacion de
 puertos es el ejemplo canonico — `up` y `doctor` consumen la misma
-`classify_bound_port`, no dos heuristicas parecidas.
+`classify_bound_port`, no dos heuristicas parecidas. `core/` tampoco importa
+`commands/`: cuando necesita una operacion de un comando, la recibe inyectada.
+`core/changed_modules.py` arma la consulta de dependientes de
+`odev test --changed --with-dependents`, pero la corre por el ejecutor SQL que
+le pasa el frontend (`_execute_sql`), no por uno propio.
 
 ---
 
@@ -247,6 +251,10 @@ Lo que el principio obliga, en concreto:
   manejar `from . import a, b` y los imports condicionales: un lint que reporta
   huerfanos falsos es peor que ningun lint, y ante un archivo no parseable se
   omite en silencio.
+- `odev test --changed` anuncia la seleccion antes de correr y avisa cada
+  modulo que omite (fuera del addons-path, eliminado, dentro de un submodulo).
+  Una seleccion vacia lo dice y no lanza Odoo: el JSON lleva `modules: []`, no
+  una corrida verde.
 - Una expresion de `py` que parece escribir sin `--commit` avisa, y un comando
   destructivo nombra el proyecto y que va a destruir.
 - `up` avisa cuando no puede garantizar la configuracion local del entorno en

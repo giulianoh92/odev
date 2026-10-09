@@ -10,6 +10,9 @@ Every error and warning goes to stderr, including the ones that reject an
 argument before the command runs. Parse stdout without filtering it; read stderr
 for diagnostics. Progress and success lines (`INFO`, `OK`) are on stdout and are
 the only non-data text there — commands with `--json` do not emit them.
+One exception: `test --changed` writes its `INFO:` selection line and its
+`WARN:` skipped-module lines to stderr, so stdout stays pure data under
+`--json` as well.
 
 Under `--json`, a failure that prevents the command from producing any data at
 all — no project resolved — produces exactly one machine-readable line on
@@ -27,8 +30,8 @@ exclusive.
 |---|---|
 | 0 | Success |
 | 1 | Project or runtime error — no project found, model absent from the ORM, module already exists, enterprise version not imported |
-| 2 | Usage error — bad argument, unknown module, `all` mixed with names, conflicting flags |
-| 3 | Environment error — port busy, DB unavailable, Docker unavailable, stack down, `mcp` extra missing or incompatible |
+| 2 | Usage error — bad argument, unknown module, `all` mixed with names, conflicting flags, a `test --base` ref that does not resolve |
+| 3 | Environment error — port busy, DB unavailable, Docker unavailable, stack down, `mcp` extra missing or incompatible, git missing or not a git repo for `test --changed` |
 
 `shell -c`, `sql` and `py` are transparent pass-throughs by design (same idea
 as `docker exec`, documented in the README): whatever the underlying process
@@ -57,6 +60,8 @@ find out, so it's a runtime fact, not a usage mistake made upfront.
 | `test` | `module:Class.method` shorthand with `--tags` | 2 |
 | `test` | CSV module list with the `:Class.method` shorthand (e.g. `m1,m2:Foo`) | 2 |
 | `test` | `all:Class` (shorthand on the `all` pseudo-module) | 2 |
+| `test` | module argument with `--changed`, or neither of the two | 2 |
+| `test` | `--base` or `--with-dependents` without `--changed` | 2 |
 | `test`, `update`, `addon-install` | `all` combined with named modules (e.g. `sale,all`) | 2 |
 | `sql` | `--json` with `--csv` | 2 |
 | `logs` | `--json` with `--follow` | 2 |
@@ -96,7 +101,7 @@ stdin) — it never hangs waiting for input.
 | `py <expression>` | one Python expression | `--commit` (persist ORM writes), `--keep-banner` |
 | `modules` | — | `-j/--json` (default: human-readable table) |
 | `model-info <model>` | technical model name | `--pretty` |
-| `test <module>` | CSV or `all`, or `module:Class.method` | `--tags`, `--json`, `--save-log <path>`, `--verbose/-v`, `--summary/-s`, `--failures/-f`, `--no-validate` |
+| `test [module]` | CSV or `all`, or `module:Class.method`; omitted with `--changed` | `--tags`, `--json`, `--save-log <path>`, `--verbose/-v`, `--summary/-s`, `--failures/-f`, `--no-validate`, `--changed`, `--base <ref>`, `--with-dependents` (see `testing.md`) |
 | `addon-install <module>` | CSV or `all` | `--no-validate`, `--verbose/-v` |
 | `update <module>` | CSV or `all` | `--no-validate`, `--verbose/-v` |
 | `scaffold <name>` | snake_case module name | — |

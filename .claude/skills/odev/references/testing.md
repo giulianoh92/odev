@@ -13,6 +13,10 @@ three full runs at 5-10 minutes each — and two of the three are avoidable.
    odev test <modules> --json --save-log <scratchpad>/odev-test-<modules>-<timestamp>.log
    ```
 
+   To test what the diff touched, replace `<modules>` with `--changed`
+   (see "Scoping a run to the diff" below) instead of building the CSV by
+   hand.
+
 2. **Diagnose from the JSON. Never re-run with `--verbose` to see a
    traceback.** The `failures[]` array carries, per failure: `class`,
    `method`, `kind` (`FAIL` / `ERROR` / `LOADING_ERROR`), `message`, and
@@ -38,7 +42,35 @@ three full runs at 5-10 minutes each — and two of the three are avoidable.
 
 6. **Run the full battery one final time only when the fix could plausibly
    regress something outside its blast radius.** Not reflexively, on every
-   fix.
+   fix. Before a PR, `odev test --changed --base <branch> --with-dependents`
+   is usually that blast radius.
+
+## Scoping a run to the diff: `--changed`
+
+`odev test --changed [--base <ref>] [--with-dependents]` (MCP: `odev_test`
+with `changed=True`, `base`, `with_dependents`) selects the modules and runs
+them through exactly the same path as `odev test m1,m2`: same Odoo command,
+same `--tags`, same zero-test warning and discovery lint.
+
+- **Changed files:** everything that differs between `merge-base(<base>,
+  HEAD)` and the working tree (committed, staged, unstaged), plus untracked
+  files git does not ignore. `--base` defaults to `HEAD`: only uncommitted
+  work. Each file maps to its nearest ancestor with `__manifest__.py`.
+- **`--with-dependents`** adds installed modules that depend *directly* on
+  the selection (not transitive ones). It queries the DB, so the stack must
+  be up.
+- **Skipped with a `WARN` on stderr** (in `warnings` for MCP): modules
+  outside the project's addons path, deleted modules, changed git
+  submodules. Read these: a skipped module was not tested.
+- **The selection is announced on stderr**; under `--json` the payload adds
+  `modules`. Report it with the counts.
+- **Empty selection exits 0 without running Odoo.** The JSON has zero
+  counters, `modules: []` and `process_exit_code: null`. That is "nothing
+  to test", not a passing run.
+- **Errors:** module and `--changed` together, neither, `--base`/
+  `--with-dependents` without `--changed`, or a `--base` that does not
+  resolve: exit 2. git missing, not a git repo, or the DB down for
+  `--with-dependents`: exit 3.
 
 ## Why this is safe — the facts, not just the shortcut
 

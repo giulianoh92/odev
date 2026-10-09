@@ -849,3 +849,109 @@ class TestResolveContextoEnvVar:
             mcp_module._resolve_contexto()
 
         mock_resolver.assert_called_once_with(nombre_proyecto=None)
+
+
+# ---------------------------------------------------------------------------
+# odev_test: paridad con 'odev test --changed'
+# ---------------------------------------------------------------------------
+
+
+class TestMcpTestChanged:
+    """odev_test acepta changed/base/with_dependents con las mismas reglas."""
+
+    def _build_server(self):
+        from mcp.server import MCPServer
+
+        import odev.commands.mcp as mcp_module
+
+        return mcp_module._build_server(MCPServer)
+
+    def _call_tool(self, server, name, args=None):
+        return asyncio.run(server.call_tool(name, args or {}))
+
+    def test_schema_expone_los_parametros_y_module_es_opcional(self):
+        server = self._build_server()
+        tools = {t.name: t for t in asyncio.run(server.list_tools())}
+        schema = tools["odev_test"].input_schema
+        assert {"module", "tags", "changed", "base", "with_dependents"} <= set(schema["properties"])
+        assert "module" not in schema.get("required", [])
+
+    def test_reenvia_changed_base_y_with_dependents(self):
+        import odev.commands.mcp as mcp_module
+
+        ctx = _make_contexto()
+        with patch(
+            "odev.commands.test._execute_test", return_value={"total": 0, "modules": []}
+        ) as mock_execute:
+            with patch.object(mcp_module, "_resolve_contexto", return_value=ctx):
+                server = self._build_server()
+                self._call_tool(
+                    server,
+                    "odev_test",
+                    {"changed": True, "base": "main", "with_dependents": True},
+                )
+
+        args, kwargs = mock_execute.call_args
+        assert args[0] is ctx
+        assert kwargs["changed"] is True
+        assert kwargs["base"] == "main"
+        assert kwargs["with_dependents"] is True
+
+    def test_seleccion_vacia_devuelve_payload_sin_modulos(self):
+        import odev.commands.mcp as mcp_module
+
+        with patch(
+            "odev.commands.test._seleccionar_modulos_cambiados",
+            return_value=([], ["submodulo git 'vendor/oca' cambiado"]),
+        ):
+            with patch("odev.commands.test.obtener_docker") as mock_docker:
+                with patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()):
+                    server = self._build_server()
+                    result = self._call_tool(server, "odev_test", {"changed": True})
+                    payload = json.loads(result.content[0].text)
+
+        mock_docker.assert_not_called()
+        assert payload["modules"] == []
+        assert payload["total"] == 0
+        assert payload["warnings"] == ["submodulo git 'vendor/oca' cambiado"]
+
+    def test_modulo_y_changed_juntos_es_tool_error(self):
+        from mcp.server.mcpserver.exceptions import ToolError
+
+        import odev.commands.mcp as mcp_module
+
+        with patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()):
+            server = self._build_server()
+            with pytest.raises(ToolError) as exc:
+                self._call_tool(server, "odev_test", {"module": "sale", "changed": True})
+
+        assert "excluyentes" in str(exc.value)
+
+    def test_sin_modulo_ni_changed_es_tool_error(self):
+        from mcp.server.mcpserver.exceptions import ToolError
+
+        import odev.commands.mcp as mcp_module
+
+        with patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()):
+            server = self._build_server()
+            with pytest.raises(ToolError) as exc:
+                self._call_tool(server, "odev_test", {})
+
+        assert "--changed" in str(exc.value)
+
+    def test_sin_git_llega_como_tool_error_con_el_mensaje(self):
+        """El RuntimeError del core (sin git, fuera de un repo) no se pierde."""
+        from mcp.server.mcpserver.exceptions import ToolError
+
+        import odev.commands.mcp as mcp_module
+
+        with patch(
+            "odev.commands.test._seleccionar_modulos_cambiados",
+            side_effect=RuntimeError("'/x' no esta dentro de un repositorio git"),
+        ):
+            with patch.object(mcp_module, "_resolve_contexto", return_value=_make_contexto()):
+                server = self._build_server()
+                with pytest.raises(ToolError) as exc:
+                    self._call_tool(server, "odev_test", {"changed": True})
+
+        assert "repositorio git" in str(exc.value)
