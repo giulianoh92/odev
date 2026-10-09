@@ -481,8 +481,9 @@ odev test --changed --tags :test_create
   `process_exit_code: null` (no corrio ningun proceso).
 - **Errores:** sin modulo ni `--changed`, los dos juntos, o `--base` /
   `--with-dependents` sin `--changed` salen con `2`, igual que una `--base`
-  que no resuelve a un commit. Sin git, fuera de un repositorio git o con la DB
-  caida para `--with-dependents` salen con `3`.
+  que no resuelve a un commit. Sin git, fuera de un repositorio git, con un HEAD
+  roto (no es una rama sin commits: ref u objeto faltante) o con la DB caida
+  para `--with-dependents` salen con `3`.
 
 #### Flag `--no-validate`
 
@@ -511,7 +512,7 @@ odev update sale,all  # ERROR: exit 2 — 'all' no puede combinarse
 |--------|-----------|
 | `0` | Exito |
 | `2` | Error de uso: modulo(s) no encontrado(s), `all` mezclado, lista vacia, o `--changed` mal combinado / `--base` invalida (solo `test`) |
-| `3` | Error de entorno: puerto ocupado, sin git o fuera de un repo con `--changed`, DB caida con `--with-dependents` (solo `test`) |
+| `3` | Error de entorno: puerto ocupado, sin git, fuera de un repo o con HEAD roto con `--changed`, DB caida con `--with-dependents` (solo `test`) |
 
 ---
 

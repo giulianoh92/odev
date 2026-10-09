@@ -25,8 +25,9 @@ Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
   lanzar Odoo (con `--json`, contadores en cero, `modules: []` y
   `process_exit_code: null`). El argumento de modulo pasa a ser opcional: falta
   de modulo y de `--changed`, los dos juntos, `--base`/`--with-dependents` sin
-  `--changed` o una `--base` invalida salen con 2; sin git, fuera de un repo o
-  con la DB caida para `--with-dependents`, con 3.
+  `--changed` o una `--base` invalida salen con 2; sin git, fuera de un repo,
+  con un HEAD roto (ref u objeto faltante) o con la DB caida para
+  `--with-dependents`, con 3.
 - **`odev_test` (MCP) acepta `changed`, `base` y `with_dependents`,** con las
   mismas reglas que la CLI: `module` pasa a ser opcional y excluyente con
   `changed=True`, y los errores de uso o de entorno llegan como `ToolError` con

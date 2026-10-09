@@ -2826,6 +2826,28 @@ class TestChangedGitReal:
         mock_dc.exec_cmd_stream.assert_not_called()
         assert "no-existe" in capsys.readouterr().err
 
+    def test_head_roto_exit_3(self, tmp_path: Path, monkeypatch, capsys) -> None:
+        """Ref de HEAD presente pero objeto faltante: error de entorno, no de --base."""
+        import subprocess
+
+        repo, ctx = self._repo(tmp_path, monkeypatch)
+        ref = subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "--git-path", "refs/heads/main"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        (repo / ref).write_text("deadbeef" * 5 + "\n")
+        mock_dc = MagicMock()
+
+        exc, _ = _call_test_changed(repo, mock_dc, ctx)
+
+        assert _exit_code(exc) == 3
+        mock_dc.exec_cmd_stream.assert_not_called()
+        err = capsys.readouterr().err
+        assert "git fsck" in err
+        assert "Referencia git invalida" not in err
+
     def test_fuera_de_un_repo_git_exit_3(self, tmp_path: Path, monkeypatch, capsys) -> None:
         _aislar_git(tmp_path, monkeypatch)
         ctx = _proyecto_con_addons(tmp_path, "mod_a")
