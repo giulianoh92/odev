@@ -252,7 +252,8 @@ Lo que el principio obliga, en concreto:
   huerfanos falsos es peor que ningun lint, y ante un archivo no parseable se
   omite en silencio.
 - `odev test --changed` anuncia la seleccion antes de correr y avisa cada
-  modulo que omite (fuera del addons-path, eliminado, dentro de un submodulo).
+  modulo que omite (fuera del addons-path, eliminado, en un submodulo que no se
+  puede recorrer).
   Una seleccion vacia lo dice y no lanza Odoo: el JSON lleva `modules: []`, no
   una corrida verde.
 - Una expresion de `py` que parece escribir sin `--commit` avisa, y un comando

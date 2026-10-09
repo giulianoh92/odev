@@ -3,7 +3,9 @@
 Soporte de 'odev test --changed': a partir de los archivos que difieren
 entre merge-base(<base>, HEAD) y el working tree (commiteado, stageado y sin
 stagear), mas los untracked que git no ignora, resuelve que modulos Odoo
-quedaron tocados. Para --with-dependents arma ademas la consulta de los
+quedaron tocados. Los submodulos git cambiados se recorren con la misma
+logica, contra el commit que el superproyecto registraba en la base, y
+recursivamente para los anidados. Para --with-dependents arma ademas la consulta de los
 modulos instalados que dependen directamente de esa seleccion.
 
 Sin dependencias de la CLI: senaliza con excepciones de dominio y devuelve
@@ -23,8 +25,9 @@ from typing import Callable, Iterable
 
 _MANIFEST = "__manifest__.py"
 
-# Modo de un gitlink (submodulo) en la salida --raw de git diff.
+# Modos de la salida --raw de git diff: gitlink (submodulo) y entrada ausente.
 _MODO_GITLINK = "160000"
+_MODO_AUSENTE = "000000"
 
 
 @dataclass(frozen=True)
@@ -47,11 +50,26 @@ class DeteccionCambios:
     Atributos:
         modulos:      Modulos detectados, sin duplicados, ordenados por nombre.
         advertencias: Cambios que no se pudieron mapear a un modulo testeable
-                      (modulos eliminados, submodulos, repos anidados).
+                      (modulos eliminados, submodulos sin checkout, sin el
+                      commit de la base o eliminados, repos anidados).
     """
 
     modulos: list[ModuloDetectado] = field(default_factory=list)
     advertencias: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class _Gitlink:
+    """Un submodulo cambiado que sigue presente en el working tree.
+
+    Atributos:
+        ruta:         Ruta del submodulo, relativa a la raiz de su repo.
+        commit_viejo: Commit que el repo registraba para el submodulo en el
+                      punto de comparacion, o None si ahi no existia.
+    """
+
+    ruta: str
+    commit_viejo: str | None
 
 
 @dataclass
@@ -59,7 +77,8 @@ class _CambiosGit:
     """Salida cruda de git ya clasificada (rutas relativas a la raiz)."""
 
     rutas: list[str] = field(default_factory=list)
-    gitlinks: list[str] = field(default_factory=list)
+    gitlinks: list[_Gitlink] = field(default_factory=list)
+    submodulos_eliminados: list[str] = field(default_factory=list)
     repos_anidados: list[str] = field(default_factory=list)
     manifiestos_eliminados: set[str] = field(default_factory=set)
 
@@ -176,7 +195,11 @@ def _listar_cambios(raiz: Path, merge_base: str) -> _CambiosGit:
     `git diff --raw <commit>` compara el commit contra el working tree, asi
     que cubre lo commiteado despues del merge-base, lo stageado y lo sin
     stagear en una sola pasada. --no-renames separa un rename en baja + alta:
-    los dos lados cuentan como tocados. Los untracked no ignorados salen de
+    los dos lados cuentan como tocados. --ignore-submodules=none hace que un
+    submodulo con cambios sin commitear o untracked cuente como cambiado
+    aunque .gitmodules o la config digan 'ignore'. --no-abbrev deja el sha
+    completo del gitlink viejo, que es el punto de comparacion dentro del
+    submodulo. Los untracked no ignorados salen de
     `git ls-files --others --exclude-standard`.
 
     Raises:
@@ -184,7 +207,16 @@ def _listar_cambios(raiz: Path, merge_base: str) -> _CambiosGit:
     """
     cambios = _CambiosGit()
 
-    diff = _git(raiz, "diff", "--raw", "-z", "--no-renames", merge_base)
+    diff = _git(
+        raiz,
+        "diff",
+        "--raw",
+        "-z",
+        "--no-renames",
+        "--no-abbrev",
+        "--ignore-submodules=none",
+        merge_base,
+    )
     if diff.returncode != 0:
         raise RuntimeError(f"git diff fallo: {_stderr(diff)}")
 
@@ -198,9 +230,19 @@ def _listar_cambios(raiz: Path, merge_base: str) -> _CambiosGit:
         if not meta.startswith(":"):
             continue
         campos = meta[1:].split()
-        modo_src, modo_dst, estado = campos[0], campos[1], campos[-1]
-        if _MODO_GITLINK in (modo_src, modo_dst):
-            cambios.gitlinks.append(ruta)
+        modo_src, modo_dst, sha_src, estado = campos[0], campos[1], campos[2], campos[-1]
+        src_es_gitlink = modo_src == _MODO_GITLINK
+        dst_es_gitlink = modo_dst == _MODO_GITLINK
+        if src_es_gitlink or dst_es_gitlink:
+            if dst_es_gitlink:
+                cambios.gitlinks.append(_Gitlink(ruta, sha_src if src_es_gitlink else None))
+            else:
+                cambios.submodulos_eliminados.append(ruta)
+            # Cambio de tipo (archivo <-> gitlink): el lado que es archivo
+            # comun tambien cuenta como ruta tocada.
+            lado_archivo = modo_dst if src_es_gitlink else modo_src
+            if not (src_es_gitlink and dst_es_gitlink) and lado_archivo != _MODO_AUSENTE:
+                cambios.rutas.append(ruta)
             continue
         if estado.startswith("D") and PurePosixPath(ruta).name == _MANIFEST:
             cambios.manifiestos_eliminados.add(str(PurePosixPath(ruta).parent))
@@ -226,6 +268,7 @@ def mapear_a_modulos(
     raiz: Path,
     rutas: Iterable[str],
     manifiestos_eliminados: set[str],
+    prefijo: str = "",
 ) -> tuple[list[ModuloDetectado], list[str]]:
     """Mapea rutas relativas a la raiz del repo al modulo que las contiene.
 
@@ -240,6 +283,8 @@ def mapear_a_modulos(
         rutas:                  Rutas relativas a `raiz`, en formato posix.
         manifiestos_eliminados: Directorios (relativos, posix) cuyo
                                 __manifest__.py el diff da como eliminado.
+        prefijo:                Ruta de `raiz` dentro del repo de mas arriba
+                                ('subs/ext/'), solo para los mensajes.
 
     Retorna:
         Tupla (modulos sin duplicados ordenados por nombre, advertencias).
@@ -265,15 +310,114 @@ def mapear_a_modulos(
             directorio = directorio.parent
 
     advertencias = [
-        f"modulo '{(raiz / rel).name}' ({rel}) eliminado: su {_MANIFEST} ya no existe, se omite."
+        f"modulo '{(raiz / rel).name}' ({_ruta_visible(prefijo, rel)}) eliminado: "
+        f"su {_MANIFEST} ya no existe, se omite."
         for rel in sorted(eliminados)
     ]
     modulos = sorted(encontrados.values(), key=lambda m: (m.nombre, str(m.directorio)))
     return modulos, advertencias
 
 
+def _ruta_visible(prefijo: str, rel: str) -> str:
+    """Ruta relativa al repo de mas arriba, para los mensajes."""
+    if rel == ".":
+        return prefijo.rstrip("/") or "."
+    return f"{prefijo}{rel}"
+
+
+def _raiz_submodulo(raiz: Path, ruta: str) -> Path | None:
+    """Raiz del checkout del submodulo en `ruta`, o None si no tiene checkout.
+
+    Un submodulo sin inicializar deja un directorio vacio (o ninguno), y git
+    lo resuelve como parte del repo de arriba: por eso se compara el
+    toplevel con el propio directorio.
+    """
+    directorio = (raiz / ruta).resolve()
+    if not directorio.is_dir():
+        return None
+    resultado = _git(directorio, "rev-parse", "--show-toplevel")
+    if resultado.returncode != 0:
+        return None
+    toplevel = Path(os.fsdecode(resultado.stdout).strip()).resolve()
+    return toplevel if toplevel == directorio else None
+
+
+def _existe_commit(raiz: Path, sha: str) -> bool:
+    """True si el commit esta en el object store del repo."""
+    return _git(raiz, "cat-file", "-e", f"{sha}^{{commit}}").returncode == 0
+
+
+def _detectar_en_repo(
+    raiz: Path,
+    punto: str,
+    prefijo: str,
+    encontrados: dict[Path, ModuloDetectado],
+    advertencias: list[str],
+) -> None:
+    """Detecta los modulos tocados en un repo y recorre sus submodulos.
+
+    La misma rutina sirve para el superproyecto y para cada submodulo
+    cambiado: dentro del submodulo, el punto de comparacion es el commit que
+    el repo de arriba registraba en el suyo (el arbol vacio si ahi no
+    existia), y el mapeo a modulos no sube mas alla de la raiz del
+    submodulo. Los submodulos que no se pueden recorrer quedan como
+    advertencia; nunca cortan la deteccion.
+
+    Argumentos:
+        raiz:         Raiz del repo (superproyecto o checkout del submodulo).
+        punto:        Commit (o arbol vacio) contra el que se compara.
+        prefijo:      Ruta de `raiz` dentro del superproyecto, con '/' final.
+        encontrados:  Acumulador de modulos por directorio absoluto.
+        advertencias: Acumulador de advertencias.
+    """
+    cambios = _listar_cambios(raiz, punto)
+
+    modulos, avisos = mapear_a_modulos(
+        raiz, cambios.rutas, cambios.manifiestos_eliminados, prefijo=prefijo
+    )
+    for modulo in modulos:
+        encontrados.setdefault(modulo.directorio, modulo)
+    advertencias.extend(avisos)
+
+    advertencias.extend(
+        f"submodulo git '{prefijo}{ruta}' eliminado: sus modulos no se testean."
+        for ruta in sorted(cambios.submodulos_eliminados)
+    )
+
+    for gitlink in sorted(cambios.gitlinks, key=lambda g: g.ruta):
+        visible = f"{prefijo}{gitlink.ruta}"
+        raiz_sub = _raiz_submodulo(raiz, gitlink.ruta)
+        if raiz_sub is None:
+            advertencias.append(
+                f"submodulo git '{visible}' cambiado pero sin checkout: sus modulos "
+                f"no se detectan. Inicializalo con 'git submodule update --init {visible}'."
+            )
+            continue
+        if gitlink.commit_viejo is None:
+            punto_sub = _arbol_vacio(raiz_sub)
+        elif _existe_commit(raiz_sub, gitlink.commit_viejo):
+            punto_sub = gitlink.commit_viejo
+        else:
+            advertencias.append(
+                f"submodulo git '{visible}': el commit {gitlink.commit_viejo[:12]} "
+                "registrado en la base no esta en su object store, sus modulos no se "
+                f"detectan. Traelo con 'git -C {visible} fetch'."
+            )
+            continue
+        _detectar_en_repo(raiz_sub, punto_sub, f"{visible}/", encontrados, advertencias)
+
+    advertencias.extend(
+        f"repositorio git anidado '{prefijo}{ruta}' sin trackear: --changed no "
+        "recorre repos anidados, sus modulos no se detectan."
+        for ruta in sorted(cambios.repos_anidados)
+    )
+
+
 def detectar_modulos_cambiados(directorio: Path, base: str | None = None) -> DeteccionCambios:
     """Detecta los modulos Odoo tocados respecto de merge-base(<base>, HEAD).
+
+    Los submodulos cambiados se recorren (ver _detectar_en_repo); sus
+    modulos se devuelven como los del superproyecto.
 
     Argumentos:
         directorio: Directorio del proyecto; git corre contra el repositorio
@@ -292,19 +436,12 @@ def detectar_modulos_cambiados(directorio: Path, base: str | None = None) -> Det
     """
     raiz = raiz_repositorio(directorio)
     merge_base = _resolver_merge_base(raiz, base)
-    cambios = _listar_cambios(raiz, merge_base)
 
-    modulos, advertencias = mapear_a_modulos(raiz, cambios.rutas, cambios.manifiestos_eliminados)
-    advertencias.extend(
-        f"submodulo git '{ruta}' cambiado: --changed no recorre submodulos, "
-        "sus modulos no se detectan."
-        for ruta in sorted(cambios.gitlinks)
-    )
-    advertencias.extend(
-        f"repositorio git anidado '{ruta}' sin trackear: --changed no recorre "
-        "repos anidados, sus modulos no se detectan."
-        for ruta in sorted(cambios.repos_anidados)
-    )
+    encontrados: dict[Path, ModuloDetectado] = {}
+    advertencias: list[str] = []
+    _detectar_en_repo(raiz, merge_base, "", encontrados, advertencias)
+
+    modulos = sorted(encontrados.values(), key=lambda m: (m.nombre, str(m.directorio)))
     return DeteccionCambios(modulos=modulos, advertencias=advertencias)
 
 

@@ -18,8 +18,10 @@ Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
   commitear). `--with-dependents` suma los modulos instalados que dependen
   directamente de la seleccion. La seleccion corre por el mismo camino que
   `odev test m1,m2` y se anuncia por stderr; con `--json` el payload suma la
-  clave `modules`. Los modulos fuera del `addons-path`, los eliminados y los
-  submodulos git cambiados se omiten con un `WARN`. Seleccion vacia: exit 0 sin
+  clave `modules`. Los submodulos git cambiados se recorren contra el commit
+  que el superproyecto registraba en la base, recursivamente. Los modulos fuera
+  del `addons-path`, los eliminados y los submodulos sin checkout, sin ese
+  commit o eliminados se omiten con un `WARN`. Seleccion vacia: exit 0 sin
   lanzar Odoo (con `--json`, contadores en cero, `modules: []` y
   `process_exit_code: null`). El argumento de modulo pasa a ser opcional: falta
   de modulo y de `--changed`, los dos juntos, `--base`/`--with-dependents` sin
