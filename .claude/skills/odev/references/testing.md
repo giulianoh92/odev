@@ -73,8 +73,9 @@ same `--tags`, same zero-test warning and discovery lint.
   to test", not a passing run.
 - **Errors:** module and `--changed` together, neither, `--base`/
   `--with-dependents` without `--changed`, or a `--base` that does not
-  resolve: exit 2. git missing, not a git repo, a broken HEAD (ref present,
-  object missing — an unborn branch is fine), or the DB down for
+  resolve: exit 2. git missing, not a git repo, a broken HEAD (the ref exists
+  but does not resolve to a commit, or a detached HEAD whose commit is missing
+  — an unborn branch compares against the empty tree), or the DB down for
   `--with-dependents`: exit 3.
 
 ## Why this is safe — the facts, not just the shortcut

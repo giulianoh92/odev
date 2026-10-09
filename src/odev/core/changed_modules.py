@@ -177,7 +177,9 @@ def _resolver_merge_base(raiz: Path, base: str | None) -> str:
         ValueError: si la referencia explicita es vacia, parece una opcion de
             git, no existe, o no tiene ancestro comun con HEAD.
         RuntimeError: si con la base implicita HEAD no resuelve a un commit y
-            no es una rama sin commits (ref rota u objeto faltante).
+            no es una rama sin commits: la ref de la rama existe pero no
+            resuelve, o HEAD esta separado y su commit falta. Una ref de rama
+            que todavia no existe es el caso sin commits, no este.
     """
     if base is None:
         head = _git(raiz, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
@@ -186,8 +188,8 @@ def _resolver_merge_base(raiz: Path, base: str | None) -> str:
                 return _arbol_vacio(raiz)
             raise RuntimeError(
                 f"HEAD de '{raiz}' no resuelve a un commit y no es una rama sin "
-                "commits (ref rota u objeto faltante): revisa el repositorio con "
-                "'git fsck'."
+                "commits: la ref existe pero apunta a un commit que falta o esta "
+                "danado. Revisa el repositorio con 'git fsck'."
             )
         base = "HEAD"
 

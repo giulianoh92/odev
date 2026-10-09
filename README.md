@@ -482,8 +482,9 @@ odev test --changed --tags :test_create
 - **Errores:** sin modulo ni `--changed`, los dos juntos, o `--base` /
   `--with-dependents` sin `--changed` salen con `2`, igual que una `--base`
   que no resuelve a un commit. Sin git, fuera de un repositorio git, con un HEAD
-  roto (no es una rama sin commits: ref u objeto faltante) o con la DB caida
-  para `--with-dependents` salen con `3`.
+  roto (la ref existe pero no resuelve a un commit, o HEAD separado sin su
+  commit) o con la DB caida para `--with-dependents` salen con `3`. Una rama
+  sin commits todavia no es un HEAD roto: compara contra el arbol vacio.
 
 #### Flag `--no-validate`
 
