@@ -469,7 +469,7 @@ odev test --changed --tags :test_create
 - **Se omiten con un `WARN` por stderr:** modulos que no estan en el
   `addons-path` del proyecto, modulos eliminados (su `__manifest__.py` ya no
   existe), y submodulos sin checkout, sin el commit de la base (sugiere
-  `git -C <ruta> fetch`) o eliminados.
+  `git -C <ruta> fetch`), eliminados o ilegibles (git falla adentro).
 - **`--with-dependents`:** suma los modulos con `state = 'installed'` que
   dependen directamente de la seleccion (no los transitivos). Necesita el stack
   levantado: consulta la DB igual que `odev sql`.

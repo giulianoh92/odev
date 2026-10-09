@@ -434,7 +434,7 @@ stageado, sin stagear o untracked no ignorado) se asigna al modulo mas cercano
 con `__manifest__.py`. Los submodulos git cambiados se recorren igual. La
 seleccion se muestra por stderr antes de correr, y se omiten con un aviso los
 modulos fuera del addons-path, los eliminados y los submodulos que no se pueden
-recorrer (sin checkout, sin el commit de la base o eliminados). Si no queda
+recorrer (sin checkout, sin el commit de la base, eliminados o ilegibles). Si no queda
 ningun modulo, `odev test` lo avisa y sale con `0` sin lanzar Odoo.
 
 ### Ciclo de desarrollo tipico

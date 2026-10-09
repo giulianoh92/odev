@@ -360,8 +360,10 @@ def _detectar_en_repo(
     cambiado: dentro del submodulo, el punto de comparacion es el commit que
     el repo de arriba registraba en el suyo (el arbol vacio si ahi no
     existia), y el mapeo a modulos no sube mas alla de la raiz del
-    submodulo. Los submodulos que no se pueden recorrer quedan como
-    advertencia; nunca cortan la deteccion.
+    submodulo. Los submodulos que no se pueden recorrer (sin checkout, sin
+    el commit de la base, o con git fallando adentro) quedan como
+    advertencia; nunca cortan la deteccion. Un fallo de git en el repo de
+    mas arriba si se propaga: ese es el que eligio el usuario.
 
     Argumentos:
         raiz:         Raiz del repo (superproyecto o checkout del submodulo).
@@ -393,18 +395,25 @@ def _detectar_en_repo(
                 f"no se detectan. Inicializalo con 'git submodule update --init {visible}'."
             )
             continue
-        if gitlink.commit_viejo is None:
-            punto_sub = _arbol_vacio(raiz_sub)
-        elif _existe_commit(raiz_sub, gitlink.commit_viejo):
-            punto_sub = gitlink.commit_viejo
-        else:
+        if gitlink.commit_viejo is not None and not _existe_commit(raiz_sub, gitlink.commit_viejo):
             advertencias.append(
                 f"submodulo git '{visible}': el commit {gitlink.commit_viejo[:12]} "
                 "registrado en la base no esta en su object store, sus modulos no se "
                 f"detectan. Traelo con 'git -C {visible} fetch'."
             )
             continue
-        _detectar_en_repo(raiz_sub, punto_sub, f"{visible}/", encontrados, advertencias)
+        try:
+            punto_sub = (
+                gitlink.commit_viejo if gitlink.commit_viejo is not None else _arbol_vacio(raiz_sub)
+            )
+            _detectar_en_repo(raiz_sub, punto_sub, f"{visible}/", encontrados, advertencias)
+        except RuntimeError as exc:
+            # Un submodulo ilegible (repo corrupto, permisos) no corta la
+            # deteccion: _listar_cambios falla antes de acumular nada de ese
+            # submodulo, y los anidados se protegen en su propio nivel.
+            advertencias.append(
+                f"submodulo git '{visible}' no se pudo leer ({exc}): sus modulos no se detectan."
+            )
 
     advertencias.extend(
         f"repositorio git anidado '{prefijo}{ruta}' sin trackear: --changed no "

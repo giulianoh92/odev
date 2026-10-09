@@ -64,7 +64,7 @@ same `--tags`, same zero-test warning and discovery lint.
 - **Skipped with a `WARN` on stderr** (in `warnings` for MCP): modules
   outside the project's addons path, deleted modules, and submodules that
   cannot be traversed (no checkout, base commit missing — run the suggested
-  `git -C <path> fetch` — or removed). Read these: a skipped module was not
+  `git -C <path> fetch` —, removed, or git failing inside it). Read these: a skipped module was not
   tested.
 - **The selection is announced on stderr**; under `--json` the payload adds
   `modules`. Report it with the counts.

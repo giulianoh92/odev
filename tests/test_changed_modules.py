@@ -444,6 +444,31 @@ class TestSubmodulos:
         assert falso[:12] in deteccion.advertencias[0]
         assert "git -C subs/ext fetch" in deteccion.advertencias[0]
 
+    def test_git_que_falla_dentro_del_submodulo_advierte_y_sigue(self, superproyecto: Path) -> None:
+        """Un submodulo ilegible queda como advertencia; el resto se detecta igual."""
+        sub = superproyecto / "subs" / "ext"
+        # c1 se crea en el checkout (objetos sueltos) y queda registrado arriba.
+        _escribir(sub, "mod_s1/models/a.py")
+        _commit(sub, "c1")
+        _commit(superproyecto, "registra c1")
+        arbol_c1 = _git(sub, "rev-parse", "HEAD^{tree}")
+        # c2: el submodulo avanza sin mover el puntero del superproyecto.
+        _escribir(sub, "mod_s1/models/b.py")
+        _commit(sub, "c2")
+        # Sin el arbol de c1, 'git diff <c1>' dentro del submodulo falla de verdad.
+        objeto = Path(
+            _git(sub, "rev-parse", "--git-path", f"objects/{arbol_c1[:2]}/{arbol_c1[2:]}")
+        )
+        (objeto if objeto.is_absolute() else sub / objeto).unlink()
+        _escribir(superproyecto, "addons/mod_a/models/z.py")
+
+        deteccion = detectar_modulos_cambiados(superproyecto)
+
+        assert _nombres(deteccion) == ["mod_a"]
+        assert len(deteccion.advertencias) == 1
+        assert "'subs/ext'" in deteccion.advertencias[0]
+        assert "git diff fallo" in deteccion.advertencias[0]
+
     def test_submodulo_eliminado_advierte(self, superproyecto: Path) -> None:
         _git(superproyecto, "rm", "-q", "subs/ext")
 
