@@ -305,9 +305,32 @@ def _register_tools(server) -> None:
 
     @server.tool()
     @_anticipado(ToolError)
-    def odev_test(module: str, tags: str | None = None) -> dict:
-        """Run Odoo tests for one or more modules (CSV)."""
-        return _execute_test(_resolve_contexto(), module, tags=tags)
+    def odev_test(
+        module: str | None = None,
+        tags: str | None = None,
+        changed: bool = False,
+        base: str | None = None,
+        with_dependents: bool = False,
+    ) -> dict:
+        """Run Odoo tests for one or more modules (CSV), or for the git diff.
+
+        Pass exactly one of `module` or `changed=True`. With changed=True the
+        modules are the ones touched between merge-base(base, HEAD) and the
+        working tree, plus untracked files; `base` defaults to HEAD (only
+        uncommitted work). `with_dependents=True` adds the installed modules
+        that depend directly on that selection. The result then also carries
+        `modules` (the effective selection; empty means Odoo did not run)
+        and `warnings` (modules skipped: outside the addons path, deleted,
+        or inside a git submodule).
+        """
+        return _execute_test(
+            _resolve_contexto(),
+            module,
+            tags=tags,
+            changed=changed,
+            base=base,
+            with_dependents=with_dependents,
+        )
 
     @server.tool()
     @_anticipado(ToolError)

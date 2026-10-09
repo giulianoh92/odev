@@ -147,7 +147,7 @@ odev mcp serve --transport http --port 3333
 | `odev_shell` | `odev shell <svc> -c "<cmd>"` |
 | `odev_sql` | `odev sql --json "<query>"` |
 | `odev_py` | `odev py "<expr>"` (banner stripped) |
-| `odev_test` | `odev test <m1,m2> --json` |
+| `odev_test` | `odev test <m1,m2> --json`; con `changed=True` (y `base`, `with_dependents`), `odev test --changed --json` — el resultado suma `modules` y `warnings` |
 | `odev_logs` | `odev logs <svc> --json` (snapshot) |
 | `odev_doctor` | `odev doctor --json` |
 | `odev_model_info` | `odev model-info <model>` |

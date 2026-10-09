@@ -444,8 +444,38 @@ def render_json(
     sys.stdout.write(json.dumps(payload) + "\n")
 
 
+def _resultado_a_dict(result: TestResult) -> dict:
+    """Serializa un TestResult con el schema de _execute_test."""
+    return {
+        "total": result.total,
+        "passed": result.passed,
+        "failed": result.failed,
+        "errors": result.errors,
+        "duration": result.duration,
+        "parse_failed": result.parse_failed,
+        "raw_summary_line": result.raw_summary_line,
+        "fallback_counters_used": result.fallback_counters_used,
+        "failures": [
+            {
+                "class": f.test_class,
+                "method": f.method,
+                "kind": f.kind,
+                "message": f.message,
+                "traceback": f.traceback,
+            }
+            for f in result.failures
+        ],
+    }
+
+
 def _execute_test(
-    contexto, module: str, tags: Optional[str] = None, no_validate: bool = False
+    contexto,
+    module: Optional[str] = None,
+    tags: Optional[str] = None,
+    no_validate: bool = False,
+    changed: bool = False,
+    base: Optional[str] = None,
+    with_dependents: bool = False,
 ) -> dict:
     """Pure data-return. No I/O, no exits. MCP-callable.
 
@@ -453,18 +483,45 @@ def _execute_test(
 
     Args:
         contexto: Resolved ProjectContext.
-        module: Module name(s) to test (CSV supported, or 'all').
+        module: Module name(s) to test (CSV supported, or 'all'). Mutually
+            exclusive with changed=True.
         tags: Optional Odoo test-tags expression.
         no_validate: If True, skip addons-path validation.
+        changed: If True, test the modules touched by the git diff
+            (merge-base(base, HEAD) vs the working tree, plus untracked
+            files) through the same path as an explicit module list.
+        base: Git ref for the merge-base with changed=True (None: HEAD).
+        with_dependents: With changed=True, also test the installed modules
+            that depend directly on the selection.
 
     Returns:
         Dict matching the TestResult JSON schema:
         {total, passed, failed, errors, duration, parse_failed,
          raw_summary_line, fallback_counters_used, failures[]}
+        With changed=True it also carries 'modules' (the effective
+        selection; empty means Odoo did not run) and 'warnings' (what was
+        skipped): an MCP caller never sees stderr.
 
     Raises:
-        ValueError: If module is empty or invalid combination.
+        ValueError: If module is empty, the combination is invalid, or the
+            base ref does not resolve.
+        RuntimeError: With changed=True, if git is missing, the project is
+            not inside a git repository, or the dependents query fails.
     """
+    _validar_seleccion(module, changed, base, with_dependents)
+
+    if changed:
+        modulos_sel, advertencias = _seleccionar_modulos_cambiados(
+            contexto, base if base is not None else "HEAD", with_dependents
+        )
+        if modulos_sel:
+            resultado = _execute_test(
+                contexto, ",".join(modulos_sel), tags=tags, no_validate=no_validate
+            )
+        else:
+            resultado = _resultado_a_dict(TestResult())
+        return {**resultado, "modules": modulos_sel, "warnings": advertencias}
+
     module_name, shorthand_tag = _parse_test_target(module)
     modulos = parsear_modulos_csv(module_name)
     validar_modulos(modulos, contexto, no_validate=no_validate)
@@ -494,28 +551,7 @@ def _execute_test(
     dc = obtener_docker(contexto)
     popen = dc.exec_cmd_stream("web", comando, user=USUARIO_ODOO)
     lines, _ = _stream_and_collect(popen)
-    result = parse_odoo_test_output(lines)
-
-    return {
-        "total": result.total,
-        "passed": result.passed,
-        "failed": result.failed,
-        "errors": result.errors,
-        "duration": result.duration,
-        "parse_failed": result.parse_failed,
-        "raw_summary_line": result.raw_summary_line,
-        "fallback_counters_used": result.fallback_counters_used,
-        "failures": [
-            {
-                "class": f.test_class,
-                "method": f.method,
-                "kind": f.kind,
-                "message": f.message,
-                "traceback": f.traceback,
-            }
-            for f in result.failures
-        ],
-    }
+    return _resultado_a_dict(parse_odoo_test_output(lines))
 
 
 def _advertir_cero_tests(modulos: list[str], tag_parts: list[str]) -> None:

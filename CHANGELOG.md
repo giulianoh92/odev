@@ -25,6 +25,12 @@ Politica de bumps: ver [VERSIONING.md](VERSIONING.md).
   de modulo y de `--changed`, los dos juntos, `--base`/`--with-dependents` sin
   `--changed` o una `--base` invalida salen con 2; sin git, fuera de un repo o
   con la DB caida para `--with-dependents`, con 3.
+- **`odev_test` (MCP) acepta `changed`, `base` y `with_dependents`,** con las
+  mismas reglas que la CLI: `module` pasa a ser opcional y excluyente con
+  `changed=True`, y los errores de uso o de entorno llegan como `ToolError` con
+  el mensaje. Con `changed=True` el resultado suma `modules` (la seleccion
+  efectiva; vacia significa que Odoo no corrio) y `warnings` (lo omitido), porque
+  un cliente MCP no ve stderr.
 
 ## [0.13.0] - 2026-09-19
 

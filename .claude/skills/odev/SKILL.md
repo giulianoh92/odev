@@ -32,7 +32,7 @@ an odoo service, `ODEV_PROJECT`, or an explicit mention of odev/the stack.
 | Lifecycle, `tui`, `--verbose`, `--save-log`, `--csv`, `--follow`, `projects`/`enterprise` | CLI only |
 | ORM write via `py`/`odev_py` | Decide commit intent first |
 | Running tests | One-run protocol, always |
-| Testing only what the diff touched | `test --changed` (`--base <ref>` for a branch, `--with-dependents` before a PR) — never hand-build the module CSV |
+| Testing only what the diff touched | `test --changed` / `odev_test(changed=True)` (`base` for a branch, `with_dependents` before a PR) — never hand-build the module CSV |
 | Destructive command | Confirm or `--yes`; `--dry-run` if unsure |
 
 ## Execution Steps
@@ -53,9 +53,10 @@ an odoo service, `ODEV_PROJECT`, or an explicit mention of odev/the stack.
 Report the exact command/tool call, its exit code or `warning`/`error`
 field, and whether a write committed. For tests, report
 `total`/`passed`/`failed`/`errors` from the JSON, not a log impression.
-With `--changed`, also report the selected `modules` (JSON key; the stderr
-`INFO`/`WARN` lines say what was skipped). An empty selection exits 0
-without running Odoo: `modules: []` is not a passing run.
+With `--changed`, also report the selected `modules` (JSON key; skipped
+modules are in the stderr `WARN` lines, or in `warnings` from `odev_test`).
+An empty selection exits 0 without running Odoo: `modules: []` is not a
+passing run.
 
 ## References
 
