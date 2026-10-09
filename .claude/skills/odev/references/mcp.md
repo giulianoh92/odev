@@ -15,7 +15,7 @@ All 9 tools resolve project context exactly like the CLI: `--project`, then
 | `odev_shell` | `(service: str, command: str)` | `dict` — `{stdout, stderr, returncode}` |
 | `odev_sql` | `(query: str)` | `list[dict]` — rows; **all values are strings** (psql text protocol) |
 | `odev_py` | `(expression: str, commit: bool = False)` | `dict` — `{result, committed, warning}` |
-| `odev_test` | `(module: str, tags: str \| None = None)` | `dict` — TestResult shape, `failures[]` included |
+| `odev_test` | `(module: str \| None = None, tags: str \| None = None, changed: bool = False, base: str \| None = None, with_dependents: bool = False)` | `dict` — TestResult shape, `failures[]` included; with `changed=True` also `modules` and `warnings` |
 | `odev_logs` | `(service: str, tail: int = 200)` | `list[dict]` — parsed log entries, snapshot only, never follows |
 | `odev_doctor` | `()` | `dict` — `{version, checks: [...], summary, exit_code}` |
 | `odev_model_info` | `(model: str)` | `dict` — `{model, description, inherits, fields}` |
@@ -33,6 +33,15 @@ not detected, and `commit=True` suppresses the warning unconditionally.
 guards surfaced as typed errors — invalid combinations raise `ValueError`
 and arrive as an operational error with the full message (see below), same
 text as the CLI would print to stderr.
+
+`odev_test(changed=True)` is `odev test --changed` (see `testing.md`): pass
+exactly one of `module` or `changed=True`, and `base`/`with_dependents` only
+with `changed=True`; any other combination, or a `base` that does not
+resolve, is a `ValueError`. git missing, a project outside a git repository,
+or a failed dependents query is a `RuntimeError`. The result adds `modules`
+(the effective selection) and `warnings` (skipped modules), since an MCP
+client never sees stderr. `modules: []` means Odoo did not run: zero
+counters there are "nothing to test", not a passing run.
 
 ## Resources (4)
 

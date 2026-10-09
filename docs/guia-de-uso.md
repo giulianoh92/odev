@@ -413,11 +413,28 @@ odev test mi_modulo --log-level debug
 
 # Ejecutar TODOS los tests (puede tomar mucho tiempo)
 odev test all
+
+# Solo los modulos tocados por el trabajo sin commitear
+odev test --changed
+
+# Los modulos tocados en la rama (desde el merge-base con main) y sus
+# dependientes directos instalados: el chequeo tipico antes de un PR
+odev test --changed --base main --with-dependents
 ```
 
 | Flag | Default | Descripcion |
 |------|---------|-------------|
 | `--log-level` / `-l` | `test` | Nivel de log: `test`, `debug`, `info`, `warn`, `error` |
+| `--changed` | (apagado) | En vez del modulo, testea los modulos tocados por el diff de git. Excluyente con el argumento de modulo |
+| `--base <ref>` | `HEAD` | Con `--changed`: referencia git para el merge-base. `HEAD` = solo trabajo sin commitear |
+| `--with-dependents` | (apagado) | Con `--changed`: suma los modulos instalados que dependen directamente de la seleccion (necesita el stack levantado) |
+
+Con `--changed`, cada archivo cambiado (commiteado desde el merge-base,
+stageado, sin stagear o untracked no ignorado) se asigna al modulo mas cercano
+con `__manifest__.py`. La seleccion se muestra por stderr antes de correr, y se
+omiten con un aviso los modulos fuera del addons-path, los eliminados y los que
+viven en submodulos git. Si no queda ningun modulo, `odev test` lo avisa y sale
+con `0` sin lanzar Odoo.
 
 ### Ciclo de desarrollo tipico
 
@@ -1017,6 +1034,7 @@ pre-commit install
 | `odev addon-install <modulo>` | Instalar un modulo por primera vez | (sin flags) |
 | `odev update <modulo>` | Actualizar (upgrade) un modulo | (sin flags) |
 | `odev test <modulo>` | Ejecutar tests de un modulo | `--log-level`/`-l` |
+| `odev test --changed` | Ejecutar tests de los modulos tocados por el diff de git | `--base`, `--with-dependents` |
 | `odev reset-db` | Destruir BD y volumenes, reiniciar | (pide confirmacion) |
 | `odev load-backup <ruta.zip>` | Cargar backup de Odoo.sh | `--no-neutralize` |
 | `odev context` | Generar PROJECT_CONTEXT.md | (sin flags) |
